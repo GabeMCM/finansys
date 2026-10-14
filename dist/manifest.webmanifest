@@ -1,0 +1,19 @@
+{
+  "name": "Finansys · Gestão Financeira",
+  "short_name": "Finansys",
+  "description": "Gestão financeira projetada: contas a pagar e a receber, projetado × real, por empresa.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#13161c",
+  "theme_color": "#13161c",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

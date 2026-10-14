@@ -17,17 +17,21 @@ Deno.serve({ port }, async (req: Request) => {
   }
 
   // 2. Arquivos estáticos da pasta dist/
-  let filePath = `./dist${url.pathname}`;
+  let pathname = url.pathname;
+  if (pathname === "/" || pathname === "") pathname = "/index.html";
+
+  const filePath = `./dist${pathname}`;
+
   try {
-    const stat = await Deno.stat(filePath);
-    if (stat.isDirectory) filePath += "/index.html";
     const file = await Deno.open(filePath, { read: true });
     const mime = getMimeType(filePath);
-    return new Response(file.readable, {
-      headers: { "Content-Type": mime },
-    });
+    const headers: Record<string, string> = { "Content-Type": mime };
+    if (pathname.startsWith("/assets/")) {
+      headers["Cache-Control"] = "public, max-age=31536000, immutable";
+    }
+    return new Response(file.readable, { headers });
   } catch (_e) {
-    // Fallback para SPA (Single Page Application)
+    // Fallback para SPA (Single Page Application) apenas quando a rota não é um arquivo com extensão
     try {
       const indexHtml = await Deno.open("./dist/index.html", { read: true });
       return new Response(indexHtml.readable, {
