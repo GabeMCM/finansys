@@ -1,0 +1,15 @@
+services:
+  finansys:
+    build: .
+    container_name: finansys_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    volumes:
+      # Persiste o banco Deno KV localmente caso reinicie o container
+      - finansys_data:/app/.deno_kv
+
+volumes:
+  finansys_data:

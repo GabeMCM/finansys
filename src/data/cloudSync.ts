@@ -1,0 +1,348 @@
+import { signal } from "@preact/signals";
+import { toast } from "../components/Toast.tsx";
+import { dumpDatabase, isRestoring, restoreDatabase } from "./backup.ts";
+import { changes } from "./db.ts";
+
+export type CloudState = "desconectado" | "salvo" | "salvando" | "pendente" | "erro";
+
+export const cloudUser = signal<{ email: string; nome?: string } | null>(null);
+export const cloudSyncStatus = signal<CloudState>("desconectado");
+export const cloudUltimoBackup = signal<Date | null>(null);
+
+const TOKEN_KEY = "finansys_cloud_token";
+const USER_KEY = "finansys_cloud_user";
+const LAST_SYNC_KEY = "finansys_last_cloud_sync_time";
+
+// Identificador único da sessão desta aba para evitar eco SSE
+const CLIENT_SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+let debounceTimer: number | null = null;
+let eventSource: EventSource | null = null;
+let reconnectTimer: number | null = null;
+
+function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+function getLastSyncTime(): number {
+  const v = localStorage.getItem(LAST_SYNC_KEY);
+  return v ? parseInt(v, 10) : 0;
+}
+
+function setLastSyncTime(t: number) {
+  localStorage.setItem(LAST_SYNC_KEY, String(t));
+}
+
+/**
+ * Conexão Server-Sent Events (SSE) para receber avisos em tempo real
+ * quando outro dispositivo (ex: computador ou celular) sincroniza.
+ */
+function iniciarConexaoSSE() {
+  const token = getToken();
+  if (!token) return;
+
+  if (eventSource) {
+    try {
+      eventSource.close();
+    } catch (_e) {
+      // ignore
+    }
+    eventSource = null;
+  }
+
+  try {
+    const es = new EventSource(`/api/sync/events?token=${encodeURIComponent(token)}`);
+    eventSource = es;
+
+    es.onmessage = async (evt) => {
+      try {
+        const data = JSON.parse(evt.data);
+        if (data.type === "sync_updated" && data.savedAt) {
+          // Ignora notificações disparadas por este próprio cliente/aba
+          if (data.senderId && data.senderId === CLIENT_SESSION_ID) {
+            return;
+          }
+
+          const ultimoLocal = getLastSyncTime();
+          // Só puxa se o evento da nuvem for estritamente mais recente que o nosso último sync
+          if (data.savedAt > ultimoLocal) {
+            console.log("[Finansys Cloud] Evento recebido de outro dispositivo. Atualizando...");
+            const res = await puxarBackupNuvem(false);
+            if (res.ok) {
+              toast.info("Dados atualizados de outro dispositivo em tempo real.", "Nuvem Finansys");
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao processar evento SSE:", err);
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      eventSource = null;
+      // Tenta reconectar após 6 segundos se a sessão continuar ativa
+      if (getToken() && !reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          iniciarConexaoSSE();
+        }, 6000);
+      }
+    };
+  } catch (err) {
+    console.error("Falha ao abrir conexão SSE:", err);
+  }
+}
+
+export function initCloudSync() {
+  const token = getToken();
+  const savedUser = localStorage.getItem(USER_KEY);
+
+  if (token && savedUser) {
+    try {
+      cloudUser.value = JSON.parse(savedUser);
+      cloudSyncStatus.value = "salvo";
+
+      // 1. Valida sessão e atualiza perfil do usuário
+      fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
+        .then(async (r) => {
+          if (!r.ok) {
+            desconectarConta();
+          } else {
+            const me = await r.json();
+            if (me.email) {
+              const updated = { email: me.email, nome: me.nome };
+              cloudUser.value = updated;
+              localStorage.setItem(USER_KEY, JSON.stringify(updated));
+            }
+          }
+        })
+        .catch(() => {});
+
+      // 2. Busca e mescla os dados mais recentes da nuvem na abertura se houver nova versão
+      void verificarAtualizacaoNuvem();
+
+      // 3. Abre o canal de comunicação em tempo real (SSE)
+      iniciarConexaoSSE();
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  // Escuta alterações locais no banco de dados para agendar backup automático
+  changes.addEventListener("change", () => {
+    // Ignora mutações geradas pela própria sincronização ou restauração
+    if (isRestoring) return;
+    if (!getToken()) return;
+    cloudSyncStatus.value = "pendente";
+
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      void sincronizarInteligente();
+    }, 10_000); // 10s debounce automático
+  });
+
+  // Ao voltar conexão com internet, sincroniza se estiver pendente
+  window.addEventListener("online", () => {
+    if (getToken()) {
+      void sincronizarInteligente();
+      iniciarConexaoSSE();
+    }
+  });
+
+  // Quando o usuário volta para a aba (ex: desbloqueia celular ou muda de aplicativo),
+  // verifica se há atualizações na nuvem feitas por outro aparelho
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && getToken()) {
+      void verificarAtualizacaoNuvem();
+    }
+  });
+}
+
+/**
+ * Checa de forma leve se o servidor possui backup mais novo do que o nosso local.
+ */
+async function verificarAtualizacaoNuvem() {
+  const token = getToken();
+  if (!token) return;
+
+  try {
+    const res = await fetch("/api/sync/status", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const { savedAt } = await res.json();
+    if (savedAt && savedAt > getLastSyncTime()) {
+      await puxarBackupNuvem(false);
+      toast.info("Dados mais recentes da nuvem carregados.", "Nuvem Finansys");
+    }
+  } catch (_e) {
+    // ignore
+  }
+}
+
+/**
+ * Entra ou cria conta automaticamente apenas com e-mail e senha.
+ */
+export async function autenticarConta(
+  email: string,
+  password: string,
+  nome?: string,
+): Promise<{ ok: boolean; error?: string; isNew?: boolean }> {
+  try {
+    const res = await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, nome }),
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      return { ok: false, error: json.error || "Erro ao conectar conta." };
+    }
+
+    localStorage.setItem(TOKEN_KEY, json.token);
+    const u = { email: json.email, nome: json.nome };
+    localStorage.setItem(USER_KEY, JSON.stringify(u));
+    cloudUser.value = u;
+    cloudSyncStatus.value = "salvando";
+
+    // Puxa e mescla dados da nuvem se for conta existente, ou faz o primeiro backup se for nova
+    await sincronizarInteligente();
+    iniciarConexaoSSE();
+
+    return { ok: true, isNew: json.isNew };
+  } catch (err) {
+    return { ok: false, error: "Servidor indisponível ou erro de rede: " + String(err) };
+  }
+}
+
+export function desconectarConta() {
+  if (eventSource) {
+    try {
+      eventSource.close();
+    } catch (_e) {
+      // ignore
+    }
+    eventSource = null;
+  }
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(LAST_SYNC_KEY);
+  cloudUser.value = null;
+  cloudSyncStatus.value = "desconectado";
+  cloudUltimoBackup.value = null;
+}
+
+/**
+ * SINCRONIZAÇÃO INTELIGENTE BIDIRECIONAL:
+ * 1. Puxa os dados da nuvem primeiro e mescla na base local (evita sobrescrever dados de outro aparelho).
+ * 2. Em seguida, extrai a base completa consolidada localmente e envia de volta para a nuvem.
+ */
+export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: string }> {
+  const token = getToken();
+  if (!token) {
+    cloudSyncStatus.value = "desconectado";
+    return { ok: false, error: "Nenhuma conta conectada. Faça login com seu e-mail primeiro." };
+  }
+
+  cloudSyncStatus.value = "salvando";
+
+  try {
+    // 1. Puxa o backup atual da nuvem
+    const pullRes = await fetch("/api/sync/pull", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (pullRes.ok) {
+      const pullJson = await pullRes.json();
+      if (pullJson.payload) {
+        // Mescla com a base local
+        await restoreDatabase(pullJson.payload, "merge");
+        if (pullJson.savedAt) {
+          setLastSyncTime(pullJson.savedAt);
+          cloudUltimoBackup.value = new Date(pullJson.savedAt);
+        }
+      }
+    } else if (pullRes.status === 401) {
+      desconectarConta();
+      return { ok: false, error: "Sua sessão expirou. Por favor, entre novamente." };
+    }
+
+    // 2. Extrai a base local consolidada (que agora contém tanto o que estava na nuvem quanto alterações locais)
+    const payload = await dumpDatabase();
+
+    // 3. Envia o estado consolidado para a nuvem
+    const pushRes = await fetch("/api/sync/push", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ payload, clientId: CLIENT_SESSION_ID }),
+    });
+
+    if (!pushRes.ok) {
+      const data = await pushRes.json().catch(() => ({}));
+      throw new Error(data.error || `Erro do servidor HTTP ${pushRes.status}`);
+    }
+
+    const pushData = await pushRes.json();
+    const savedAt = pushData.savedAt || Date.now();
+    setLastSyncTime(savedAt);
+    cloudSyncStatus.value = "salvo";
+    cloudUltimoBackup.value = new Date(savedAt);
+
+    return { ok: true };
+  } catch (err) {
+    console.error("Falha na sincronização inteligente:", err);
+    cloudSyncStatus.value = "erro";
+    return { ok: false, error: String(err) };
+  }
+}
+
+/**
+ * Puxa e mescla o backup salvo na nuvem com a base deste aparelho.
+ */
+export async function puxarBackupNuvem(_mostrarAviso = true): Promise<{ ok: boolean; error?: string }> {
+  const token = getToken();
+  if (!token) return { ok: false, error: "Não autenticado." };
+
+  cloudSyncStatus.value = "salvando";
+
+  try {
+    const res = await fetch("/api/sync/pull", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        desconectarConta();
+        return { ok: false, error: "Sessão expirada." };
+      }
+      throw new Error(data.error || `Erro HTTP ${res.status}`);
+    }
+    const json = await res.json();
+
+    if (json.payload) {
+      await restoreDatabase(json.payload, "merge");
+      cloudSyncStatus.value = "salvo";
+      const savedAt = json.savedAt || Date.now();
+      setLastSyncTime(savedAt);
+      cloudUltimoBackup.value = new Date(savedAt);
+      return { ok: true };
+    } else {
+      // Primeira vez nesta conta: envia a base atual para a nuvem
+      return await sincronizarInteligente();
+    }
+  } catch (err) {
+    console.error("Falha ao puxar da nuvem:", err);
+    cloudSyncStatus.value = "erro";
+    return { ok: false, error: String(err) };
+  }
+}
+
+// Aliases para compatibilidade
+export const enviarBackupNuvem = sincronizarInteligente;
+export const sincronizarAgora = sincronizarInteligente;

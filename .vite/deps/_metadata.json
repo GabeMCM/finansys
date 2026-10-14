@@ -1,0 +1,73 @@
+{
+  "hash": "8518347e",
+  "configHash": "f5299bfa",
+  "lockfileHash": "e3b0c442",
+  "browserHash": "94b81611",
+  "optimized": {
+    "preact": {
+      "src": "../../node_modules/.deno/preact@10.29.8/node_modules/preact/dist/preact.module.js",
+      "file": "preact.js",
+      "fileHash": "f9bd2f4d",
+      "needsInterop": false
+    },
+    "preact/jsx-runtime": {
+      "src": "../../node_modules/.deno/preact@10.29.8/node_modules/preact/jsx-runtime/dist/jsxRuntime.module.js",
+      "file": "preact_jsx-runtime.js",
+      "fileHash": "98880092",
+      "needsInterop": false
+    },
+    "preact/jsx-dev-runtime": {
+      "src": "../../node_modules/.deno/preact@10.29.8/node_modules/preact/jsx-runtime/dist/jsxRuntime.module.js",
+      "file": "preact_jsx-dev-runtime.js",
+      "fileHash": "f8205a02",
+      "needsInterop": false
+    },
+    "preact/debug": {
+      "src": "../../node_modules/.deno/preact@10.29.8/node_modules/preact/debug/dist/debug.module.js",
+      "file": "preact_debug.js",
+      "fileHash": "48949a4c",
+      "needsInterop": false
+    },
+    "preact/devtools": {
+      "src": "../../node_modules/.deno/preact@10.29.8/node_modules/preact/devtools/dist/devtools.module.js",
+      "file": "preact_devtools.js",
+      "fileHash": "192aaa73",
+      "needsInterop": false
+    },
+    "@preact/signals": {
+      "src": "../../node_modules/.deno/@preact+signals@2.11.3/node_modules/@preact/signals/dist/signals.module.js",
+      "file": "@preact_signals.js",
+      "fileHash": "b3b2576c",
+      "needsInterop": false
+    },
+    "dexie": {
+      "src": "../../node_modules/.deno/dexie@4.4.6/node_modules/dexie/import-wrapper.mjs",
+      "file": "dexie.js",
+      "fileHash": "02697c70",
+      "needsInterop": false
+    },
+    "preact/hooks": {
+      "src": "../../node_modules/.deno/preact@10.29.8/node_modules/preact/hooks/dist/hooks.module.js",
+      "file": "preact_hooks.js",
+      "fileHash": "50afee6d",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-Y7NJVUNK": {
+      "file": "chunk-Y7NJVUNK.js"
+    },
+    "chunk-NETSXVDO": {
+      "file": "chunk-NETSXVDO.js"
+    },
+    "chunk-63EBRA4L": {
+      "file": "chunk-63EBRA4L.js"
+    },
+    "chunk-3TQHM6HL": {
+      "file": "chunk-3TQHM6HL.js"
+    },
+    "chunk-5WRI5ZAA": {
+      "file": "chunk-5WRI5ZAA.js"
+    }
+  }
+}

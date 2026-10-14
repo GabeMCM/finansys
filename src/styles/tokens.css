@@ -1,0 +1,122 @@
+/* ==========================================================
+   Design tokens — Finansys
+   Paleta sóbria. Tema escuro (padrão) e claro via [data-theme].
+   Mobile first: valores base para telas pequenas.
+   ========================================================== */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Superfícies */
+  --bg: hsl(220 16% 8%);
+  --bg-glow: hsl(215 40% 40% / 0.10);
+  --surface: hsl(220 14% 12% / 0.85);
+  --surface-solid: hsl(220 14% 13%);
+  --surface-hover: hsl(220 14% 17%);
+  --border: hsl(220 15% 100% / 0.07);
+  --border-strong: hsl(220 15% 100% / 0.13);
+  --chrome-bg: hsl(220 16% 9% / 0.85);   /* topbar / bottom nav / sidebar */
+
+  /* Texto */
+  --text: hsl(220 20% 94%);
+  --text-muted: hsl(220 10% 66%);
+  --text-faint: hsl(220 8% 48%);
+
+  /* Marca */
+  --primary: hsl(214 58% 64%);
+  --primary-strong: hsl(214 52% 52%);
+  --primary-soft: hsl(214 58% 64% / 0.14);
+  --on-primary: #fff;
+  --gradient-brand: linear-gradient(135deg, hsl(214 50% 50%), hsl(214 45% 42%));
+
+  /* Hero (saldo) */
+  --hero-bg: linear-gradient(135deg, hsl(216 32% 22%), hsl(220 26% 15%));
+  --hero-border: hsl(214 40% 60% / 0.18);
+  --hero-text: hsl(220 20% 96%);
+  --hero-muted: hsl(216 18% 72%);
+
+  /* Naturezas financeiras (tons sóbrios) */
+  --in: hsl(156 36% 52%);
+  --out: hsl(356 48% 62%);
+  --aporte: hsl(204 42% 58%);
+  --saida: hsl(32 50% 58%);
+  --warn: hsl(42 60% 58%);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: hsl(220 20% 97%);
+  --bg-glow: hsl(214 50% 60% / 0.06);
+  --surface: hsl(0 0% 100% / 0.92);
+  --surface-solid: hsl(0 0% 100%);
+  --surface-hover: hsl(220 20% 95%);
+  --border: hsl(220 20% 20% / 0.08);
+  --border-strong: hsl(220 20% 20% / 0.14);
+  --chrome-bg: hsl(0 0% 100% / 0.88);
+
+  --text: hsl(222 28% 14%);
+  --text-muted: hsl(220 12% 40%);
+  --text-faint: hsl(220 9% 56%);
+
+  --primary: hsl(214 58% 42%);
+  --primary-strong: hsl(214 60% 34%);
+  --primary-soft: hsl(214 58% 42% / 0.10);
+  --gradient-brand: linear-gradient(135deg, hsl(214 58% 42%), hsl(216 55% 34%));
+
+  --hero-bg: linear-gradient(135deg, hsl(216 48% 30%), hsl(220 42% 22%));
+  --hero-border: transparent;
+  --hero-text: #fff;
+  --hero-muted: hsl(216 30% 82%);
+
+  --in: hsl(156 48% 32%);
+  --out: hsl(356 55% 45%);
+  --aporte: hsl(204 55% 38%);
+  --saida: hsl(30 65% 40%);
+  --warn: hsl(40 75% 38%);
+}
+
+:root {
+  /* Fundos suaves derivados das naturezas */
+  --in-soft: color-mix(in srgb, var(--in) 14%, transparent);
+  --out-soft: color-mix(in srgb, var(--out) 14%, transparent);
+  --aporte-soft: color-mix(in srgb, var(--aporte) 14%, transparent);
+  --saida-soft: color-mix(in srgb, var(--saida) 14%, transparent);
+
+  /* Tipografia */
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fs-xs: 0.72rem;
+  --fs-sm: 0.82rem;
+  --fs-md: 0.94rem;
+  --fs-lg: 1.1rem;
+  --fs-xl: 1.4rem;
+  --fs-2xl: 1.9rem;
+
+  /* Espaçamento (compacto no mobile) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 28px;
+  --page-pad: 14px;
+
+  /* Forma */
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-full: 999px;
+  --shadow: 0 6px 20px -12px hsl(220 40% 10% / 0.35);
+  --blur: saturate(140%) blur(14px);
+
+  /* Layout */
+  --topbar-h: 56px;
+  --bottomnav-h: 64px;
+  --sidebar-w: 248px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+
+  /* Movimento */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --t-fast: 140ms;
+  --t: 240ms;
+}

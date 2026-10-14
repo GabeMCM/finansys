@@ -1,0 +1,199 @@
+import type { ComponentChildren } from "preact";
+import { useEffect, useState } from "preact/hooks";
+import { CustomSelect } from "./CustomSelect.tsx";
+import { Icon, type IconName } from "./Icon.tsx";
+import { ModalAuth } from "./ModalAuth.tsx";
+import { ModalConfirm } from "./ModalConfirm.tsx";
+import { ToastContainer } from "./Toast.tsx";
+import { useLive } from "../data/useLive.ts";
+import { anos, empresas } from "../data/repo.ts";
+import { cloudSyncStatus, cloudUltimoBackup, cloudUser } from "../data/cloudSync.ts";
+import { googleUser, syncStatus, ultimoBackup } from "../data/driveSync.ts";
+import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
+
+export const NAV: { href: string; label: string; icon: IconName }[] = [
+  { href: "/", label: "Início", icon: "home" },
+  { href: "/projecoes", label: "Projeções", icon: "grid" },
+  { href: "/lancamentos", label: "Lançamentos", icon: "list" },
+  { href: "/relatorios", label: "Relatórios", icon: "chart" },
+  { href: "/ajustes", label: "Ajustes", icon: "settings" },
+];
+
+const isActive = (route: string, href: string) =>
+  href === "/" ? route === "/" : route.startsWith(href);
+
+function ThemeToggle({ id }: { id: string }) {
+  const dark = theme.value === "dark";
+  return (
+    <button id={id} type="button" class="btn btn--ghost btn--icon" aria-label={dark ? "Usar tema claro" : "Usar tema escuro"}
+      onClick={() => applyTheme(dark ? "light" : "dark")}>
+      <Icon name={dark ? "sun" : "moon"} />
+    </button>
+  );
+}
+
+export function AppShell({ route, children }: { route: string; children: ComponentChildren }) {
+  const listaEmpresas = useLive(() => empresas.list(), [], []);
+  const empId = empresaAtiva.value;
+  const listaAnos = useLive(() => (empId ? anos.byEmpresa(empId) : Promise.resolve([])), [empId], []);
+
+  const [authModalAberta, setAuthModalAberta] = useState(false);
+
+  useEffect(() => {
+    // Solicita login/criação de conta logo ao abrir a página se o usuário ainda não estiver autenticado
+    if (!cloudUser.value && !sessionStorage.getItem("finansys_auth_prompted")) {
+      setAuthModalAberta(true);
+      sessionStorage.setItem("finansys_auth_prompted", "true");
+    }
+  }, [cloudUser.value]);
+
+  return (
+    <div class="shell">
+      {/* Desktop */}
+      <aside class="sidebar" aria-label="Navegação principal">
+        <div class="sidebar__brand">
+          <img src="/favicon.svg" alt="" /> Finansys
+        </div>
+        {NAV.map((n) => (
+          <a id={`side-${n.icon}`} href={`#${n.href}`} class={isActive(route, n.href) ? "is-active" : ""}>
+            <Icon name={n.icon} /> {n.label}
+          </a>
+        ))}
+        <div class="sidebar__foot">
+          <a id="side-new" href="#/lancamentos/novo" class="btn btn--primary">
+            <Icon name="plus" /> Novo lançamento
+          </a>
+        </div>
+      </aside>
+
+      <div>
+        <header class="topbar">
+          <div class="topbar__brand">
+            <img src="/favicon.svg" alt="" />
+          </div>
+          {listaEmpresas.length > 0 && (
+            <CustomSelect
+              id="company-switch"
+              variant="chip"
+              icon="building"
+              ariaLabel="Empresa Ativa"
+              value={empId ?? ""}
+              placeholder="Selecione Empresa"
+              options={listaEmpresas.map((e) => ({ value: e.id, label: e.nome }))}
+              onChange={(id) => setEmpresa(id)}
+            />
+          )}
+          {listaAnos.length > 0 && (
+            <CustomSelect
+              id="year-switch"
+              variant="chip"
+              icon="calendar"
+              ariaLabel="Ano Fiscal"
+              value={anoAtivo.value}
+              placeholder="Ano"
+              options={listaAnos.map((a) => ({ value: a.ano, label: String(a.ano) }))}
+              onChange={(ano) => setAno(Number(ano))}
+            />
+          )}
+          <div class="topbar__spacer" />
+
+          {/* Usuário / Saudação */}
+          {cloudUser.value ? (
+            <a
+              href="#/ajustes"
+              class="chip"
+              style="min-height:30px;font-size:var(--fs-xs);gap:6px;text-decoration:none;"
+              title={`Conectado como ${cloudUser.value.email}. Clique para gerenciar conta em Ajustes.`}
+            >
+              <Icon name="user" />
+              <span class="muted hide-mobile">Olá,</span>
+              <strong style="color:var(--text);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                {cloudUser.value.nome || cloudUser.value.email.split("@")[0]}
+              </strong>
+            </a>
+          ) : (
+            <button
+              type="button"
+              class="btn btn--primary"
+              style="min-height:30px;padding:0 10px;font-size:var(--fs-xs);gap:6px;"
+              onClick={() => setAuthModalAberta(true)}
+            >
+              <Icon name="user" />
+              <span class="hide-mobile">Entrar</span>
+            </button>
+          )}
+
+          {/* Status do Backup em Nuvem */}
+          {(() => {
+            const isCloud = Boolean(cloudUser.value);
+            const status = isCloud ? cloudSyncStatus.value : syncStatus.value;
+            const ultimo = isCloud ? cloudUltimoBackup.value : ultimoBackup.value;
+            const email = isCloud ? cloudUser.value?.email : googleUser.value?.email;
+
+            return (
+              <a
+                href="#/ajustes"
+                class="chip"
+                style="min-height:30px;padding:0 8px;font-size:var(--fs-xs);gap:6px;border-color:transparent;"
+                title={
+                  email
+                    ? status === "salvo"
+                      ? `Nuvem Ativa: ${email} (Salvo ${ultimo ? ultimo.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "recente"})`
+                      : status === "salvando"
+                      ? "Salvando backup na nuvem..."
+                      : status === "pendente"
+                      ? "Alterações pendentes de sincronização"
+                      : "Erro de sincronização. Clique para verificar em Ajustes."
+                    : "Backup em nuvem desconectado. Clique para ativar com seu e-mail."
+                }
+              >
+                <Icon name="cloud" class={status === "salvando" ? "spin" : ""} />
+                <i
+                  class="dot"
+                  style={
+                    status === "salvo"
+                      ? "background:var(--in);"
+                      : status === "salvando"
+                      ? "background:var(--primary);"
+                      : status === "pendente"
+                      ? "background:var(--warn);"
+                      : status === "erro"
+                      ? "background:var(--out);"
+                      : "background:var(--text-faint);"
+                  }
+                />
+                <span class="sr-only">Status do Backup</span>
+              </a>
+            );
+          })()}
+
+          <ThemeToggle id="theme-toggle" />
+        </header>
+
+        <main class="main" key={route}>{children}</main>
+      </div>
+
+      {/* Mobile */}
+      <a id="fab-new" href="#/lancamentos/novo" class="fab" aria-label="Novo lançamento">
+        <Icon name="plus" />
+      </a>
+      <nav class="bottomnav" aria-label="Navegação">
+        {NAV.map((n) => (
+          <a id={`nav-${n.icon}`} href={`#${n.href}`} class={isActive(route, n.href) ? "is-active" : ""}>
+            <Icon name={n.icon} />
+            {n.label}
+          </a>
+        ))}
+      </nav>
+
+      {/* Modal de Autenticação / Boas-vindas Inicial */}
+      <ModalAuth isOpen={authModalAberta} onClose={() => setAuthModalAberta(false)} />
+
+      {/* Diálogo Moderno de Confirmação Global */}
+      <ModalConfirm />
+
+      {/* Notificações Toast do Sistema */}
+      <ToastContainer />
+    </div>
+  );
+}
