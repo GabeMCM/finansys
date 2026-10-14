@@ -26,6 +26,38 @@
 .topbar__brand img { width: 28px; height: 28px; }
 .topbar__spacer { flex: 1; min-width: 4px; }
 
+/* Agrupador dos Selects (Empresa + Ano próximos) */
+.topbar__selectors {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.topbar__company-select {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.topbar__year-select {
+  flex-shrink: 0;
+}
+.topbar__year-select .custom-select-trigger--chip {
+  padding: 0 10px;
+  width: auto;
+}
+.topbar__year-select .custom-select-trigger__content {
+  gap: 4px;
+}
+.topbar__year-select .custom-select-trigger__chevron {
+  margin-left: 4px;
+}
+.topbar__year-select .custom-select-trigger__label {
+  max-width: none !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  flex-shrink: 0;
+}
+
 /* Utilitários de Visibilidade e Grid Responsivo */
 .hide-mobile { display: inline-flex; }
 .only-mobile { display: none; }
@@ -48,27 +80,32 @@
   .only-mobile { display: inline-flex !important; }
   .topbar {
     padding: 0 10px;
-    gap: 8px;
+    gap: 6px;
     overflow: visible;
   }
   .topbar__brand img {
     width: 24px;
     height: 24px;
   }
-  .topbar__company-select {
-    flex: 1 1 auto;
+  .topbar__selectors {
+    gap: 4px; /* Bem próximos um do outro no mobile */
     min-width: 0;
-    max-width: 190px;
+    flex: 0 1 auto;
+  }
+  .topbar__company-select {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 170px;
   }
   .topbar__company-select .custom-select-trigger--chip {
     width: 100%;
     max-width: 100%;
     font-size: 0.78rem;
-    padding: 0 10px;
+    padding: 0 8px;
     height: 34px;
   }
   .topbar__company-select .custom-select-trigger__label {
-    max-width: 125px;
+    max-width: 110px;
     font-weight: 600;
   }
   
@@ -78,11 +115,22 @@
   .topbar__year-select .custom-select-trigger--chip {
     font-size: 0.78rem;
     padding: 0 8px;
-    max-width: 82px;
     height: 34px;
+    width: auto;
+    max-width: none;
+  }
+  .topbar__year-select .custom-select-trigger__content {
+    gap: 4px;
+  }
+  .topbar__year-select .custom-select-trigger__chevron {
+    margin-left: 4px;
   }
   .topbar__year-select .custom-select-trigger__label {
-    max-width: 44px;
+    max-width: none !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    font-weight: 600;
+    white-space: nowrap;
   }
 
   .page-head {
@@ -95,16 +143,18 @@
 @media (max-width: 380px) {
   .topbar {
     padding: 0 6px;
-    gap: 5px;
+    gap: 4px;
+  }
+  .topbar__selectors {
+    gap: 3px;
   }
   .topbar__company-select {
-    max-width: 140px;
+    max-width: 130px;
   }
   .topbar__company-select .custom-select-trigger__label {
-    max-width: 85px;
+    max-width: 75px;
   }
   .topbar__year-select .custom-select-trigger--chip {
-    max-width: 76px;
     padding: 0 6px;
   }
 }

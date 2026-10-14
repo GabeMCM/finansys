@@ -75,33 +75,37 @@ export function AppShell({ route, children }: { route: string; children: Compone
             </a>
           </div>
 
-          {listaEmpresas.length > 0 && (
-            <div class="topbar__company-select">
-              <CustomSelect
-                id="company-switch"
-                variant="chip"
-                icon="building"
-                ariaLabel="Empresa Ativa"
-                value={empId ?? ""}
-                placeholder="Empresa"
-                options={listaEmpresas.map((e) => ({ value: e.id, label: e.nome }))}
-                onChange={(id) => setEmpresa(id)}
-              />
-            </div>
-          )}
+          {(listaEmpresas.length > 0 || listaAnos.length > 0) && (
+            <div class="topbar__selectors">
+              {listaEmpresas.length > 0 && (
+                <div class="topbar__company-select">
+                  <CustomSelect
+                    id="company-switch"
+                    variant="chip"
+                    icon="building"
+                    ariaLabel="Empresa Ativa"
+                    value={empId ?? ""}
+                    placeholder="Empresa"
+                    options={listaEmpresas.map((e) => ({ value: e.id, label: e.nome }))}
+                    onChange={(id) => setEmpresa(id)}
+                  />
+                </div>
+              )}
 
-          {listaAnos.length > 0 && (
-            <div class="topbar__year-select">
-              <CustomSelect
-                id="year-switch"
-                variant="chip"
-                icon="calendar"
-                ariaLabel="Ano Fiscal"
-                value={anoAtivo.value}
-                placeholder="Ano"
-                options={listaAnos.map((a) => ({ value: a.ano, label: String(a.ano) }))}
-                onChange={(ano) => setAno(Number(ano))}
-              />
+              {listaAnos.length > 0 && (
+                <div class="topbar__year-select">
+                  <CustomSelect
+                    id="year-switch"
+                    variant="chip"
+                    icon="calendar"
+                    ariaLabel="Ano Fiscal"
+                    value={anoAtivo.value}
+                    placeholder="Ano"
+                    options={listaAnos.map((a) => ({ value: a.ano, label: String(a.ano) }))}
+                    onChange={(ano) => setAno(Number(ano))}
+                  />
+                </div>
+              )}
             </div>
           )}
 
