@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { CustomSelect } from "./CustomSelect.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
+import { MobileUserMenu } from "./MobileUserMenu.tsx";
 import { ModalAuth } from "./ModalAuth.tsx";
 import { ModalConfirm } from "./ModalConfirm.tsx";
 import { ToastContainer } from "./Toast.tsx";
@@ -69,105 +70,122 @@ export function AppShell({ route, children }: { route: string; children: Compone
       <div>
         <header class="topbar">
           <div class="topbar__brand">
-            <img src="/favicon.svg" alt="" />
+            <a href="#/" aria-label="Finansys Início" style="display:flex;align-items:center;text-decoration:none;">
+              <img src="/favicon.svg" alt="Finansys" />
+            </a>
           </div>
+
           {listaEmpresas.length > 0 && (
-            <CustomSelect
-              id="company-switch"
-              variant="chip"
-              icon="building"
-              ariaLabel="Empresa Ativa"
-              value={empId ?? ""}
-              placeholder="Selecione Empresa"
-              options={listaEmpresas.map((e) => ({ value: e.id, label: e.nome }))}
-              onChange={(id) => setEmpresa(id)}
-            />
+            <div class="topbar__company-select">
+              <CustomSelect
+                id="company-switch"
+                variant="chip"
+                icon="building"
+                ariaLabel="Empresa Ativa"
+                value={empId ?? ""}
+                placeholder="Empresa"
+                options={listaEmpresas.map((e) => ({ value: e.id, label: e.nome }))}
+                onChange={(id) => setEmpresa(id)}
+              />
+            </div>
           )}
+
           {listaAnos.length > 0 && (
-            <CustomSelect
-              id="year-switch"
-              variant="chip"
-              icon="calendar"
-              ariaLabel="Ano Fiscal"
-              value={anoAtivo.value}
-              placeholder="Ano"
-              options={listaAnos.map((a) => ({ value: a.ano, label: String(a.ano) }))}
-              onChange={(ano) => setAno(Number(ano))}
-            />
+            <div class="topbar__year-select">
+              <CustomSelect
+                id="year-switch"
+                variant="chip"
+                icon="calendar"
+                ariaLabel="Ano Fiscal"
+                value={anoAtivo.value}
+                placeholder="Ano"
+                options={listaAnos.map((a) => ({ value: a.ano, label: String(a.ano) }))}
+                onChange={(ano) => setAno(Number(ano))}
+              />
+            </div>
           )}
+
           <div class="topbar__spacer" />
 
-          {/* Usuário / Saudação */}
-          {cloudUser.value ? (
-            <a
-              href="#/ajustes"
-              class="chip"
-              style="min-height:30px;font-size:var(--fs-xs);gap:6px;text-decoration:none;"
-              title={`Conectado como ${cloudUser.value.email}. Clique para gerenciar conta em Ajustes.`}
-            >
-              <Icon name="user" />
-              <span class="muted hide-mobile">Olá,</span>
-              <strong style="color:var(--text);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                {cloudUser.value.nome || cloudUser.value.email.split("@")[0]}
-              </strong>
-            </a>
-          ) : (
-            <button
-              type="button"
-              class="btn btn--primary"
-              style="min-height:30px;padding:0 10px;font-size:var(--fs-xs);gap:6px;"
-              onClick={() => setAuthModalAberta(true)}
-            >
-              <Icon name="user" />
-              <span class="hide-mobile">Entrar</span>
-            </button>
-          )}
-
-          {/* Status do Backup em Nuvem */}
-          {(() => {
-            const isCloud = Boolean(cloudUser.value);
-            const status = isCloud ? cloudSyncStatus.value : syncStatus.value;
-            const ultimo = isCloud ? cloudUltimoBackup.value : ultimoBackup.value;
-            const email = isCloud ? cloudUser.value?.email : googleUser.value?.email;
-
-            return (
+          {/* Ações de Topo para Desktop (escondidas no Mobile) */}
+          <div class="hide-mobile" style="display:inline-flex;align-items:center;gap:var(--sp-2);">
+            {/* Usuário / Saudação */}
+            {cloudUser.value ? (
               <a
                 href="#/ajustes"
                 class="chip"
-                style="min-height:30px;padding:0 8px;font-size:var(--fs-xs);gap:6px;border-color:transparent;"
-                title={
-                  email
-                    ? status === "salvo"
-                      ? `Nuvem Ativa: ${email} (Salvo ${ultimo ? ultimo.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "recente"})`
-                      : status === "salvando"
-                      ? "Salvando backup na nuvem..."
-                      : status === "pendente"
-                      ? "Alterações pendentes de sincronização"
-                      : "Erro de sincronização. Clique para verificar em Ajustes."
-                    : "Backup em nuvem desconectado. Clique para ativar com seu e-mail."
-                }
+                style="min-height:30px;font-size:var(--fs-xs);gap:6px;text-decoration:none;"
+                title={`Conectado como ${cloudUser.value.email}. Clique para gerenciar conta em Ajustes.`}
               >
-                <Icon name="cloud" class={status === "salvando" ? "spin" : ""} />
-                <i
-                  class="dot"
-                  style={
-                    status === "salvo"
-                      ? "background:var(--in);"
-                      : status === "salvando"
-                      ? "background:var(--primary);"
-                      : status === "pendente"
-                      ? "background:var(--warn);"
-                      : status === "erro"
-                      ? "background:var(--out);"
-                      : "background:var(--text-faint);"
-                  }
-                />
-                <span class="sr-only">Status do Backup</span>
+                <Icon name="user" />
+                <span class="muted">Olá,</span>
+                <strong style="color:var(--text);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  {cloudUser.value.nome || cloudUser.value.email.split("@")[0]}
+                </strong>
               </a>
-            );
-          })()}
+            ) : (
+              <button
+                type="button"
+                class="btn btn--primary"
+                style="min-height:30px;padding:0 10px;font-size:var(--fs-xs);gap:6px;"
+                onClick={() => setAuthModalAberta(true)}
+              >
+                <Icon name="user" />
+                <span>Entrar</span>
+              </button>
+            )}
 
-          <ThemeToggle id="theme-toggle" />
+            {/* Status do Backup em Nuvem */}
+            {(() => {
+              const isCloud = Boolean(cloudUser.value);
+              const status = isCloud ? cloudSyncStatus.value : syncStatus.value;
+              const ultimo = isCloud ? cloudUltimoBackup.value : ultimoBackup.value;
+              const email = isCloud ? cloudUser.value?.email : googleUser.value?.email;
+
+              return (
+                <a
+                  href="#/ajustes"
+                  class="chip"
+                  style="min-height:30px;padding:0 8px;font-size:var(--fs-xs);gap:6px;border-color:transparent;"
+                  title={
+                    email
+                      ? status === "salvo"
+                        ? `Nuvem Ativa: ${email} (Salvo ${ultimo ? ultimo.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "recente"})`
+                        : status === "salvando"
+                        ? "Salvando backup na nuvem..."
+                        : status === "pendente"
+                        ? "Alterações pendentes de sincronização"
+                        : "Erro de sincronização. Clique para verificar em Ajustes."
+                      : "Backup em nuvem desconectado. Clique para ativar com seu e-mail."
+                  }
+                >
+                  <Icon name="cloud" class={status === "salvando" ? "spin" : ""} />
+                  <i
+                    class="dot"
+                    style={
+                      status === "salvo"
+                        ? "background:var(--in);"
+                        : status === "salvando"
+                        ? "background:var(--primary);"
+                        : status === "pendente"
+                        ? "background:var(--warn);"
+                        : status === "erro"
+                        ? "background:var(--out);"
+                        : "background:var(--text-faint);"
+                    }
+                  />
+                  <span class="sr-only">Status do Backup</span>
+                </a>
+              );
+            })()}
+
+            <ThemeToggle id="theme-toggle" />
+          </div>
+
+          {/* Menu de Perfil e Ações Rápidas Unificado (visível apenas no Mobile) */}
+          <div class="only-mobile">
+            <MobileUserMenu onOpenAuth={() => setAuthModalAberta(true)} />
+          </div>
         </header>
 
         <main class="main" key={route}>{children}</main>
