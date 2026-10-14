@@ -258,7 +258,14 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
       const savedAt = Date.now();
       await saveBackupKv(kv, email, body.payload, savedAt);
 
-      // Notifica todos os dispositivos conectados à mesma conta via SSE (incluindo o senderId para evitar eco)
+      // Notifica todos os nós e instâncias do Deno KV distribuído
+      try {
+        await kv.set(["sync_updates", email], { savedAt, senderId: body.clientId });
+      } catch (_e) {
+        // ignore
+      }
+
+      // Notifica todos os dispositivos conectados à mesma conta via SSE local
       notifySyncUpdate(email, savedAt, body.clientId);
 
       return json({ ok: true, savedAt });
@@ -299,7 +306,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     }
   }
 
-  // 6. GET /api/sync/events (Canal SSE para push instantâneo entre dispositivos da mesma conta)
+  // 6. GET /api/sync/events (Canal SSE com Deno KV watch distribuído)
   if (url.pathname === "/api/sync/events" && req.method === "GET") {
     let token = url.searchParams.get("token");
     if (!token) {
@@ -313,8 +320,11 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     if (!email) return json({ error: "Sessão inválida ou expirada." }, 401);
 
     let streamController: ReadableStreamDefaultController | null = null;
+    // deno-lint-ignore no-explicit-any
+    let kvWatcherStream: any = null;
+
     const body = new ReadableStream({
-      start(controller) {
+      async start(controller) {
         streamController = controller;
         if (!sseSubscribers.has(email)) {
           sseSubscribers.set(email, new Set());
@@ -323,8 +333,42 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
 
         // Ping inicial
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "connected", email })}\n\n`));
+
+        // Inicia escuta nativa do Deno KV watch (propaga entre todas as instâncias do Deno Deploy)
+        try {
+          if (typeof kv.watch === "function") {
+            const watcher = kv.watch([["sync_updates", email]]);
+            kvWatcherStream = watcher;
+            const reader = watcher.getReader();
+            (async () => {
+              try {
+                while (true) {
+                  const { value, done } = await reader.read();
+                  if (done) break;
+                  const entry = value?.[0];
+                  if (entry && entry.value) {
+                    const data = entry.value as { savedAt: number; senderId?: string };
+                    const msg = new TextEncoder().encode(`data: ${JSON.stringify({ type: "sync_updated", savedAt: data.savedAt, senderId: data.senderId })}\n\n`);
+                    controller.enqueue(msg);
+                  }
+                }
+              } catch (_err) {
+                // Stream encerrada
+              } finally {
+                reader.releaseLock();
+              }
+            })();
+          }
+        } catch (_err) {
+          console.warn("[Finansys] kv.watch não disponível:", _err);
+        }
       },
       cancel() {
+        if (kvWatcherStream) {
+          try {
+            kvWatcherStream.cancel();
+          } catch (_e) {}
+        }
         if (streamController && sseSubscribers.has(email)) {
           sseSubscribers.get(email)!.delete(streamController);
         }

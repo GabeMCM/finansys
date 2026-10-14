@@ -57,20 +57,16 @@ function iniciarConexaoSSE() {
     es.onmessage = async (evt) => {
       try {
         const data = JSON.parse(evt.data);
-        if (data.type === "sync_updated" && data.savedAt) {
+        if (data.type === "sync_updated") {
           // Ignora notificações disparadas por este próprio cliente/aba
           if (data.senderId && data.senderId === CLIENT_SESSION_ID) {
             return;
           }
 
-          const ultimoLocal = getLastSyncTime();
-          // Só puxa se o evento da nuvem for estritamente mais recente que o nosso último sync
-          if (data.savedAt > ultimoLocal) {
-            console.log("[Finansys Cloud] Evento recebido de outro dispositivo. Atualizando...");
-            const res = await puxarBackupNuvem(false);
-            if (res.ok) {
-              toast.info("Dados atualizados de outro dispositivo em tempo real.", "Nuvem Finansys");
-            }
+          console.log("[Finansys Cloud] Evento recebido de outro dispositivo. Atualizando...");
+          const res = await puxarBackupNuvem(false);
+          if (res.ok) {
+            toast.info("Dados sincronizados de outro aparelho em tempo real.", "Nuvem Finansys");
           }
         }
       } catch (err) {
@@ -81,12 +77,12 @@ function iniciarConexaoSSE() {
     es.onerror = () => {
       es.close();
       eventSource = null;
-      // Tenta reconectar após 6 segundos se a sessão continuar ativa
+      // Tenta reconectar rapidamente após 3 segundos se a sessão continuar ativa
       if (getToken() && !reconnectTimer) {
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
           iniciarConexaoSSE();
-        }, 6000);
+        }, 3000);
       }
     };
   } catch (err) {
@@ -150,13 +146,25 @@ export function initCloudSync() {
     }
   });
 
-  // Quando o usuário volta para a aba (ex: desbloqueia celular ou muda de aplicativo),
-  // verifica se há atualizações na nuvem feitas por outro aparelho
+  // Quando o usuário volta para a aba ou clica na janela (foco)
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && getToken()) {
       void verificarAtualizacaoNuvem();
     }
   });
+
+  window.addEventListener("focus", () => {
+    if (getToken()) {
+      void verificarAtualizacaoNuvem();
+    }
+  });
+
+  // Heartbeat leve a cada 10s quando a página estiver aberta para garantir sincronização
+  setInterval(() => {
+    if (getToken() && document.visibilityState === "visible") {
+      void verificarAtualizacaoNuvem();
+    }
+  }, 10_000);
 }
 
 /**
