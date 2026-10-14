@@ -6,6 +6,10 @@
     "start": "deno run -A --unstable-kv server.ts",
     "check": "deno check src/main.tsx"
   },
+  "deploy": {
+    "runtimeMode": "dynamic",
+    "entrypoint": "server.ts"
+  },
   "nodeModulesDir": "auto",
   "compilerOptions": {
     "jsx": "react-jsx",
