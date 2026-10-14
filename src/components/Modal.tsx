@@ -9,9 +9,10 @@ export interface ModalProps {
   children: ComponentChildren;
   footer?: ComponentChildren;
   subtela?: boolean;
+  zIndex?: number;
 }
 
-export function Modal({ title, isOpen, onClose, children, footer, subtela = false }: ModalProps) {
+export function Modal({ title, isOpen, onClose, children, footer, subtela = false, zIndex }: ModalProps) {
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -26,6 +27,7 @@ export function Modal({ title, isOpen, onClose, children, footer, subtela = fals
   return (
     <div
       class={`modal-backdrop ${subtela ? "has-subscreen" : ""}`}
+      style={zIndex ? `z-index:${zIndex};` : undefined}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

@@ -22,6 +22,11 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   // Modal de lançamento
   const [modalLanc, setModalLanc] = useState<Partial<Lancamento> & { natureza?: Natureza } | null>(null);
 
+  // Estados para criação rápida direta pelo select
+  const [catSelecionadaModal, setCatSelecionadaModal] = useState<string>("");
+  const [modalCriarCat, setModalCriarCat] = useState<{ nome: string } | null>(null);
+  const [modalCriarConta, setModalCriarConta] = useState<{ nome: string; categoriaId: string } | null>(null);
+
   const dados = useLive(async () => {
     if (!empId) return null;
     const ano = await anos.find(empId, anoNum);
@@ -75,6 +80,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     const primeiraCatId = catsDaNat[0]?.id || "";
     const contasDaCat = cs.filter((c) => c.natureza === nat && c.categoriaId === primeiraCatId && c.ativa);
 
+    setCatSelecionadaModal(primeiraCatId);
     setModalLanc({
       anoId: ano.id,
       contaId: contasDaCat[0]?.id || cs.find((c) => c.natureza === nat && c.ativa)?.id || "",
@@ -156,7 +162,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   const natAtualModal = modalLanc?.natureza || (modalLanc?.contaId ? contaMap.get(modalLanc.contaId)?.natureza : "pagar") || "pagar";
   const catsParaModal = cats.filter((c) => c.natureza === natAtualModal);
   const contaAtualObj = cs.find((c) => c.id === modalLanc?.contaId);
-  const catAtualModal = contaAtualObj?.categoriaId || catsParaModal[0]?.id || "";
+  const catAtualModal = catSelecionadaModal || contaAtualObj?.categoriaId || catsParaModal[0]?.id || "";
   const contasParaModal = cs.filter((c) => c.natureza === natAtualModal && c.categoriaId === catAtualModal && c.ativa);
 
   return (
@@ -292,13 +298,14 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                         type="button"
                         class="btn btn--ghost btn--icon"
                         style="min-height:28px;width:28px;"
-                        onClick={() =>
+                        onClick={() => {
+                          setCatSelecionadaModal(c.categoriaId);
                           setModalLanc({
                             ...l,
                             valor: l.valor / 100,
                             natureza: c.natureza,
-                          })
-                        }
+                          });
+                        }}
                         title="Editar lançamento"
                       >
                         <Icon name="pencil" />
@@ -364,6 +371,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                       const catsDaNovaNat = cats.filter((cat) => cat.natureza === n);
                       const primCat = catsDaNovaNat[0]?.id || "";
                       const contasDaNovaNat = cs.filter((c) => c.categoriaId === primCat && c.ativa);
+                      setCatSelecionadaModal(primCat);
                       setModalLanc({
                         ...modalLanc,
                         natureza: n,
@@ -378,7 +386,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             </div>
           )}
 
-          {/* Seletores de Categoria e Conta */}
+          {/* Seletores de Categoria e Conta com Acesso Direto de Criação */}
           <div class="form-row form-row--2">
             <div class="form-group">
               <label class="form-label" for="lanc-cat">Categoria *</label>
@@ -388,11 +396,17 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                 placeholder={catsParaModal.length === 0 ? "Nenhuma categoria" : "Selecione Categoria"}
                 options={catsParaModal.map((c) => ({ value: c.id, label: c.nome }))}
                 onChange={(novaCatId) => {
+                  setCatSelecionadaModal(novaCatId);
                   const contasDestaCat = cs.filter((c) => c.categoriaId === novaCatId && c.ativa);
                   setModalLanc({
                     ...modalLanc,
                     contaId: contasDestaCat[0]?.id || "",
                   });
+                }}
+                action={{
+                  label: "Nova Categoria...",
+                  icon: "plus",
+                  onClick: () => setModalCriarCat({ nome: "" }),
                 }}
               />
             </div>
@@ -402,10 +416,18 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
               <CustomSelect
                 id="lanc-conta"
                 value={modalLanc?.contaId || ""}
-                placeholder={contasParaModal.length === 0 ? "Nenhuma conta disponível" : "Selecione Conta"}
-                disabled={contasParaModal.length === 0}
+                placeholder={contasParaModal.length === 0 ? "Nenhuma conta cadastrada" : "Selecione Conta"}
                 options={contasParaModal.map((c) => ({ value: c.id, label: c.nome }))}
                 onChange={(contaId) => setModalLanc({ ...modalLanc, contaId })}
+                action={{
+                  label: "Nova Conta...",
+                  icon: "plus",
+                  onClick: () =>
+                    setModalCriarConta({
+                      nome: "",
+                      categoriaId: catAtualModal || catsParaModal[0]?.id || "",
+                    }),
+                }}
               />
             </div>
           </div>
@@ -464,6 +486,124 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           )}
         </form>
       </Modal>
+
+      {/* Modal Rápido: Criar Nova Categoria Direto do Select */}
+      {modalCriarCat && (
+        <Modal
+          title={`Nova Categoria (${NATURE_META[natAtualModal].label})`}
+          isOpen={true}
+          zIndex={110}
+          onClose={() => setModalCriarCat(null)}
+          footer={
+            <>
+              <button type="button" class="btn btn--ghost" onClick={() => setModalCriarCat(null)}>
+                Cancelar
+              </button>
+              <button type="submit" form="form-criar-cat" class="btn btn--primary">
+                Salvar Categoria
+              </button>
+            </>
+          }
+        >
+          <form
+            id="form-criar-cat"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const nome = modalCriarCat.nome?.trim();
+              if (!nome) return;
+              const criada = await categorias.create({
+                empresaId: empId,
+                natureza: natAtualModal,
+                nome,
+              });
+              setCatSelecionadaModal(criada.id);
+              setModalLanc((prev) => (prev ? { ...prev, contaId: "" } : null));
+              setModalCriarCat(null);
+              toast.success(`Categoria "${criada.nome}" criada com sucesso!`);
+            }}
+          >
+            <div class="form-group">
+              <label class="form-label" for="nova-cat-nome">Nome da Categoria *</label>
+              <input
+                id="nova-cat-nome"
+                class="input"
+                required
+                autoFocus
+                placeholder="Ex: Assinaturas de Software, Operacional, Marketing..."
+                value={modalCriarCat.nome}
+                onInput={(e) => setModalCriarCat({ ...modalCriarCat, nome: e.currentTarget.value })}
+              />
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Modal Rápido: Criar Nova Conta Direto do Select */}
+      {modalCriarConta && (
+        <Modal
+          title={`Nova Conta (${NATURE_META[natAtualModal].label})`}
+          isOpen={true}
+          zIndex={110}
+          onClose={() => setModalCriarConta(null)}
+          footer={
+            <>
+              <button type="button" class="btn btn--ghost" onClick={() => setModalCriarConta(null)}>
+                Cancelar
+              </button>
+              <button type="submit" form="form-criar-conta" class="btn btn--primary">
+                Salvar Conta
+              </button>
+            </>
+          }
+        >
+          <form
+            id="form-criar-conta"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const nome = modalCriarConta.nome?.trim();
+              const catId = modalCriarConta.categoriaId || catAtualModal;
+              if (!nome) return;
+              if (!catId) {
+                toast.warn("Crie ou selecione uma categoria antes de cadastrar uma conta.");
+                return;
+              }
+              const criada = await contas.create({
+                empresaId: empId,
+                categoriaId: catId,
+                natureza: natAtualModal,
+                nome,
+                ativa: true,
+              });
+              setCatSelecionadaModal(catId);
+              setModalLanc((prev) => (prev ? { ...prev, contaId: criada.id } : null));
+              setModalCriarConta(null);
+              toast.success(`Conta "${criada.nome}" criada e selecionada!`);
+            }}
+          >
+            <div class="form-group" style="margin-bottom:var(--sp-3);">
+              <label class="form-label" for="nova-conta-cat">Categoria Pertencente *</label>
+              <CustomSelect
+                id="nova-conta-cat"
+                value={modalCriarConta.categoriaId || catAtualModal}
+                options={catsParaModal.map((c) => ({ value: c.id, label: c.nome }))}
+                onChange={(categoriaId) => setModalCriarConta({ ...modalCriarConta, categoriaId })}
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="nova-conta-nome">Nome da Conta *</label>
+              <input
+                id="nova-conta-nome"
+                class="input"
+                required
+                autoFocus
+                placeholder="Ex: ChatGPT Plus, Aluguel Escritório, Energia..."
+                value={modalCriarConta.nome}
+                onInput={(e) => setModalCriarConta({ ...modalCriarConta, nome: e.currentTarget.value })}
+              />
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }

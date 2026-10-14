@@ -15,6 +15,12 @@ export interface CustomSelectGroup {
 
 export type CustomSelectItem = CustomSelectOption | CustomSelectGroup;
 
+export interface CustomSelectAction {
+  label: string;
+  icon?: IconName;
+  onClick: () => void;
+}
+
 function isGroup(item: CustomSelectItem): item is CustomSelectGroup {
   return "group" in item && Array.isArray((item as CustomSelectGroup).options);
 }
@@ -30,6 +36,7 @@ export interface CustomSelectProps {
   disabled?: boolean;
   style?: string;
   ariaLabel?: string;
+  action?: CustomSelectAction;
 }
 
 export function CustomSelect({
@@ -43,6 +50,7 @@ export function CustomSelect({
   disabled = false,
   style,
   ariaLabel,
+  action,
 }: CustomSelectProps) {
   const [aberto, setAberto] = useState(false);
   const [alignRight, setAlignRight] = useState(false);
@@ -179,6 +187,21 @@ export function CustomSelect({
                 </div>
               );
             })
+          )}
+
+          {action && (
+            <div
+              role="button"
+              class="custom-select-action"
+              onClick={(e) => {
+                e.stopPropagation();
+                setAberto(false);
+                action.onClick();
+              }}
+            >
+              <Icon name={action.icon || "plus"} class="custom-select-action__icon" />
+              <span>{action.label}</span>
+            </div>
           )}
         </div>
       )}
