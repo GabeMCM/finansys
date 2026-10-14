@@ -325,20 +325,16 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
 
     const body = new ReadableStream({
       async start(controller) {
-        streamController = controller;
-        if (!sseSubscribers.has(email)) {
-          sseSubscribers.set(email, new Set());
-        }
-        sseSubscribers.get(email)!.add(controller);
-
         // Ping inicial
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "connected", email })}\n\n`));
 
         // Inicia escuta nativa do Deno KV watch (propaga entre todas as instâncias do Deno Deploy)
+        let hasKvWatch = false;
         try {
           if (typeof kv.watch === "function") {
             const watcher = kv.watch([["sync_updates", email]]);
             kvWatcherStream = watcher;
+            hasKvWatch = true;
             const reader = watcher.getReader();
             (async () => {
               try {
@@ -361,6 +357,14 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           }
         } catch (_err) {
           console.warn("[Finansys] kv.watch não disponível:", _err);
+        }
+
+        // Fallback local caso kv.watch não esteja disponível no ambiente
+        if (!hasKvWatch) {
+          if (!sseSubscribers.has(email)) {
+            sseSubscribers.set(email, new Set());
+          }
+          sseSubscribers.get(email)!.add(controller);
         }
       },
       cancel() {

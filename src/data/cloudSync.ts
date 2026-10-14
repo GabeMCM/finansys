@@ -19,6 +19,8 @@ const CLIENT_SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toStr
 let debounceTimer: number | null = null;
 let eventSource: EventSource | null = null;
 let reconnectTimer: number | null = null;
+let isPulling = false;
+let lastToastTime = 0;
 
 function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -63,10 +65,21 @@ function iniciarConexaoSSE() {
             return;
           }
 
-          console.log("[Finansys Cloud] Evento recebido de outro dispositivo. Atualizando...");
-          const res = await puxarBackupNuvem(false);
-          if (res.ok) {
-            toast.info("Dados sincronizados de outro aparelho em tempo real.", "Nuvem Finansys");
+          if (isPulling) return;
+          isPulling = true;
+
+          try {
+            console.log("[Finansys Cloud] Evento recebido de outro dispositivo. Atualizando...");
+            const res = await puxarBackupNuvem(false);
+            if (res.ok && (res.totalImportados ?? 1) > 0) {
+              const agora = Date.now();
+              if (agora - lastToastTime > 3500) {
+                lastToastTime = agora;
+                toast.info("Dados sincronizados de outro aparelho em tempo real.", "Nuvem Finansys");
+              }
+            }
+          } finally {
+            isPulling = false;
           }
         }
       } catch (err) {
@@ -135,7 +148,7 @@ export function initCloudSync() {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       void sincronizarInteligente();
-    }, 10_000); // 10s debounce automático
+    }, 1500); // 1.5s debounce ágil e responsivo
   });
 
   // Ao voltar conexão com internet, sincroniza se estiver pendente
@@ -320,7 +333,7 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
 /**
  * Puxa e mescla o backup salvo na nuvem com a base deste aparelho.
  */
-export async function puxarBackupNuvem(_mostrarAviso = true): Promise<{ ok: boolean; error?: string }> {
+export async function puxarBackupNuvem(_mostrarAviso = true): Promise<{ ok: boolean; error?: string; totalImportados?: number }> {
   const token = getToken();
   if (!token) return { ok: false, error: "Não autenticado." };
 
@@ -342,12 +355,12 @@ export async function puxarBackupNuvem(_mostrarAviso = true): Promise<{ ok: bool
     const json = await res.json();
 
     if (json.payload) {
-      await restoreDatabase(json.payload, "merge");
+      const { totalImportados } = await restoreDatabase(json.payload, "merge");
       cloudSyncStatus.value = "salvo";
       const savedAt = json.savedAt || Date.now();
       setLastSyncTime(savedAt);
       cloudUltimoBackup.value = new Date(savedAt);
-      return { ok: true };
+      return { ok: true, totalImportados };
     } else {
       // Primeira vez nesta conta: envia a base atual para a nuvem
       return await sincronizarInteligente();

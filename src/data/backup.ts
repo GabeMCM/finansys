@@ -73,19 +73,32 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
           await tableAny.bulkPut(itens);
           count += itens.length;
         } else {
-          // Merge registro a registro usando updatedAt (só grava se for estritamente mais novo)
+          // Leitura única em lote dos itens existentes da tabela
+          const existentes = await tableAny.toArray();
+          const mapaExistentes = new Map<string, number>();
+          for (const e of existentes) {
+            // deno-lint-ignore no-explicit-any
+            const eAny = e as any;
+            if (eAny.id) mapaExistentes.set(eAny.id, eAny.updatedAt || 0);
+          }
+
+          // Filtra em memória apenas registros novos ou estritamente mais recentes
+          // deno-lint-ignore no-explicit-any
+          const paraGravar: any[] = [];
           for (const item of itens) {
             // deno-lint-ignore no-explicit-any
             const it = item as any;
             if (!it.id) continue;
-            const existente = await tableAny.get(it.id);
-            // deno-lint-ignore no-explicit-any
-            const ext = existente as any;
-
-            if (!ext || (it.updatedAt || 0) > (ext.updatedAt || 0)) {
-              await tableAny.put(it);
-              count++;
+            const updatedExistente = mapaExistentes.get(it.id);
+            if (updatedExistente === undefined || (it.updatedAt || 0) > updatedExistente) {
+              paraGravar.push(it);
             }
+          }
+
+          // Gravação atômica em lote (bulkPut) super veloz
+          if (paraGravar.length > 0) {
+            await tableAny.bulkPut(paraGravar);
+            count += paraGravar.length;
           }
         }
       }
