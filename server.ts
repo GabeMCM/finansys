@@ -12,8 +12,16 @@ Deno.serve({ port }, async (req: Request) => {
 
   // 1. Endpoints de API
   if (url.pathname.startsWith("/api/")) {
-    const apiRes = await handleApiRequest(req);
-    if (apiRes) return apiRes;
+    try {
+      const apiRes = await handleApiRequest(req);
+      if (apiRes) return apiRes;
+    } catch (err: any) {
+      console.error("[Finansys Server Error]:", err);
+      return new Response(JSON.stringify({ error: "Erro no servidor: " + String(err?.message || err) }), {
+        status: 500,
+        headers: { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" },
+      });
+    }
   }
 
   // 2. Arquivos estáticos da pasta dist/

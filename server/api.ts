@@ -6,7 +6,36 @@
 
 // Abre o KV do Deno (com suporte local e Deno Deploy)
 // deno-lint-ignore no-explicit-any
-const getKv = async () => (Deno as any).openKv();
+let _kvPromise: Promise<any> | null = null;
+
+// deno-lint-ignore no-explicit-any
+async function getKv(): Promise<any> {
+  if (_kvPromise) return _kvPromise;
+
+  _kvPromise = (async () => {
+    // deno-lint-ignore no-explicit-any
+    const denoAny = Deno as any;
+    if (typeof denoAny.openKv !== "function") {
+      throw new Error("Deno KV não está disponível. Verifique se o banco de dados KV está ativado no painel do Deno Deploy (aba KV).");
+    }
+
+    try {
+      // 1. Tenta Deno.openKv() nativo (Deno Deploy com banco associado ou local)
+      return await denoAny.openKv();
+    } catch (err1: any) {
+      console.warn("[Finansys] openKv() nativo falhou, tentando fallback local:", err1);
+      try {
+        // 2. Fallback para arquivo SQLite local
+        return await denoAny.openKv("./finansys_data.db");
+      } catch (err2: any) {
+        console.error("[Finansys] Falha total ao abrir Deno KV:", err2);
+        throw new Error(`Erro ao conectar ao Deno KV: ${err1?.message || err1}`);
+      }
+    }
+  })();
+
+  return _kvPromise;
+}
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -140,7 +169,8 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }
 
-  const kv = await getKv();
+  try {
+    const kv = await getKv();
 
   // Helper para ler token do header
   const getAuthUser = async (): Promise<string | null> => {
@@ -312,5 +342,9 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     });
   }
 
-  return json({ error: "Rota não encontrada." }, 404);
+    return json({ error: "Rota não encontrada." }, 404);
+  } catch (err: any) {
+    console.error("[Finansys API Handler Error]:", err);
+    return json({ error: "Erro no servidor: " + String(err?.message || err) }, 500);
+  }
 }

@@ -196,7 +196,15 @@ export async function autenticarConta(
       body: JSON.stringify({ email, password, nome }),
     });
 
-    const json = await res.json();
+    const text = await res.text();
+    // deno-lint-ignore no-explicit-any
+    let json: any = {};
+    try {
+      json = JSON.parse(text);
+    } catch (_e) {
+      return { ok: false, error: `Servidor retornou erro (${res.status}): ${text.slice(0, 160) || "Sem resposta válida"}` };
+    }
+
     if (!res.ok) {
       return { ok: false, error: json.error || "Erro ao conectar conta." };
     }
