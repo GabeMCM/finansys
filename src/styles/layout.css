@@ -138,23 +138,26 @@
   .only-mobile { display: inline-flex !important; }
   .topbar {
     padding: 0 10px;
-    gap: 6px;
+    gap: 8px;
     overflow: visible;
   }
+  .topbar__brand {
+    margin-right: 4px;
+  }
   .topbar__brand img {
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
   }
   .topbar__selectors {
-    gap: 4px; /* Bem próximos um do outro no mobile */
+    gap: 10px; /* Espaço nítido e bem calibrado entre os botões */
     min-width: 0;
     flex: 0 1 auto;
   }
   #company-switch,
   #year-switch {
-    font-size: 0.82rem !important;
-    height: 32px !important;
-    min-height: 32px !important;
+    font-size: 0.84rem !important;
+    height: 34px !important;
+    min-height: 34px !important;
     padding: 0 2px !important;
   }
   .topbar__company-select {
@@ -189,17 +192,21 @@
     padding: 0 6px;
     gap: 4px;
   }
+  .topbar__brand {
+    margin-right: 2px;
+  }
+  .topbar__brand img {
+    width: 28px;
+    height: 28px;
+  }
   .topbar__selectors {
-    gap: 3px;
+    gap: 6px;
   }
   .topbar__company-select {
-    max-width: 130px;
+    max-width: 125px;
   }
   .topbar__company-select .custom-select-trigger__label {
-    max-width: 75px;
-  }
-  .topbar__year-select .custom-select-trigger--chip {
-    padding: 0 6px;
+    max-width: 95px;
   }
 }
 
