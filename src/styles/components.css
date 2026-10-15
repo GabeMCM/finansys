@@ -926,7 +926,7 @@
   width: 34px;
   height: 34px;
   border-radius: var(--r-full);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-strong) !important;
   background: var(--surface-solid);
   color: var(--text);
   display: inline-flex;

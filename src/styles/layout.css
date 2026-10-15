@@ -26,6 +26,22 @@
 .topbar__brand img { width: 28px; height: 28px; }
 .topbar__spacer { flex: 1; min-width: 4px; }
 
+/* Elementos da topbar sem bordas (clean header) */
+.topbar .custom-select-trigger--chip,
+.topbar .chip,
+.topbar .btn:not(.user-avatar-btn) {
+  border-color: transparent !important;
+}
+.topbar .custom-select-trigger--chip:hover,
+.topbar .chip:hover {
+  border-color: transparent !important;
+  background: var(--surface-hover);
+}
+.topbar .custom-select-trigger--chip:focus,
+.topbar .custom-select-trigger--chip.is-open {
+  border-color: var(--primary) !important;
+}
+
 /* Agrupador dos Selects (Empresa + Ano próximos) */
 .topbar__selectors {
   display: flex;

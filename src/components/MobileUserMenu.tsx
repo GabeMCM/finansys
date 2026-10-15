@@ -100,7 +100,7 @@ export function MobileUserMenu({ onOpenAuth }: MobileUserMenuProps) {
         aria-label="Perfil do Usuário e Status"
         aria-expanded={aberto}
       >
-        {user ? (
+        {user && inicial ? (
           <span class="user-avatar-initial">{inicial}</span>
         ) : (
           <Icon name="user" class="user-avatar-icon" />
