@@ -1,38 +1,48 @@
 import { useState } from "preact/hooks";
 import { Icon } from "../components/Icon.tsx";
 import { ModalReplicacao } from "../components/ModalReplicacao.tsx";
-import { calcular } from "../data/calc.ts";
-import { anos, categorias, contas, empresas, lancamentos, projecoes } from "../data/repo.ts";
-import { type Natureza, NATUREZAS, SINAL } from "../data/types.ts";
+import { db } from "../data/db.ts";
+import { anos, categorias, contas, empresas } from "../data/repo.ts";
+import { type Ano, type Conta, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
-import { money, MONTHS, signed } from "../lib/format.ts";
+import { money, signed } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
+
+function formatarDataBR(isoDate: string): string {
+  if (!isoDate) return "";
+  const [yyyy, mm, dd] = isoDate.split("-");
+  return `${dd}/${mm}/${yyyy}`;
+}
 
 export function Relatorios() {
   const empId = empresaAtiva.value;
   const anoNum = anoAtivo.value;
 
-  const [periodo, setPeriodo] = useState<number | "ano">("ano");
+  // Estado do filtro com intervalo livre de datas
+  const [dataInicio, setDataInicio] = useState<string>(`${anoNum}-01-01`);
+  const [dataFim, setDataFim] = useState<string>(`${anoNum}-12-31`);
+  const [presetAtivo, setPresetAtivo] = useState<string>("ano");
   const [modalRepAberto, setModalRepAberto] = useState<boolean>(false);
 
   const dados = useLive(async () => {
     if (!empId) return null;
-    const [emp, ano] = await Promise.all([
+    const [emp, todosAnos] = await Promise.all([
       empresas.get(empId),
-      anos.find(empId, anoNum),
+      anos.byEmpresa(empId),
     ]);
-    if (!emp || !ano) return null;
+    if (!emp || todosAnos.length === 0) return null;
 
+    const anoIds = todosAnos.map((a) => a.id);
     const [cs, cats, ps, ls] = await Promise.all([
       contas.byEmpresa(empId),
       categorias.byEmpresa(empId),
-      projecoes.byAno(ano.id),
-      lancamentos.byAno(ano.id),
+      db.projecoes.where("anoId").anyOf(anoIds).filter((p) => !p.deletedAt).toArray(),
+      db.lancamentos.where("anoId").anyOf(anoIds).filter((l) => !l.deletedAt).toArray(),
     ]);
 
-    return { emp, ano, cs, cats, ps, ls };
-  }, [empId, anoNum], null);
+    return { emp, todosAnos, cs, cats, ps, ls };
+  }, [empId], null);
 
   if (!empId) {
     return (
@@ -48,47 +58,60 @@ export function Relatorios() {
     return (
       <section class="card empty">
         <Icon name="calendar" />
-        <h2>Ano {anoNum} não configurado</h2>
-        <p>Abra o ano fiscal em Ajustes para visualizar relatórios.</p>
+        <h2>Nenhum ano configurado</h2>
+        <p>Cadastre um ano fiscal em Ajustes para visualizar os relatórios.</p>
       </section>
     );
   }
 
-  const { emp, ano, cs, cats, ps, ls } = dados;
+  const { emp, todosAnos, cs, cats, ps, ls } = dados;
+  const anoIdParaAnoNum = new Map<string, number>(todosAnos.map((a) => [a.id, a.ano]));
+  const catMap = new Map<string, string>(cats.map((c) => [c.id, c.nome]));
+  const contaMap = new Map<string, Conta>(cs.map((c) => [c.id, c]));
 
-  // Realiza cálculos globais
-  const mesLimiteCalculo = periodo === "ano" ? 11 : periodo;
-  const res = calcular(ano.bancaInicial, cs, ps, ls, mesLimiteCalculo);
+  // Normalização do intervalo selecionado
+  const dInicio = dataInicio || "1900-01-01";
+  const dFim = dataFim || "2099-12-31";
+  const mesInicioStr = dInicio.slice(0, 7); // "YYYY-MM"
+  const mesFimStr = dFim.slice(0, 7);       // "YYYY-MM"
 
-  const catMap = new Map(cats.map((c) => [c.id, c.nome]));
+  // 1. Filtra lançamentos dentro do período de datas
+  const lsNoPeriodo = ls.filter((l) => l.data >= dInicio && l.data <= dFim);
 
-  // Calcula valores projetados e reais por conta no período selecionado
-  const linhasTabela = cs.map((c) => {
-    let projCentavos = 0;
-    let realCentavos = 0;
+  // 2. Filtra projeções dentro dos meses abrangidos pelo período
+  const psNoPeriodo = ps.filter((p) => {
+    const anoNumP = anoIdParaAnoNum.get(p.anoId);
+    if (!anoNumP) return false;
+    const mesFormatado = `${anoNumP}-${String(p.mes + 1).padStart(2, "0")}`;
+    return mesFormatado >= mesInicioStr && mesFormatado <= mesFimStr;
+  });
 
-    if (periodo === "ano") {
-      projCentavos = ps.filter((p) => p.contaId === c.id).reduce((s, p) => s + p.valor, 0);
-      realCentavos = ls.filter((l) => l.contaId === c.id).reduce((s, l) => s + l.valor, 0);
-    } else {
-      projCentavos = ps.filter((p) => p.contaId === c.id && p.mes === periodo).reduce((s, p) => s + p.valor, 0);
-      realCentavos = ls.filter((l) => l.contaId === c.id && l.mes === periodo).reduce((s, l) => s + l.valor, 0);
-    }
+  // 3. Monta as linhas do relatório por conta
+  const linhasTabela = cs
+    .map((c) => {
+      const realCentavos = lsNoPeriodo
+        .filter((l) => l.contaId === c.id)
+        .reduce((s, l) => s + l.valor, 0);
 
-    const diff = realCentavos - projCentavos;
-    const pct = projCentavos > 0 ? (realCentavos / projCentavos) * 100 : 0;
+      const projCentavos = psNoPeriodo
+        .filter((p) => p.contaId === c.id)
+        .reduce((s, p) => s + p.valor, 0);
 
-    return {
-      conta: c,
-      categoriaNome: catMap.get(c.categoriaId) || "Geral",
-      proj: projCentavos,
-      real: realCentavos,
-      diff,
-      pct,
-    };
-  }).filter((linha) => linha.proj > 0 || linha.real > 0);
+      const diff = realCentavos - projCentavos;
+      const pct = projCentavos > 0 ? (realCentavos / projCentavos) * 100 : 0;
 
-  // Totais do período
+      return {
+        conta: c,
+        categoriaNome: catMap.get(c.categoriaId) || "Geral",
+        proj: projCentavos,
+        real: realCentavos,
+        diff,
+        pct,
+      };
+    })
+    .filter((linha) => linha.proj > 0 || linha.real > 0);
+
+  // 4. Totais de Entradas e Saídas do Período
   let totEntradasProj = 0;
   let totEntradasReal = 0;
   let totSaidasProj = 0;
@@ -107,16 +130,75 @@ export function Relatorios() {
   const resultadoLiqProj = totEntradasProj - totSaidasProj;
   const resultadoLiqReal = totEntradasReal - totSaidasReal;
 
-  const saldoFinalReal = periodo === "ano" ? res.anual.saldoFinalReal : res.saldoReal[periodo];
-  const saldoFinalProj = periodo === "ano" ? res.anual.saldoFinalProj : res.saldoProj[periodo];
+  // 5. Saldo e Conciliação do Período
+  const anoInicioNum = parseInt(dInicio.split("-")[0], 10);
+  const anoObj = todosAnos.find((a) => a.ano === anoInicioNum) || todosAnos[0];
+  const bancaInicialAno = anoObj ? anoObj.bancaInicial : 0;
+
+  // Lançamentos anteriores dentro do mesmo ano inicial para conciliar banca inicial
+  const lsAnteriores = ls.filter(
+    (l) => l.data < dInicio && (anoIdParaAnoNum.get(l.anoId) ?? 0) === anoInicioNum,
+  );
+  let saldoAnteriorAcumulado = 0;
+  for (const l of lsAnteriores) {
+    const c = contaMap.get(l.contaId);
+    if (c) {
+      saldoAnteriorAcumulado += SINAL[c.natureza] * l.valor;
+    }
+  }
+
+  const saldoInicialPeriodo = bancaInicialAno + saldoAnteriorAcumulado;
+  const saldoFinalReal = saldoInicialPeriodo + resultadoLiqReal;
+  const saldoFinalProj = saldoInicialPeriodo + resultadoLiqProj;
   const desvioSaldoFinal = saldoFinalReal - saldoFinalProj;
+
+  // Presets rápidos de intervalo
+  const aplicarPreset = (tipo: string) => {
+    setPresetAtivo(tipo);
+    const hoje = new Date();
+
+    if (tipo === "mes_atual") {
+      const y = hoje.getFullYear();
+      const m = hoje.getMonth() + 1;
+      const ultimoDia = new Date(y, m, 0).getDate();
+      setDataInicio(`${y}-${String(m).padStart(2, "0")}-01`);
+      setDataFim(`${y}-${String(m).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`);
+    } else if (tipo === "mes_anterior") {
+      const ref = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+      const y = ref.getFullYear();
+      const m = ref.getMonth() + 1;
+      const ultimoDia = new Date(y, m, 0).getDate();
+      setDataInicio(`${y}-${String(m).padStart(2, "0")}-01`);
+      setDataFim(`${y}-${String(m).padStart(2, "0")}-${String(ultimoDia).padStart(2, "0")}`);
+    } else if (tipo === "ano") {
+      setDataInicio(`${anoNum}-01-01`);
+      setDataFim(`${anoNum}-12-31`);
+    } else if (tipo === "ano_anterior") {
+      setDataInicio(`${anoNum - 1}-01-01`);
+      setDataFim(`${anoNum - 1}-12-31`);
+    } else if (tipo === "ultimos_12_meses") {
+      const yFim = hoje.getFullYear();
+      const mFim = hoje.getMonth() + 1;
+      const diaFim = hoje.getDate();
+      const refInicio = new Date(yFim - 1, mFim - 1, diaFim);
+      setDataInicio(refInicio.toISOString().split("T")[0]);
+      setDataFim(hoje.toISOString().split("T")[0]);
+    } else if (tipo === "tudo") {
+      const minAno = Math.min(...todosAnos.map((a) => a.ano));
+      const maxAno = Math.max(...todosAnos.map((a) => a.ano));
+      setDataInicio(`${minAno}-01-01`);
+      setDataFim(`${maxAno}-12-31`);
+    }
+  };
+
+  const labelPeriodoExibicao = `${formatarDataBR(dataInicio)} até ${formatarDataBR(dataFim)}`;
 
   // Exportar para CSV
   const exportarCSV = () => {
     const separador = ";";
     let csv = `\uFEFF`; // BOM UTF-8 para Excel
-    csv += `Finansys - Relatório Financeiro: ${emp.nome} - Ano ${anoNum}\n`;
-    csv += `Período: ${periodo === "ano" ? "Anual Completo" : MONTHS[periodo] + "/" + anoNum}\n\n`;
+    csv += `Finansys - Relatório Financeiro: ${emp.nome}\n`;
+    csv += `Período: ${labelPeriodoExibicao}\n\n`;
     csv += `Conta;Categoria;Natureza;Projetado (R$);Real (R$);Diferenca (R$);Execucao (%)\n`;
 
     for (const l of linhasTabela) {
@@ -132,17 +214,17 @@ export function Relatorios() {
     }
 
     csv += `\nRESUMO GERAL\n`;
-    csv += `Banca Inicial;;;${(ano.bancaInicial / 100).toFixed(2).replace(".", ",")}\n`;
+    csv += `Saldo Inicial no Período;;;${(saldoInicialPeriodo / 100).toFixed(2).replace(".", ",")}\n`;
     csv += `Total Entradas;;;${(totEntradasProj / 100).toFixed(2).replace(".", ",")};${(totEntradasReal / 100).toFixed(2).replace(".", ",")}\n`;
-    csv += `Total Saidas;;;${(totSaidasProj / 100).toFixed(2).replace(".", ",")};${(totSaidasReal / 100).toFixed(2).replace(".", ",")}\n`;
-    csv += `Resultado Liquido;;;${(resultadoLiqProj / 100).toFixed(2).replace(".", ",")};${(resultadoLiqReal / 100).toFixed(2).replace(".", ",")}\n`;
+    csv += `Total Saídas;;;${(totSaidasProj / 100).toFixed(2).replace(".", ",")};${(totSaidasReal / 100).toFixed(2).replace(".", ",")}\n`;
+    csv += `Resultado Líquido;;;${(resultadoLiqProj / 100).toFixed(2).replace(".", ",")};${(resultadoLiqReal / 100).toFixed(2).replace(".", ",")}\n`;
     csv += `Saldo Final em Conta;;;${(saldoFinalProj / 100).toFixed(2).replace(".", ",")};${(saldoFinalReal / 100).toFixed(2).replace(".", ",")}\n`;
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `relatorio-${emp.nome.replace(/\s+/g, "_")}-${anoNum}-${periodo}.csv`;
+    a.download = `relatorio-${emp.nome.replace(/\s+/g, "_")}-${dataInicio}_ate_${dataFim}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -151,9 +233,12 @@ export function Relatorios() {
   const exportarJSON = () => {
     const obj = {
       empresa: emp,
-      ano: anoNum,
-      periodo: periodo === "ano" ? "anual" : MONTHS[periodo],
-      bancaInicial: ano.bancaInicial,
+      periodo: {
+        inicio: dataInicio,
+        fim: dataFim,
+        descricao: labelPeriodoExibicao,
+      },
+      saldoInicialPeriodo,
       linhas: linhasTabela.map((l) => ({
         conta: l.conta.nome,
         categoria: l.categoriaNome,
@@ -175,7 +260,7 @@ export function Relatorios() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `dados-${emp.nome.replace(/\s+/g, "_")}-${anoNum}.json`;
+    a.download = `dados-${emp.nome.replace(/\s+/g, "_")}-${dataInicio}_a_${dataFim}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -190,7 +275,7 @@ export function Relatorios() {
       <div class="page-head no-print">
         <div>
           <h1>Relatórios & Exportação</h1>
-          <p>Demonstrativo Projetado × Real de {anoNum}</p>
+          <p>Demonstrativo Projetado × Real por período personalizado</p>
         </div>
 
         <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap;">
@@ -215,30 +300,98 @@ export function Relatorios() {
         </div>
       </div>
 
-      {/* Seletor de Período no topo */}
-      <div class="hscroll no-print" style="margin-bottom:var(--sp-4);">
-        <button
-          type="button"
-          class={`chip ${periodo === "ano" ? "is-active" : ""}`}
-          onClick={() => setPeriodo("ano")}
-        >
-          Ano Completo ({anoNum})
-        </button>
-        {MONTHS.map((m, idx) => (
-          <button
-            type="button"
-            key={m}
-            class={`chip ${periodo === idx ? "is-active" : ""}`}
-            onClick={() => setPeriodo(idx)}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
+      {/* Seletor Moderno de Período com Dois Calendários e Presets Rápidos */}
+      <section class="date-filter-card no-print" style="margin-bottom:var(--sp-4);">
+        <div class="date-filter-row">
+          <div class="date-filter-inputs">
+            {/* Calendário Data Inicial */}
+            <div class="date-field">
+              <label class="date-field__label" for="rel-data-inicio">
+                <Icon name="calendar" /> De:
+              </label>
+              <input
+                id="rel-data-inicio"
+                type="date"
+                class="date-field__input"
+                value={dataInicio}
+                onChange={(e) => {
+                  setDataInicio(e.currentTarget.value);
+                  setPresetAtivo("custom");
+                }}
+              />
+            </div>
+
+            <span class="date-filter-separator">até</span>
+
+            {/* Calendário Data Final */}
+            <div class="date-field">
+              <label class="date-field__label" for="rel-data-fim">
+                <Icon name="calendar" /> Até:
+              </label>
+              <input
+                id="rel-data-fim"
+                type="date"
+                class="date-field__input"
+                value={dataFim}
+                onChange={(e) => {
+                  setDataFim(e.currentTarget.value);
+                  setPresetAtivo("custom");
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Presets Rápidos de Seleção */}
+          <div class="date-presets-scroll" aria-label="Atalhos de período">
+            <button
+              type="button"
+              class={`date-preset-chip ${presetAtivo === "mes_atual" ? "is-active" : ""}`}
+              onClick={() => aplicarPreset("mes_atual")}
+            >
+              Este Mês
+            </button>
+            <button
+              type="button"
+              class={`date-preset-chip ${presetAtivo === "mes_anterior" ? "is-active" : ""}`}
+              onClick={() => aplicarPreset("mes_anterior")}
+            >
+              Mês Anterior
+            </button>
+            <button
+              type="button"
+              class={`date-preset-chip ${presetAtivo === "ano" ? "is-active" : ""}`}
+              onClick={() => aplicarPreset("ano")}
+            >
+              Ano {anoNum}
+            </button>
+            <button
+              type="button"
+              class={`date-preset-chip ${presetAtivo === "ano_anterior" ? "is-active" : ""}`}
+              onClick={() => aplicarPreset("ano_anterior")}
+            >
+              Ano {anoNum - 1}
+            </button>
+            <button
+              type="button"
+              class={`date-preset-chip ${presetAtivo === "ultimos_12_meses" ? "is-active" : ""}`}
+              onClick={() => aplicarPreset("ultimos_12_meses")}
+            >
+              Últimos 12 Meses
+            </button>
+            <button
+              type="button"
+              class={`date-preset-chip ${presetAtivo === "tudo" ? "is-active" : ""}`}
+              onClick={() => aplicarPreset("tudo")}
+            >
+              Todo o Período
+            </button>
+          </div>
+        </div>
+      </section>
 
       {/* ================= INFORME FORMAL / CORPO DO RELATÓRIO ================= */}
       <div class="stack" style="gap:var(--sp-4);">
-        {/* Cabeçalho do Informe Formal (visível no print e no topo da tela) */}
+        {/* Cabeçalho do Informe Formal (visível no print e na tela) */}
         <section class="card" style="padding:var(--sp-4);">
           <div class="informe-header" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
             <div style="display:flex;gap:14px;align-items:center;">
@@ -263,7 +416,7 @@ export function Relatorios() {
                 Informe de Gestão Financeira
               </div>
               <div style="font-size:var(--fs-sm);font-weight:600;margin-top:2px;">
-                Período: {periodo === "ano" ? `Exercício Anual de ${anoNum}` : `${MONTHS[periodo]} de ${anoNum}`}
+                Período: {labelPeriodoExibicao}
               </div>
               <div class="muted" style="font-size:0.68rem;margin-top:2px;">
                 Emitido em: {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
@@ -274,9 +427,9 @@ export function Relatorios() {
           {/* Quadro de Saldo e Conciliação */}
           <div class="grid grid--2" style="margin-top:var(--sp-3);">
             <div class="stat" style="background:var(--surface-solid);">
-              <div class="stat__label">Banca Inicial no Ano</div>
-              <div class="stat__value num">{money(ano.bancaInicial)}</div>
-              <div class="stat__sub">Saldo inicial informado</div>
+              <div class="stat__label">Saldo Inicial do Período</div>
+              <div class="stat__value num">{money(saldoInicialPeriodo)}</div>
+              <div class="stat__sub">Posição em {formatarDataBR(dataInicio)}</div>
             </div>
 
             <div class="stat" style="background:var(--surface-solid);">
@@ -411,7 +564,7 @@ export function Relatorios() {
       <ModalReplicacao
         empresaId={emp.id}
         anoAtual={anoNum}
-        saldoFinalRealAtual={res.anual.saldoFinalReal}
+        saldoFinalRealAtual={saldoFinalReal}
         isOpen={modalRepAberto}
         onClose={() => setModalRepAberto(false)}
       />
