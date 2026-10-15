@@ -1,5 +1,5 @@
 # Estágio de build e execução com Deno oficial
-FROM denoland/deno:2.0.4
+FROM denoland/deno:latest
 
 WORKDIR /app
 
