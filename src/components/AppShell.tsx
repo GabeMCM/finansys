@@ -81,8 +81,6 @@ export function AppShell({ route, children }: { route: string; children: Compone
                 <div class="topbar__company-select">
                   <CustomSelect
                     id="company-switch"
-                    variant="chip"
-                    icon="building"
                     ariaLabel="Empresa Ativa"
                     value={empId ?? ""}
                     placeholder="Empresa"
@@ -96,8 +94,6 @@ export function AppShell({ route, children }: { route: string; children: Compone
                 <div class="topbar__year-select">
                   <CustomSelect
                     id="year-switch"
-                    variant="chip"
-                    icon="calendar"
                     ariaLabel="Ano Fiscal"
                     value={anoAtivo.value}
                     placeholder="Ano"

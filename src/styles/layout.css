@@ -42,11 +42,63 @@
   border-color: var(--primary) !important;
 }
 
+/* Seletores de Topo (Empresa e Ano) - Apenas texto e chevron, sem borda e sem fundo */
+#company-switch,
+#year-switch {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 4px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  border-radius: var(--r-sm) !important;
+  color: var(--text) !important;
+  font-weight: 700 !important;
+  font-size: var(--fs-sm) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  cursor: pointer !important;
+  gap: 0 !important;
+}
+
+#company-switch:hover,
+#year-switch:hover {
+  background: var(--surface-hover) !important;
+  color: var(--primary) !important;
+}
+
+#company-switch:hover .custom-select-trigger__chevron,
+#year-switch:hover .custom-select-trigger__chevron {
+  color: var(--primary) !important;
+}
+
+#company-switch .custom-select-trigger__content,
+#year-switch .custom-select-trigger__content {
+  gap: 0 !important;
+  min-width: 0;
+}
+
+#company-switch .custom-select-trigger__label,
+#year-switch .custom-select-trigger__label {
+  font-weight: 700 !important;
+  color: inherit !important;
+  padding: 0 2px;
+}
+
+#company-switch .custom-select-trigger__chevron,
+#year-switch .custom-select-trigger__chevron {
+  margin-left: 2px !important;
+  width: 14px !important;
+  height: 14px !important;
+  color: var(--text-muted);
+}
+
 /* Agrupador dos Selects (Empresa + Ano próximos) */
 .topbar__selectors {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   flex: 0 1 auto;
 }
@@ -56,16 +108,6 @@
 }
 .topbar__year-select {
   flex-shrink: 0;
-}
-.topbar__year-select .custom-select-trigger--chip {
-  padding: 0 10px;
-  width: auto;
-}
-.topbar__year-select .custom-select-trigger__content {
-  gap: 4px;
-}
-.topbar__year-select .custom-select-trigger__chevron {
-  margin-left: 4px;
 }
 .topbar__year-select .custom-select-trigger__label {
   max-width: none !important;
@@ -108,44 +150,30 @@
     min-width: 0;
     flex: 0 1 auto;
   }
+  #company-switch,
+  #year-switch {
+    font-size: 0.82rem !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 2px !important;
+  }
   .topbar__company-select {
     flex: 0 1 auto;
     min-width: 0;
-    max-width: 170px;
-  }
-  .topbar__company-select .custom-select-trigger--chip {
-    width: 100%;
-    max-width: 100%;
-    font-size: 0.78rem;
-    padding: 0 8px;
-    height: 34px;
+    max-width: 165px;
   }
   .topbar__company-select .custom-select-trigger__label {
-    max-width: 110px;
-    font-weight: 600;
+    max-width: 135px;
+    font-weight: 700;
   }
-  
   .topbar__year-select {
     flex: 0 0 auto;
-  }
-  .topbar__year-select .custom-select-trigger--chip {
-    font-size: 0.78rem;
-    padding: 0 8px;
-    height: 34px;
-    width: auto;
-    max-width: none;
-  }
-  .topbar__year-select .custom-select-trigger__content {
-    gap: 4px;
-  }
-  .topbar__year-select .custom-select-trigger__chevron {
-    margin-left: 4px;
   }
   .topbar__year-select .custom-select-trigger__label {
     max-width: none !important;
     overflow: visible !important;
     text-overflow: clip !important;
-    font-weight: 600;
+    font-weight: 700;
     white-space: nowrap;
   }
 
