@@ -172,12 +172,12 @@ export function initCloudSync() {
     }
   });
 
-  // Heartbeat leve a cada 10s quando a página estiver aberta para garantir sincronização
+  // Heartbeat de fallback a cada 60s quando a página estiver ativa (o SSE já cuida do tempo real)
   setInterval(() => {
     if (getToken() && document.visibilityState === "visible") {
       void verificarAtualizacaoNuvem();
     }
-  }, 10_000);
+  }, 60_000);
 }
 
 /**
