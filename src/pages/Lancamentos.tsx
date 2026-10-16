@@ -92,6 +92,13 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   const contaMap = new Map<string, Conta>(cs.map((c) => [c.id, c]));
   const catMap = new Map<string, string>(cats.map((c) => [c.id, c.nome]));
 
+  const getValorProjetadoContaMes = (contaId: string, dataStr: string): number => {
+    if (!contaId || !dataStr) return 0;
+    const mes = parseInt(dataStr.split("-")[1], 10) - 1;
+    const proj = (ps || []).find((p) => p.contaId === contaId && p.mes === mes);
+    return proj ? proj.valor : 0;
+  };
+
   const abrirNovo = (naturezaPadrao?: Natureza) => {
     const hoje = new Date();
     const dataStr = `${anoNum}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
@@ -99,6 +106,9 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     const catsDaNat = cats.filter((c) => c.natureza === nat);
     const primeiraCatId = catsDaNat[0]?.id || "";
     const contasDaCat = cs.filter((c) => c.natureza === nat && c.categoriaId === primeiraCatId && c.ativa);
+    const contaIdInicial = contasDaCat[0]?.id || cs.find((c) => c.natureza === nat && c.ativa)?.id || "";
+    const mesInicial = mesFiltro !== "todos" ? mesFiltro : hoje.getMonth();
+    const projInicial = getValorProjetadoContaMes(contaIdInicial, dataStr);
 
     setTipoRepeticao("unico");
     setNumRepeticoes(2);
@@ -107,31 +117,53 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     setCatSelecionadaModal(primeiraCatId);
     setModalLanc({
       anoId: ano.id,
-      contaId: contasDaCat[0]?.id || cs.find((c) => c.natureza === nat && c.ativa)?.id || "",
+      contaId: contaIdInicial,
       data: dataStr,
-      mes: mesFiltro !== "todos" ? mesFiltro : hoje.getMonth(),
-      valorCentavos: 0,
+      mes: mesInicial,
+      valorCentavos: projInicial,
       descricao: "",
       obs: "",
       natureza: nat,
     });
   };
 
+  const mudarDataModal = (novaDataStr: string) => {
+    if (!modalLanc) return;
+    const mesAntigo = parseInt(modalLanc.data.split("-")[1], 10) - 1;
+    const mesNovo = parseInt(novaDataStr.split("-")[1], 10) - 1;
+
+    let novoValor = modalLanc.valorCentavos;
+    if (!modalLanc.id && mesAntigo !== mesNovo) {
+      const projAntiga = (ps || []).find((p) => p.contaId === modalLanc.contaId && p.mes === mesAntigo)?.valor || 0;
+      const projNova = (ps || []).find((p) => p.contaId === modalLanc.contaId && p.mes === mesNovo)?.valor || 0;
+      if (modalLanc.valorCentavos === 0 || modalLanc.valorCentavos === projAntiga) {
+        novoValor = projNova;
+      }
+    }
+
+    setModalLanc({
+      ...modalLanc,
+      data: novaDataStr,
+      mes: mesNovo,
+      valorCentavos: novoValor,
+    });
+  };
+
   const aplicarDataHoje = () => {
     const d = new Date();
     const str = `${anoNum}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    if (modalLanc) setModalLanc({ ...modalLanc, data: str });
+    mudarDataModal(str);
   };
   const aplicarDataOntem = () => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
     const str = `${anoNum}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    if (modalLanc) setModalLanc({ ...modalLanc, data: str });
+    mudarDataModal(str);
   };
   const aplicarDataPrimeiroDoMes = () => {
     const mesAtual = modalLanc?.data ? parseInt(modalLanc.data.split("-")[1], 10) : new Date().getMonth() + 1;
     const str = `${anoNum}-${String(mesAtual).padStart(2, "0")}-01`;
-    if (modalLanc) setModalLanc({ ...modalLanc, data: str });
+    mudarDataModal(str);
   };
 
   const salvarLancamentoInternal = async (criarOutro = false) => {
@@ -391,6 +423,10 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   const realCatModalMes = ls
     .filter((l) => contaIdsDaCatModal.has(l.contaId) && l.mes === mesDataModal && l.id !== modalLanc?.id)
     .reduce((acc, l) => acc + l.valor, 0);
+
+  const projContaModalMes = modalLanc?.contaId
+    ? getValorProjetadoContaMes(modalLanc.contaId, modalLanc.data || "")
+    : 0;
 
   const centavosInputModal = Math.round(Number(modalLanc?.valorCentavos || 0));
   const valorEfetivoMesLanc = (!modalLanc?.id && tipoRepeticao === "parcelado" && dividirValor && numRepeticoes > 1)
@@ -703,11 +739,17 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                 const catsDaNovaNat = cats.filter((cat) => cat.natureza === novaNat);
                 const primCat = catsDaNovaNat[0]?.id || "";
                 const contasDaNovaNat = cs.filter((c) => c.categoriaId === primCat && c.ativa);
+                const novaContaId = contasDaNovaNat[0]?.id || "";
+                const projVal = getValorProjetadoContaMes(novaContaId, modalLanc?.data || "");
                 setCatSelecionadaModal(primCat);
-                setModalLanc({
-                  ...modalLanc,
-                  natureza: novaNat,
-                  contaId: contasDaNovaNat[0]?.id || "",
+                setModalLanc((prev) => {
+                  if (!prev) return null;
+                  return {
+                    ...prev,
+                    natureza: novaNat,
+                    contaId: novaContaId,
+                    valorCentavos: !prev.id ? projVal : prev.valorCentavos,
+                  };
                 });
               }}
             />
@@ -724,7 +766,15 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
               selectedContaId={modalLanc?.contaId || ""}
               onChange={(contaId, catId) => {
                 setCatSelecionadaModal(catId);
-                setModalLanc({ ...modalLanc, contaId });
+                const projVal = getValorProjetadoContaMes(contaId, modalLanc?.data || "");
+                setModalLanc((prev) => {
+                  if (!prev) return null;
+                  return {
+                    ...prev,
+                    contaId,
+                    valorCentavos: !prev.id ? projVal : prev.valorCentavos,
+                  };
+                });
               }}
               onCriarCategoria={async (nome) => {
                 const criada = await categorias.create({
@@ -789,6 +839,30 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                   onChangeCentavos={(cents) => setModalLanc({ ...modalLanc, valorCentavos: cents })}
                 />
 
+                {/* Indicação visual de valor projetado */}
+                {projContaModalMes > 0 && !modalLanc?.id && (
+                  <div
+                    style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding:5px 10px;font-size:var(--fs-xs);color:var(--text-muted);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);"
+                  >
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <Icon name="check" style="width:13px;height:13px;color:var(--primary);" />
+                      <span>
+                        Valor projetado em {MONTHS[mesDataModal]}: <strong style="color:var(--text);">{money(projContaModalMes)}</strong>
+                      </span>
+                    </div>
+                    {modalLanc?.valorCentavos !== projContaModalMes && (
+                      <button
+                        type="button"
+                        class="btn btn--secondary btn--sm"
+                        style="padding:1px 8px;min-height:22px;height:22px;font-size:11px;"
+                        onClick={() => setModalLanc({ ...modalLanc, valorCentavos: projContaModalMes })}
+                      >
+                        Restaurar projetado
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* Sugestão de Vínculo/Fórmula se a conta tiver regra cadastrada */}
                 {sugestaoVinculo && sugestaoVinculo.valorCentavos > 0 && (
                   <div
@@ -846,7 +920,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                 class="input"
                 required
                 value={modalLanc?.data || ""}
-                onInput={(e) => setModalLanc({ ...modalLanc, data: (e.currentTarget as HTMLInputElement).value })}
+                onInput={(e) => mudarDataModal((e.currentTarget as HTMLInputElement).value)}
               />
               <div class="date-chips">
                 <button type="button" class="date-chip" onClick={aplicarDataHoje}>Hoje</button>

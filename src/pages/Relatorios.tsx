@@ -426,22 +426,50 @@ export function Relatorios() {
 
           {/* Quadro de Saldo e Conciliação */}
           <div class="grid grid--2" style="margin-top:var(--sp-3);">
-            <div class="stat" style="background:var(--surface-solid);">
-              <div class="stat__label">Saldo Inicial do Período</div>
-              <div class="stat__value num">{money(saldoInicialPeriodo)}</div>
-              <div class="stat__sub">Posição em {formatarDataBR(dataInicio)}</div>
+            <div class="stat" style="background:var(--surface-solid);display:flex;flex-direction:column;justify-content:space-between;">
+              <div>
+                <div class="stat__label">Saldo Inicial do Período</div>
+                <div class="stat__value num">{money(saldoInicialPeriodo)}</div>
+                <div class="stat__sub">Posição em {formatarDataBR(dataInicio)}</div>
+              </div>
+              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:var(--fs-xs);color:var(--text-muted);display:flex;justify-content:space-between;align-items:center;">
+                <span>Banca inicial do ano:</span>
+                <span class="num" style="font-weight:600;color:var(--text);">{money(bancaInicialAno)}</span>
+              </div>
             </div>
 
-            <div class="stat" style="background:var(--surface-solid);">
-              <div class="stat__label">Saldo Final em Conta (Real)</div>
-              <div class="stat__value num" style="color:var(--text);font-weight:800;">
-                {money(saldoFinalReal)}
+            <div class="stat" style="background:var(--surface-solid);display:flex;flex-direction:column;justify-content:space-between;">
+              <div>
+                <div class="stat__label">Saldo Final em Conta (Realizado)</div>
+                <div class="stat__value num" style="color:var(--text);font-weight:800;">
+                  {money(saldoFinalReal)}
+                </div>
+                <div class="stat__sub">Posição real acumulada até {formatarDataBR(dataFim)}</div>
               </div>
-              <div class="stat__sub num">
-                Projetado: {money(saldoFinalProj)} · Desvio:{" "}
-                <b class={desvioSaldoFinal >= 0 ? "tone-in" : "tone-out"}>
-                  {signed(desvioSaldoFinal)}
-                </b>
+
+              <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;font-size:var(--fs-xs);">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span class="muted">Saldo Final Projetado:</span>
+                  <span class="num" style="font-weight:600;color:var(--text);">{money(saldoFinalProj)}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
+                  <span class="muted">Diferença em relação à projeção:</span>
+                  <span class="num" style="display:inline-flex;align-items:center;gap:6px;">
+                    <b class={desvioSaldoFinal >= 0 ? "tone-in" : "tone-out"}>
+                      {signed(desvioSaldoFinal)}
+                    </b>
+                    <span
+                      class={`badge badge--${desvioSaldoFinal >= 0 ? "in" : "out"}`}
+                      style="font-size:0.68rem;padding:1px 6px;"
+                    >
+                      {desvioSaldoFinal > 0
+                        ? "Saldo acima do projetado"
+                        : desvioSaldoFinal < 0
+                        ? "Saldo abaixo do projetado"
+                        : "Conforme a meta"}
+                    </span>
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -508,7 +536,7 @@ export function Relatorios() {
                     <th>Natureza</th>
                     <th>Projetado</th>
                     <th>Realizado</th>
-                    <th>Desvio</th>
+                    <th title="Diferença entre o Realizado e o Projetado">Diferença</th>
                     <th>Execução</th>
                   </tr>
                 </thead>
