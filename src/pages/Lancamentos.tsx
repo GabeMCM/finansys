@@ -1,9 +1,15 @@
 import { useEffect, useState } from "preact/hooks";
-import { CustomSelect } from "../components/CustomSelect.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
 import { ModalConfirm, confirmarAcao } from "../components/ModalConfirm.tsx";
 import { toast } from "../components/Toast.tsx";
+import { ContaPicker } from "../components/lancamento/ContaPicker.tsx";
+import { FormSection, Disclosure } from "../components/lancamento/FormSection.tsx";
+import { MoneyInput } from "../components/lancamento/MoneyInput.tsx";
+import { NaturezaSegmented } from "../components/lancamento/NaturezaSegmented.tsx";
+import { RepeticaoSelector, type TipoRepeticaoReal } from "../components/lancamento/RepeticaoSelector.tsx";
+import { ResumoPainel } from "../components/lancamento/ResumoPainel.tsx";
+import { ValorCalculadoEditor } from "../components/lancamento/ValorCalculadoEditor.tsx";
 import { calcularBaseLancamentos, calcularValorVinculado } from "../data/calc.ts";
 import { anos, categorias, contas, lancamentos, projecoes } from "../data/repo.ts";
 import { type Conta, type Lancamento, type Natureza, NATUREZAS, type RegraVinculo, SINAL } from "../data/types.ts";
@@ -22,27 +28,23 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   const [busca, setBusca] = useState<string>("");
 
   // Modal de lançamento
-  const [modalLanc, setModalLanc] = useState<Partial<Lancamento> & { natureza?: Natureza } | null>(null);
+  const [modalLanc, setModalLanc] = useState<
+    (Partial<Lancamento> & { natureza?: Natureza; valorCentavos?: number }) | null
+  >(null);
 
   // Estados de repetição e parcelamento
-  const [tipoRepeticao, setTipoRepeticao] = useState<"unico" | "parcelado" | "recorrente">("unico");
+  const [tipoRepeticao, setTipoRepeticao] = useState<TipoRepeticaoReal>("unico");
   const [numRepeticoes, setNumRepeticoes] = useState<number>(2);
   const [dividirValor, setDividirValor] = useState<boolean>(true);
 
-  // Estados para criação rápida direta pelo select
+  // Categoria selecionada e modo de origem do valor
   const [catSelecionadaModal, setCatSelecionadaModal] = useState<string>("");
-  const [modalCriarCat, setModalCriarCat] = useState<{ nome: string } | null>(null);
-  const [modalCriarConta, setModalCriarConta] = useState<{ nome: string; categoriaId: string } | null>(null);
-
-  // Estados para ferramenta de cálculo por vínculo / fórmula no modal
-  const [calcVinculoAberto, setCalcVinculoAberto] = useState(false);
-  const [calcModoGeral, setCalcModoGeral] = useState<"simples" | "formula">("simples");
-  const [calcVinculoTipo, setCalcVinculoTipo] = useState<"conta" | "categoria">("conta");
-  const [calcVinculoOrigemId, setCalcVinculoOrigemId] = useState<string>("");
-  const [calcVinculoPercentual, setCalcVinculoPercentual] = useState<number | string>(30);
-  const [calcVinculoModo, setCalcVinculoModo] = useState<"percentual" | "fixo">("percentual");
-  const [calcVinculoValorFixo, setCalcVinculoValorFixo] = useState<number | string>("");
-  const [calcFormula, setCalcFormula] = useState<string>("");
+  const [origemValorReal, setOrigemValorReal] = useState<"manual" | "calculado">("manual");
+  const [regraInlineReal, setRegraInlineReal] = useState<RegraVinculo>({
+    modo: "simples",
+    tipo: "conta",
+    percentual: 30,
+  });
 
   const dados = useLive(async () => {
     if (!empId) return null;
@@ -101,23 +103,43 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     setTipoRepeticao("unico");
     setNumRepeticoes(2);
     setDividirValor(true);
+    setOrigemValorReal("manual");
     setCatSelecionadaModal(primeiraCatId);
     setModalLanc({
       anoId: ano.id,
       contaId: contasDaCat[0]?.id || cs.find((c) => c.natureza === nat && c.ativa)?.id || "",
       data: dataStr,
       mes: mesFiltro !== "todos" ? mesFiltro : hoje.getMonth(),
-      valor: 0,
+      valorCentavos: 0,
       descricao: "",
       obs: "",
       natureza: nat,
     });
   };
 
-  const salvarLancamento = async (e: Event) => {
-    e.preventDefault();
-    if (!modalLanc || !modalLanc.contaId || !modalLanc.data) return;
-    const centavos = Math.round(Number(modalLanc.valor || 0) * 100);
+  const aplicarDataHoje = () => {
+    const d = new Date();
+    const str = `${anoNum}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (modalLanc) setModalLanc({ ...modalLanc, data: str });
+  };
+  const aplicarDataOntem = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const str = `${anoNum}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (modalLanc) setModalLanc({ ...modalLanc, data: str });
+  };
+  const aplicarDataPrimeiroDoMes = () => {
+    const mesAtual = modalLanc?.data ? parseInt(modalLanc.data.split("-")[1], 10) : new Date().getMonth() + 1;
+    const str = `${anoNum}-${String(mesAtual).padStart(2, "0")}-01`;
+    if (modalLanc) setModalLanc({ ...modalLanc, data: str });
+  };
+
+  const salvarLancamentoInternal = async (criarOutro = false) => {
+    if (!modalLanc || !modalLanc.contaId || !modalLanc.data) {
+      toast.warn("Selecione uma conta e informe a data.");
+      return;
+    }
+    const centavos = Math.round(Number(modalLanc.valorCentavos || 0));
     if (centavos <= 0) {
       toast.warn("O valor do lançamento deve ser maior que zero.");
       return;
@@ -137,7 +159,11 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         obs: modalLanc.obs?.trim() || undefined,
       });
       toast.success("Lançamento atualizado com sucesso!");
-    } else if (tipoRepeticao === "unico") {
+      setModalLanc(null);
+      return;
+    }
+
+    if (tipoRepeticao === "unico") {
       const createdLanc = await lancamentos.create({
         anoId: ano.id,
         contaId: modalLanc.contaId,
@@ -147,8 +173,6 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         descricao: modalLanc.descricao?.trim() || "",
         obs: modalLanc.obs?.trim() || undefined,
       });
-      toast.success("Lançamento registrado com sucesso!");
-      setModalLanc(null);
 
       // Verificação proativa de regras de vínculo ou fórmulas que apontam para esta conta ou sua categoria
       const cOrigem = contaMap.get(modalLanc.contaId);
@@ -224,6 +248,24 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           toast.success(`Lançamento vinculado de ${money(valorVinculado)} gerado em "${target.nome}"!`);
         }
       }
+
+      if (criarOutro) {
+        toast.success("Lançamento salvo! Pronto para o próximo.");
+        setModalLanc({
+          anoId: ano.id,
+          contaId: modalLanc.contaId,
+          data: modalLanc.data,
+          mes: modalLanc.mes,
+          valorCentavos: 0,
+          descricao: "",
+          obs: "",
+          natureza: natAtualModal,
+        });
+        setTipoRepeticao("unico");
+      } else {
+        toast.success("Lançamento registrado com sucesso!");
+        setModalLanc(null);
+      }
       return;
     } else {
       // Repetição parcelada ou recorrente
@@ -278,8 +320,29 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
       } else {
         toast.success(`${totalRepeticoes} lançamentos recorrentes gerados!`);
       }
+
+      if (criarOutro) {
+        toast.success("Pronto para o próximo lançamento.");
+        setModalLanc({
+          anoId: ano.id,
+          contaId: modalLanc.contaId,
+          data: modalLanc.data,
+          mes: modalLanc.mes,
+          valorCentavos: 0,
+          descricao: "",
+          obs: "",
+          natureza: natAtualModal,
+        });
+        setTipoRepeticao("unico");
+      } else {
+        setModalLanc(null);
+      }
     }
-    setModalLanc(null);
+  };
+
+  const salvarLancamento = async (e: Event) => {
+    e.preventDefault();
+    await salvarLancamentoInternal(false);
   };
 
   // Filtragem dos lançamentos
@@ -329,7 +392,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     .filter((l) => contaIdsDaCatModal.has(l.contaId) && l.mes === mesDataModal && l.id !== modalLanc?.id)
     .reduce((acc, l) => acc + l.valor, 0);
 
-  const centavosInputModal = Math.round(Number(modalLanc?.valor || 0) * 100);
+  const centavosInputModal = Math.round(Number(modalLanc?.valorCentavos || 0));
   const valorEfetivoMesLanc = (!modalLanc?.id && tipoRepeticao === "parcelado" && dividirValor && numRepeticoes > 1)
     ? Math.round(centavosInputModal / numRepeticoes)
     : centavosInputModal;
@@ -337,6 +400,24 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   const pctTetoModal = projCatModalMes > 0 ? Math.round((totalComLancModal / projCatModalMes) * 100) : 0;
   const excessoTetoModal = totalComLancModal - projCatModalMes;
   const isNaturezaDespesaModal = natAtualModal === "pagar" || natAtualModal === "saida";
+
+  const sugestaoVinculo = contaAtualObj?.vinculo ? (() => {
+    const v = contaAtualObj.vinculo;
+    if (v.modo === "formula" && v.formula) {
+      const res = calcularFormulaLancamentos(v.formula, mesDataModal, ls, cs, cats);
+      return {
+        valorCentavos: res.valorCentavos,
+        detalhe: res.ok ? `fx ${v.formula}` : res.erro || "",
+      };
+    }
+    const baseMes = calcularBaseLancamentos(v, mesDataModal, ls, cs);
+    const valSug = calcularValorVinculado(baseMes, v);
+    const regraLabel = v.percentual !== undefined ? `${v.percentual}%` : money(v.valorFixo || 0);
+    return {
+      valorCentavos: valSug,
+      detalhe: `${regraLabel} de ${money(baseMes)}`,
+    };
+  })() : null;
 
   return (
     <>
@@ -496,9 +577,10 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                         style="min-height:28px;width:28px;"
                         onClick={() => {
                           setCatSelecionadaModal(c.categoriaId);
+                          setOrigemValorReal("manual");
                           setModalLanc({
                             ...l,
-                            valor: l.valor / 100,
+                            valorCentavos: l.valor,
                             natureza: c.natureza,
                           });
                         }}
@@ -560,644 +642,239 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         isOpen={modalLanc !== null}
         onClose={() => setModalLanc(null)}
         subtela={true}
+        size="lg"
+        onSubmitShortcut={() => {
+          salvarLancamentoInternal(false);
+        }}
+        aside={
+          modalLanc ? (
+            <ResumoPainel
+              modo="real"
+              natureza={natAtualModal}
+              contaNome={contaAtualObj?.nome}
+              categoriaNome={cats.find((c) => c.id === catAtualModal)?.nome}
+              valorCentavos={centavosInputModal}
+              data={modalLanc.data || ""}
+              tipoRepeticao={tipoRepeticao}
+              numRepeticoes={numRepeticoes}
+              dividirValor={dividirValor}
+              tetoOrcamentario={{
+                mes: mesDataModal,
+                projetado: projCatModalMes,
+                realizadoSemEste: realCatModalMes,
+              }}
+              descricao={modalLanc.descricao}
+              obs={modalLanc.obs}
+            />
+          ) : undefined
+        }
         footer={
-          <>
-            <button type="button" class="btn btn--ghost" onClick={() => setModalLanc(null)}>
-              Cancelar
-            </button>
-            <button type="submit" form="form-lancamento" class="btn btn--primary">
-              Salvar Lançamento
-            </button>
-          </>
+          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;flex-wrap:wrap;gap:8px;">
+            <span class="muted only-desktop" style="font-size:11px;">
+              Pressione <kbd style="padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:3px;font-family:inherit;">Ctrl</kbd> + <kbd style="padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:3px;font-family:inherit;">Enter</kbd> para salvar
+            </span>
+            <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+              <button type="button" class="btn btn--ghost" onClick={() => setModalLanc(null)}>
+                Cancelar
+              </button>
+              {!modalLanc?.id && (
+                <button
+                  type="button"
+                  class="btn btn--secondary"
+                  onClick={() => salvarLancamentoInternal(true)}
+                >
+                  Salvar e Criar Outro
+                </button>
+              )}
+              <button type="submit" form="form-lancamento" class="btn btn--primary">
+                {modalLanc?.id ? "Salvar Alterações" : "Salvar Lançamento"}
+              </button>
+            </div>
+          </div>
         }
       >
-        <form id="form-lancamento" onSubmit={salvarLancamento}>
-          {/* Card 1: Classificação */}
-          <div
-            style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);"
-          >
-            <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:var(--sp-2);">
-              1. Classificação da Conta
-            </div>
-
-            {/* Seletor de Natureza no modal se for novo lançamento */}
-            {!modalLanc?.id && (
-              <div class="tabs" style="margin-bottom:var(--sp-3);">
-                {NATUREZAS.map((n) => {
-                  const meta = NATURE_META[n];
-                  return (
-                    <button
-                      type="button"
-                      key={n}
-                      class={`tab ${natAtualModal === n ? "is-active" : ""}`}
-                      onClick={() => {
-                        const catsDaNovaNat = cats.filter((cat) => cat.natureza === n);
-                        const primCat = catsDaNovaNat[0]?.id || "";
-                        const contasDaNovaNat = cs.filter((c) => c.categoriaId === primCat && c.ativa);
-                        setCatSelecionadaModal(primCat);
-                        setModalLanc({
-                          ...modalLanc,
-                          natureza: n,
-                          contaId: contasDaNovaNat[0]?.id || "",
-                        });
-                      }}
-                    >
-                      <Icon name={meta.icon} /> {meta.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Seletores de Categoria e Conta com Acesso Direto de Criação */}
-            <div class="form-row form-row--2">
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" for="lanc-cat">Categoria *</label>
-                <CustomSelect
-                  id="lanc-cat"
-                  value={catAtualModal}
-                  placeholder={catsParaModal.length === 0 ? "Nenhuma categoria" : "Selecione Categoria"}
-                  options={catsParaModal.map((c) => ({ value: c.id, label: c.nome }))}
-                  onChange={(novaCatId) => {
-                    setCatSelecionadaModal(novaCatId);
-                    const contasDestaCat = cs.filter((c) => c.categoriaId === novaCatId && c.ativa);
-                    setModalLanc({
-                      ...modalLanc,
-                      contaId: contasDestaCat[0]?.id || "",
-                    });
-                  }}
-                  action={{
-                    label: "Nova Categoria...",
-                    icon: "plus",
-                    onClick: () => setModalCriarCat({ nome: "" }),
-                  }}
-                />
-              </div>
-
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" for="lanc-conta">Conta *</label>
-                <CustomSelect
-                  id="lanc-conta"
-                  value={modalLanc?.contaId || ""}
-                  placeholder={contasParaModal.length === 0 ? "Nenhuma conta cadastrada" : "Selecione Conta"}
-                  options={contasParaModal.map((c) => ({ value: c.id, label: c.nome }))}
-                  onChange={(contaId) => setModalLanc({ ...modalLanc, contaId })}
-                  action={{
-                    label: "Nova Conta...",
-                    icon: "plus",
-                    onClick: () =>
-                      setModalCriarConta({
-                        nome: "",
-                        categoriaId: catAtualModal || catsParaModal[0]?.id || "",
-                      }),
-                  }}
-                />
-              </div>
-            </div>
+        <form id="form-lancamento" onSubmit={(e) => { e.preventDefault(); salvarLancamentoInternal(false); }}>
+          {/* Seletor de Natureza */}
+          <div style="margin-bottom:var(--sp-2);">
+            <NaturezaSegmented
+              value={natAtualModal}
+              readonly={Boolean(modalLanc?.id)}
+              onChange={(novaNat) => {
+                const catsDaNovaNat = cats.filter((cat) => cat.natureza === novaNat);
+                const primCat = catsDaNovaNat[0]?.id || "";
+                const contasDaNovaNat = cs.filter((c) => c.categoriaId === primCat && c.ativa);
+                setCatSelecionadaModal(primCat);
+                setModalLanc({
+                  ...modalLanc,
+                  natureza: novaNat,
+                  contaId: contasDaNovaNat[0]?.id || "",
+                });
+              }}
+            />
           </div>
 
-          {/* Card 2: Valor e Automação Inteligente */}
-          <div
-            style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);"
-          >
-            <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:var(--sp-2);">
-              2. Valor, Data & Automações
-            </div>
+          {/* Seção 1: O Quê? (Conta) */}
+          <FormSection num={1} title="O quê? (Conta)">
+            <ContaPicker
+              id="lanc-conta"
+              natureza={natAtualModal}
+              categorias={cats}
+              contas={cs}
+              selectedContaId={modalLanc?.contaId || ""}
+              onChange={(contaId, catId) => {
+                setCatSelecionadaModal(catId);
+                setModalLanc({ ...modalLanc, contaId });
+              }}
+              onCriarCategoria={async (nome) => {
+                const criada = await categorias.create({
+                  empresaId: empId,
+                  natureza: natAtualModal,
+                  nome,
+                });
+                setCatSelecionadaModal(criada.id);
+                toast.success(`Categoria "${criada.nome}" criada!`);
+                return criada.id;
+              }}
+              onCriarConta={async (nome, categoriaId) => {
+                const criada = await contas.create({
+                  empresaId: empId,
+                  categoriaId,
+                  natureza: natAtualModal,
+                  nome,
+                  ativa: true,
+                });
+                setCatSelecionadaModal(categoriaId);
+                toast.success(`Conta "${criada.nome}" criada!`);
+                return criada.id;
+              }}
+            />
+          </FormSection>
 
-            {/* Alerta de Teto Orçamentário em Tempo Real */}
-            {isNaturezaDespesaModal && catAtualModal && projCatModalMes > 0 && (
-              <div
-                style={`padding:10px 14px;border-radius:var(--r-md);margin-bottom:var(--sp-3);font-size:var(--fs-xs);display:flex;align-items:flex-start;gap:10px;${
-                  totalComLancModal > projCatModalMes
-                    ? "background:var(--out-soft);color:var(--out);border:1px solid color-mix(in srgb, var(--out) 30%, transparent);"
-                    : pctTetoModal >= 80
-                    ? "background:color-mix(in srgb, var(--warn) 12%, transparent);color:var(--warn);border:1px solid color-mix(in srgb, var(--warn) 30%, transparent);"
-                    : "background:var(--surface);color:var(--text-muted);border:1px solid var(--border);"
-                }`}
-              >
-                <Icon
-                  name={totalComLancModal > projCatModalMes ? "alertTriangle" : pctTetoModal >= 80 ? "alertTriangle" : "info"}
-                  style="flex:none;margin-top:2px;"
-                />
-                <div>
-                  <b>
-                    {totalComLancModal > projCatModalMes
-                      ? `⚠️ Atenção: Teto orçamentário de ${MONTHS[mesDataModal]} excedido!`
-                      : pctTetoModal >= 80
-                      ? `⚡ Alerta de Teto: Limite de ${MONTHS[mesDataModal]} próximo!`
-                      : `Teto Orçamentário de ${MONTHS[mesDataModal]}:`}
-                  </b>
-                  <div style="margin-top:2px;">
-                    Projetado: <b>{money(projCatModalMes)}</b> · Realizado com este lançamento:{" "}
-                    <b>{money(totalComLancModal)}</b> ({pctTetoModal}% do teto)
-                    {totalComLancModal > projCatModalMes && (
-                      <span style="display:block;margin-top:2px;font-weight:600;">
-                        Ultrapassará em +{money(excessoTetoModal)}!
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Sugestão de Vínculo ou Fórmula da Conta Selecionada */}
-            {contaAtualObj?.vinculo && (() => {
-              const v = contaAtualObj.vinculo;
-              let valSug = 0;
-              let labelVinc = "";
-              let detalheVinc = "";
-
-              if (v.modo === "formula" && v.formula) {
-                const res = calcularFormulaLancamentos(v.formula, mesDataModal, ls, cs, cats);
-                valSug = res.valorCentavos;
-                labelVinc = `Fórmula Configurada: fx ${v.formula}`;
-                detalheVinc = res.ok
-                  ? `Resultado calculado com base nos lançamentos de ${MONTHS[mesDataModal]}: ${money(valSug)}`
-                  : `Erro no cálculo da fórmula: ${res.erro}`;
-              } else {
-                const baseMes = calcularBaseLancamentos(v, mesDataModal, ls, cs);
-                valSug = calcularValorVinculado(baseMes, v);
-                const nomeOrigem = v.tipo === "conta" ? contaMap.get(v.origemId || "")?.nome : cats.find((c) => c.id === v.origemId)?.nome;
-                const regraLabel = v.percentual !== undefined ? `${v.percentual}%` : money(v.valorFixo || 0);
-                labelVinc = `Vínculo Configurado: ${regraLabel} de ${nomeOrigem || "Origem"}`;
-                detalheVinc = `Total realizado na origem em ${MONTHS[mesDataModal]}: ${money(baseMes)}${
-                  valSug > 0 ? ` · Sugestão calculada: ${money(valSug)}` : " (sem lançamentos na origem neste mês)"
-                }`;
-              }
-
-              return (
-                <div
-                  style="background:var(--primary-soft);border:1px solid color-mix(in srgb, var(--primary) 20%, transparent);border-radius:var(--r-md);padding:10px 14px;margin-bottom:var(--sp-3);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"
-                >
-                  <div>
-                    <div style="font-weight:600;font-size:var(--fs-xs);color:var(--primary);display:flex;align-items:center;gap:5px;">
-                      {v.modo === "formula" ? (
-                        <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span>
-                      ) : (
-                        <Icon name="link" style="width:13px;height:13px;" />
-                      )}
-                      {labelVinc}
-                    </div>
-                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
-                      {detalheVinc}
-                    </div>
-                  </div>
-                  {valSug > 0 && (
-                    <button
-                      type="button"
-                      class="btn btn--secondary"
-                      style="min-height:28px;padding:2px 10px;font-size:var(--fs-xs);"
-                      onClick={() => setModalLanc({ ...modalLanc, valor: valSug / 100 })}
-                    >
-                      Aplicar {money(valSug)}
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Ferramenta Inline de Cálculo por Vínculo / Fórmula */}
-            <div style="margin-bottom:var(--sp-3);">
-              <div style="display:flex;justify-content:flex-end;">
+          {/* Seção 2: Quanto e Quando? */}
+          <FormSection num={2} title="Quanto e Quando?">
+            {/* Alternância Manual / Calculado */}
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <label class="form-label" style="margin:0;font-size:var(--fs-xs);">
+                Valor do Lançamento *
+              </label>
+              <div class="tabs tabs--sm" style="margin:0;">
                 <button
                   type="button"
-                  class="btn btn--ghost btn--sm"
-                  style="font-size:var(--fs-xs);padding:2px 8px;gap:4px;"
-                  onClick={() => {
-                    if (!calcVinculoOrigemId) {
-                      const primReceber = cs.find((c) => c.natureza === "receber")?.id || cs[0]?.id || "";
-                      setCalcVinculoOrigemId(primReceber);
-                    }
-                    setCalcVinculoAberto(!calcVinculoAberto);
-                  }}
+                  class={`tab ${origemValorReal === "manual" ? "is-active" : ""}`}
+                  style="font-size:var(--fs-xs);padding:2px 8px;"
+                  onClick={() => setOrigemValorReal("manual")}
                 >
-                  <Icon name="link" style="width:12px;height:12px;" />
-                  {calcVinculoAberto ? "Ocultar Calculadora de Automação" : "🔗 / fx Calcular por Vínculo ou Fórmula"}
+                  Manual
+                </button>
+                <button
+                  type="button"
+                  class={`tab ${origemValorReal === "calculado" ? "is-active" : ""}`}
+                  style="font-size:var(--fs-xs);padding:2px 8px;"
+                  onClick={() => setOrigemValorReal("calculado")}
+                >
+                  Calculado (fx / 🔗)
                 </button>
               </div>
-
-              {calcVinculoAberto && (() => {
-                const regraInline: RegraVinculo = {
-                  tipo: calcVinculoTipo,
-                  origemId: calcVinculoOrigemId,
-                  percentual: calcVinculoModo === "percentual" ? Number(calcVinculoPercentual || 0) : undefined,
-                  valorFixo: calcVinculoModo === "fixo" ? Math.round(Number(calcVinculoValorFixo || 0) * 100) : undefined,
-                };
-                const baseCalculada = calcularBaseLancamentos(regraInline, mesDataModal, ls, cs);
-                const valorSimplesCalculado = calcularValorVinculado(baseCalculada, regraInline);
-
-                const resFormula = calcularFormulaLancamentos(calcFormula, mesDataModal, ls, cs, cats);
-                const valorFinal = calcModoGeral === "formula" ? resFormula.valorCentavos : valorSimplesCalculado;
-
-                return (
-                  <div
-                    class="card"
-                    style="background:var(--surface);border:1px dashed var(--border);padding:10px 12px;border-radius:var(--r-md);margin-top:6px;"
-                  >
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-                      <div style="font-weight:600;font-size:var(--fs-xs);color:var(--text);display:flex;align-items:center;gap:6px;">
-                        {calcModoGeral === "formula" ? (
-                          <span style="font-weight:700;font-style:italic;font-family:serif;color:var(--primary);">fx</span>
-                        ) : (
-                          <Icon name="link" style="color:var(--primary);width:14px;height:14px;" />
-                        )}
-                        <span>Cálculo Dinâmico para {MONTHS[mesDataModal]}</span>
-                      </div>
-
-                      <div class="tabs tabs--sm" style="margin:0;">
-                        <button
-                          type="button"
-                          class={`tab ${calcModoGeral === "simples" ? "is-active" : ""}`}
-                          style="font-size:11px;padding:2px 8px;"
-                          onClick={() => setCalcModoGeral("simples")}
-                        >
-                          Vínculo Direto
-                        </button>
-                        <button
-                          type="button"
-                          class={`tab ${calcModoGeral === "formula" ? "is-active" : ""}`}
-                          style="font-size:11px;padding:2px 8px;"
-                          onClick={() => setCalcModoGeral("formula")}
-                        >
-                          Fórmula (fx)
-                        </button>
-                      </div>
-                    </div>
-
-                    {calcModoGeral === "simples" ? (
-                      <>
-                        <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-                          <div>
-                            <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">Basear em:</label>
-                            <div class="tabs tabs--sm" style="margin:0;">
-                              <button
-                                type="button"
-                                class={`tab ${calcVinculoTipo === "conta" ? "is-active" : ""}`}
-                                style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
-                                onClick={() => {
-                                  const def = cs.find((c) => c.natureza === "receber")?.id || cs[0]?.id || "";
-                                  setCalcVinculoTipo("conta");
-                                  setCalcVinculoOrigemId(def);
-                                }}
-                              >
-                                Conta
-                              </button>
-                              <button
-                                type="button"
-                                class={`tab ${calcVinculoTipo === "categoria" ? "is-active" : ""}`}
-                                style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
-                                onClick={() => {
-                                  const def = cats.find((c) => c.natureza === "receber")?.id || cats[0]?.id || "";
-                                  setCalcVinculoTipo("categoria");
-                                  setCalcVinculoOrigemId(def);
-                                }}
-                              >
-                                Categoria
-                              </button>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">Regra:</label>
-                            <div class="tabs tabs--sm" style="margin:0;">
-                              <button
-                                type="button"
-                                class={`tab ${calcVinculoModo === "percentual" ? "is-active" : ""}`}
-                                style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
-                                onClick={() => setCalcVinculoModo("percentual")}
-                              >
-                                % Percentual
-                              </button>
-                              <button
-                                type="button"
-                                class={`tab ${calcVinculoModo === "fixo" ? "is-active" : ""}`}
-                                style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
-                                onClick={() => setCalcVinculoModo("fixo")}
-                              >
-                                Valor Fixo
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="form-group" style="margin-bottom:8px;">
-                          <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">
-                            Origem ({calcVinculoTipo === "conta" ? "Conta" : "Categoria"})
-                          </label>
-                          {calcVinculoTipo === "conta" ? (
-                            <CustomSelect
-                              value={calcVinculoOrigemId}
-                              placeholder="Selecione a conta base..."
-                              options={cs
-                                .filter((c) => c.id !== modalLanc?.contaId)
-                                .map((c) => ({
-                                  value: c.id,
-                                  label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
-                                }))}
-                              onChange={(origemId) => setCalcVinculoOrigemId(origemId)}
-                            />
-                          ) : (
-                            <CustomSelect
-                              value={calcVinculoOrigemId}
-                              placeholder="Selecione a categoria base..."
-                              options={cats.map((cat) => ({
-                                value: cat.id,
-                                label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
-                              }))}
-                              onChange={(origemId) => setCalcVinculoOrigemId(origemId)}
-                            />
-                          )}
-                        </div>
-
-                        {calcVinculoModo === "percentual" ? (
-                          <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">
-                              Percentual aplicado (%)
-                            </label>
-                            <div style="display:flex;align-items:center;gap:6px;">
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0.01"
-                                max="1000"
-                                class="input"
-                                style="min-height:30px;font-size:var(--fs-xs);"
-                                placeholder="Ex: 30"
-                                value={calcVinculoPercentual}
-                                onInput={(e) => setCalcVinculoPercentual(e.currentTarget.value)}
-                              />
-                              <span style="font-weight:600;font-size:var(--fs-sm);">%</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div class="form-group" style="margin-bottom:8px;">
-                            <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">
-                              Valor Fixo (R$)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0.01"
-                              class="input"
-                              style="min-height:30px;font-size:var(--fs-xs);"
-                              placeholder="0,00"
-                              value={calcVinculoValorFixo}
-                              onInput={(e) => setCalcVinculoValorFixo(e.currentTarget.value)}
-                            />
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div class="muted" style="font-size:var(--fs-xs);margin-bottom:6px;">
-                          💡 Insira contas entre colchetes como <code>[Salário]</code>. Exemplo: <code>([Vendas] - [Taxas]) * 10%</code>
-                        </div>
-
-                        {/* Variáveis rápidas */}
-                        <div style="margin-bottom:6px;">
-                          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:2px;">
-                            Inserir Conta:
-                          </div>
-                          <div
-                            style="display:flex;gap:4px;flex-wrap:wrap;max-height:75px;overflow-y:auto;padding:4px;background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--r-sm);"
-                          >
-                            {cs.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                class="badge"
-                                style="cursor:pointer;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:11px;padding:2px 6px;"
-                                onClick={() => {
-                                  const varNome = `[${c.nome}]`;
-                                  const atual = calcFormula.trim();
-                                  setCalcFormula(atual ? `${atual} + ${varNome}` : varNome);
-                                }}
-                              >
-                                + [{c.nome}]
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Operadores rápidos */}
-                        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
-                          <span class="muted" style="font-size:11px;">Operadores:</span>
-                          {["+", "-", "*", "/", "(", ")", "%"].map((op) => (
-                            <button
-                              key={op}
-                              type="button"
-                              class="btn btn--ghost"
-                              style="min-height:22px;padding:1px 6px;font-size:var(--fs-xs);font-weight:700;"
-                              onClick={() => setCalcFormula(`${calcFormula} ${op} `)}
-                            >
-                              {op}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div class="form-group" style="margin-bottom:6px;">
-                          <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">Fórmula</label>
-                          <textarea
-                            class="textarea"
-                            rows={2}
-                            placeholder="Ex: ([Salário] - [INSS]) * 30%"
-                            value={calcFormula}
-                            onInput={(e) => setCalcFormula(e.currentTarget.value)}
-                          />
-                        </div>
-
-                        {calcFormula.trim() && (
-                          <div
-                            class={`banner ${resFormula.ok ? "banner--success" : "banner--warning"}`}
-                            style="padding:4px 8px;font-size:var(--fs-xs);margin-bottom:8px;"
-                          >
-                            {resFormula.ok
-                              ? `✓ Sintaxe válida! Resultado em ${MONTHS[mesDataModal]}: ${money(resFormula.valorCentavos)}`
-                              : `⚠️ ${resFormula.erro}`}
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    <div
-                      style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--surface-soft);border-radius:var(--r-sm);border:1px solid var(--border);"
-                    >
-                      <div style="font-size:var(--fs-xs);color:var(--text-muted);">
-                        {calcModoGeral === "simples" ? (
-                          <>
-                            Base em {MONTHS[mesDataModal]}: <b>{money(baseCalculada)}</b> → Resultado:{" "}
-                            <b style="color:var(--primary);">{money(valorFinal)}</b>
-                          </>
-                        ) : (
-                          <>
-                            Resultado da Fórmula em {MONTHS[mesDataModal]}:{" "}
-                            <b style="color:var(--primary);">{money(valorFinal)}</b>
-                          </>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        class="btn btn--primary btn--sm"
-                        style="font-size:var(--fs-xs);min-height:26px;padding:2px 10px;"
-                        disabled={valorFinal <= 0}
-                        onClick={() => {
-                          setModalLanc({ ...modalLanc, valor: valorFinal / 100 });
-                          setCalcVinculoAberto(false);
-                        }}
-                      >
-                        Aplicar ao Lançamento
-                      </button>
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
 
-            <div class="form-row form-row--2">
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" for="lanc-data">Data de Pagamento/Recebimento *</label>
-                <input
-                  id="lanc-data"
-                  type="date"
-                  class="input"
-                  required
-                  value={modalLanc?.data || ""}
-                  onInput={(e) => setModalLanc({ ...modalLanc, data: e.currentTarget.value })}
-                />
-              </div>
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" for="lanc-valor">Valor Real (R$) *</label>
-                <input
+            {origemValorReal === "manual" ? (
+              <div>
+                <MoneyInput
                   id="lanc-valor"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  class="input"
+                  variant="hero"
+                  autoFocus
                   required
-                  placeholder="0,00"
-                  value={modalLanc?.valor || ""}
-                  onInput={(e) => setModalLanc({ ...modalLanc, valor: Number(e.currentTarget.value) })}
+                  valueCentavos={modalLanc?.valorCentavos || 0}
+                  onChangeCentavos={(cents) => setModalLanc({ ...modalLanc, valorCentavos: cents })}
                 />
+
+                {/* Sugestão de Vínculo/Fórmula se a conta tiver regra cadastrada */}
+                {sugestaoVinculo && sugestaoVinculo.valorCentavos > 0 && (
+                  <div
+                    style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding:6px 10px;background:var(--primary-soft);border-radius:var(--r-sm);border:1px solid color-mix(in srgb, var(--primary) 25%, transparent);font-size:var(--fs-xs);"
+                  >
+                    <div style="display:flex;align-items:center;gap:6px;color:var(--primary);font-weight:600;">
+                      <Icon name="link" style="width:13px;height:13px;" />
+                      <span>Sugestão da regra: {money(sugestaoVinculo.valorCentavos)}</span>
+                      <span class="muted" style="font-size:11px;">({sugestaoVinculo.detalhe})</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn btn--secondary btn--sm"
+                      style="padding:2px 8px;min-height:24px;font-size:11px;"
+                      onClick={() => setModalLanc({ ...modalLanc, valorCentavos: sugestaoVinculo.valorCentavos })}
+                    >
+                      Aplicar
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <ValorCalculadoEditor
+                contas={cs}
+                categorias={cats}
+                currentContaId={modalLanc?.contaId}
+                regra={regraInlineReal}
+                onChangeRegra={setRegraInlineReal}
+                mesAtivo={mesDataModal}
+                avaliarMes={(m) => {
+                  if (regraInlineReal.modo === "formula" && regraInlineReal.formula) {
+                    const res = calcularFormulaLancamentos(regraInlineReal.formula, m, ls, cs, cats);
+                    return { ok: res.ok, valorCentavos: res.valorCentavos, erro: res.erro };
+                  }
+                  const baseMes = calcularBaseLancamentos(regraInlineReal, m, ls, cs);
+                  const val = calcularValorVinculado(baseMes, regraInlineReal);
+                  return { ok: true, valorCentavos: val, base: baseMes };
+                }}
+                onAplicar={(cents) => {
+                  setModalLanc({ ...modalLanc, valorCentavos: cents });
+                  setOrigemValorReal("manual");
+                  toast.info(`Valor de ${money(cents)} aplicado ao lançamento.`);
+                }}
+              />
+            )}
+
+            {/* Data e Atalhos Rápidos */}
+            <div class="form-group" style="margin-bottom:0;margin-top:4px;">
+              <label class="form-label" for="lanc-data" style="font-size:var(--fs-xs);margin-bottom:2px;">
+                Data de Vencimento / Realização *
+              </label>
+              <input
+                id="lanc-data"
+                type="date"
+                class="input"
+                required
+                value={modalLanc?.data || ""}
+                onInput={(e) => setModalLanc({ ...modalLanc, data: (e.currentTarget as HTMLInputElement).value })}
+              />
+              <div class="date-chips">
+                <button type="button" class="date-chip" onClick={aplicarDataHoje}>Hoje</button>
+                <button type="button" class="date-chip" onClick={aplicarDataOntem}>Ontem</button>
+                <button type="button" class="date-chip" onClick={aplicarDataPrimeiroDoMes}>1º do Mês</button>
               </div>
             </div>
-          </div>
+          </FormSection>
 
-          {/* Card 3: Repetição / Parcelamento */}
+          {/* Seção 3: Repetição (somente na criação de novo lançamento) */}
           {!modalLanc?.id && (
-            <div
-              style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);"
-            >
-              <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:var(--sp-2);">
-                3. Repetição / Parcelamento
-              </div>
-              <div class="tabs" style="margin-bottom:var(--sp-2);">
-                <button
-                  type="button"
-                  class={`tab ${tipoRepeticao === "unico" ? "is-active" : ""}`}
-                  onClick={() => setTipoRepeticao("unico")}
-                >
-                  Único
-                </button>
-                <button
-                  type="button"
-                  class={`tab ${tipoRepeticao === "parcelado" ? "is-active" : ""}`}
-                  onClick={() => setTipoRepeticao("parcelado")}
-                >
-                  Parcelado
-                </button>
-                <button
-                  type="button"
-                  class={`tab ${tipoRepeticao === "recorrente" ? "is-active" : ""}`}
-                  onClick={() => setTipoRepeticao("recorrente")}
-                >
-                  Fixo Mensal (Recorrente)
-                </button>
-              </div>
-
-              {tipoRepeticao === "parcelado" && (
-                <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
-                  <div class="form-row form-row--2" style="align-items:flex-end;">
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label class="form-label" for="lanc-num-parc">Nº de Parcelas</label>
-                      <input
-                        id="lanc-num-parc"
-                        type="number"
-                        min="2"
-                        max="60"
-                        class="input"
-                        value={numRepeticoes}
-                        onInput={(e) => setNumRepeticoes(Math.max(2, Math.min(60, parseInt(e.currentTarget.value, 10) || 2)))}
-                      />
-                    </div>
-                    <div class="form-group" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:center;gap:6px;">
-                      <label class="form-label">Modo de Valor</label>
-                      <div style="display:flex;gap:12px;align-items:center;font-size:var(--fs-xs);flex-wrap:wrap;">
-                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
-                          <input
-                            type="radio"
-                            name="dividir-valor"
-                            checked={dividirValor}
-                            onChange={() => setDividirValor(true)}
-                          />
-                          Dividir total
-                        </label>
-                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
-                          <input
-                            type="radio"
-                            name="dividir-valor"
-                            checked={!dividirValor}
-                            onChange={() => setDividirValor(false)}
-                          />
-                          Valor por parcela
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="muted" style="font-size:var(--fs-xs);">
-                    💡 {dividirValor
-                      ? `Serão geradas ${numRepeticoes} parcelas de ~${money(Math.round(centavosInputModal / numRepeticoes))} cada (Total: ${money(centavosInputModal)}).`
-                      : `Serão geradas ${numRepeticoes} parcelas de ${money(centavosInputModal)} cada (Total: ${money(centavosInputModal * numRepeticoes)}).`}
-                  </div>
-                </div>
-              )}
-
-              {tipoRepeticao === "recorrente" && (
-                <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
-                  <div class="form-row form-row--2" style="align-items:flex-end;">
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label class="form-label" for="lanc-num-rec">Repetir por quantos meses?</label>
-                      <input
-                        id="lanc-num-rec"
-                        type="number"
-                        min="2"
-                        max="60"
-                        class="input"
-                        value={numRepeticoes}
-                        onInput={(e) => setNumRepeticoes(Math.max(2, Math.min(60, parseInt(e.currentTarget.value, 10) || 2)))}
-                      />
-                    </div>
-                    <div class="form-group" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:center;">
-                      <span class="muted" style="font-size:var(--fs-xs);">
-                        Cada mês terá um lançamento fixo de <b>{money(centavosInputModal)}</b>.
-                      </span>
-                    </div>
-                  </div>
-                  <div class="muted" style="font-size:var(--fs-xs);">
-                    💡 Ideal para assinaturas, aluguéis e custos fixos mensais com vencimento regular.
-                  </div>
-                </div>
-              )}
-            </div>
+            <FormSection num={3} title="Repetição">
+              <RepeticaoSelector
+                modo="real"
+                tipo={tipoRepeticao}
+                onChangeTipo={setTipoRepeticao}
+                numRepeticoes={numRepeticoes}
+                onChangeNumRepeticoes={setNumRepeticoes}
+                dividirValor={dividirValor}
+                onChangeDividirValor={setDividirValor}
+              />
+            </FormSection>
           )}
 
-          {/* Card 4: Detalhes Adicionais */}
-          <div
-            style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);"
+          {/* Seção 4: Detalhes Adicionais (Recolhível) */}
+          <Disclosure
+            title="Detalhes Adicionais"
+            defaultOpen={Boolean(modalLanc?.descricao || modalLanc?.obs)}
           >
-            <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:var(--sp-2);">
-              {!modalLanc?.id ? "4. Detalhes Adicionais" : "3. Detalhes Adicionais"}
-            </div>
-
             <div class="form-group">
               <label class="form-label" for="lanc-desc">Descrição / Fornecedor / Favorecido</label>
               <input
@@ -1205,144 +882,24 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                 class="input"
                 placeholder="Ex: Nota fiscal 1234, Transferência PIX..."
                 value={modalLanc?.descricao || ""}
-                onInput={(e) => setModalLanc({ ...modalLanc, descricao: e.currentTarget.value })}
+                onInput={(e) => setModalLanc({ ...modalLanc, descricao: (e.currentTarget as HTMLInputElement).value })}
               />
             </div>
 
-            {(natAtualModal === "aporte" || natAtualModal === "saida") && (
-              <div class="form-group" style="margin-bottom:0;">
-                <label class="form-label" for="lanc-obs">Observação Adicional (Obs)</label>
-                <textarea
-                  id="lanc-obs"
-                  class="textarea"
-                  rows={2}
-                  placeholder="Ex: Motivo da saída livre, aporte de capital emergencial..."
-                  value={modalLanc?.obs || ""}
-                  onInput={(e) => setModalLanc({ ...modalLanc, obs: e.currentTarget.value })}
-                />
-              </div>
-            )}
-          </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" for="lanc-obs">Observação Adicional (Obs)</label>
+              <textarea
+                id="lanc-obs"
+                class="textarea"
+                rows={2}
+                placeholder="Ex: Detalhes do pagamento, justificativa, comprovante..."
+                value={modalLanc?.obs || ""}
+                onInput={(e) => setModalLanc({ ...modalLanc, obs: (e.currentTarget as HTMLTextAreaElement).value })}
+              />
+            </div>
+          </Disclosure>
         </form>
       </Modal>
-
-      {/* Modal Rápido: Criar Nova Categoria Direto do Select */}
-      {modalCriarCat && (
-        <Modal
-          title={`Nova Categoria (${NATURE_META[natAtualModal].label})`}
-          isOpen={true}
-          zIndex={110}
-          onClose={() => setModalCriarCat(null)}
-          footer={
-            <>
-              <button type="button" class="btn btn--ghost" onClick={() => setModalCriarCat(null)}>
-                Cancelar
-              </button>
-              <button type="submit" form="form-criar-cat" class="btn btn--primary">
-                Salvar Categoria
-              </button>
-            </>
-          }
-        >
-          <form
-            id="form-criar-cat"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const nome = modalCriarCat.nome?.trim();
-              if (!nome) return;
-              const criada = await categorias.create({
-                empresaId: empId,
-                natureza: natAtualModal,
-                nome,
-              });
-              setCatSelecionadaModal(criada.id);
-              setModalLanc((prev) => (prev ? { ...prev, contaId: "" } : null));
-              setModalCriarCat(null);
-              toast.success(`Categoria "${criada.nome}" criada com sucesso!`);
-            }}
-          >
-            <div class="form-group">
-              <label class="form-label" for="nova-cat-nome">Nome da Categoria *</label>
-              <input
-                id="nova-cat-nome"
-                class="input"
-                required
-                autoFocus
-                placeholder="Ex: Assinaturas de Software, Operacional, Marketing..."
-                value={modalCriarCat.nome}
-                onInput={(e) => setModalCriarCat({ ...modalCriarCat, nome: e.currentTarget.value })}
-              />
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {/* Modal Rápido: Criar Nova Conta Direto do Select */}
-      {modalCriarConta && (
-        <Modal
-          title={`Nova Conta (${NATURE_META[natAtualModal].label})`}
-          isOpen={true}
-          zIndex={110}
-          onClose={() => setModalCriarConta(null)}
-          footer={
-            <>
-              <button type="button" class="btn btn--ghost" onClick={() => setModalCriarConta(null)}>
-                Cancelar
-              </button>
-              <button type="submit" form="form-criar-conta" class="btn btn--primary">
-                Salvar Conta
-              </button>
-            </>
-          }
-        >
-          <form
-            id="form-criar-conta"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const nome = modalCriarConta.nome?.trim();
-              const catId = modalCriarConta.categoriaId || catAtualModal;
-              if (!nome) return;
-              if (!catId) {
-                toast.warn("Crie ou selecione uma categoria antes de cadastrar uma conta.");
-                return;
-              }
-              const criada = await contas.create({
-                empresaId: empId,
-                categoriaId: catId,
-                natureza: natAtualModal,
-                nome,
-                ativa: true,
-              });
-              setCatSelecionadaModal(catId);
-              setModalLanc((prev) => (prev ? { ...prev, contaId: criada.id } : null));
-              setModalCriarConta(null);
-              toast.success(`Conta "${criada.nome}" criada e selecionada!`);
-            }}
-          >
-            <div class="form-group" style="margin-bottom:var(--sp-3);">
-              <label class="form-label" for="nova-conta-cat">Categoria Pertencente *</label>
-              <CustomSelect
-                id="nova-conta-cat"
-                value={modalCriarConta.categoriaId || catAtualModal}
-                options={catsParaModal.map((c) => ({ value: c.id, label: c.nome }))}
-                onChange={(categoriaId) => setModalCriarConta({ ...modalCriarConta, categoriaId })}
-              />
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="nova-conta-nome">Nome da Conta *</label>
-              <input
-                id="nova-conta-nome"
-                class="input"
-                required
-                autoFocus
-                placeholder="Ex: ChatGPT Plus, Aluguel Escritório, Energia..."
-                value={modalCriarConta.nome}
-                onInput={(e) => setModalCriarConta({ ...modalCriarConta, nome: e.currentTarget.value })}
-              />
-            </div>
-          </form>
-        </Modal>
-      )}
     </>
   );
 }

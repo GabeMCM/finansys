@@ -38,3 +38,29 @@ export function labelCpfCnpj(value?: string): string {
   const formatted = formatCpfCnpj(clean);
   return clean.length <= 11 ? `CPF: ${formatted}` : `CNPJ: ${formatted}`;
 }
+
+/** Converte string de dígitos para centavos (ex: "2400" -> 2400, que equivale a R$ 24,00). */
+export function digitsToCentavos(raw: string | number = ""): number {
+  if (typeof raw === "number") {
+    if (isNaN(raw)) return 0;
+    return Math.round(raw);
+  }
+  const digits = String(raw).replace(/\D/g, "").slice(0, 12);
+  if (!digits) return 0;
+  return parseInt(digits, 10);
+}
+
+/** Formata centavos como valor monetário brasileiro sem símbolo (ex: 2400 -> "24,00"). */
+export function formatCentavosValor(cents: number = 0): string {
+  const c = Math.max(0, Math.round(cents || 0));
+  const reais = Math.floor(c / 100);
+  const centavos = c % 100;
+  const reaisFormatados = new Intl.NumberFormat("pt-BR").format(reais);
+  return `${reaisFormatados},${String(centavos).padStart(2, "0")}`;
+}
+
+/** Formata centavos com símbolo R$ (ex: 2400 -> "R$ 24,00"). */
+export function formatCentavosBRL(cents: number = 0): string {
+  return `R$ ${formatCentavosValor(cents)}`;
+}
+

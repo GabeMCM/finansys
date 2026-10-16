@@ -5,6 +5,13 @@ import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
 import { confirmarAcao } from "../components/ModalConfirm.tsx";
 import { toast } from "../components/Toast.tsx";
+import { ContaPicker } from "../components/lancamento/ContaPicker.tsx";
+import { FormSection, Disclosure } from "../components/lancamento/FormSection.tsx";
+import { MoneyInput } from "../components/lancamento/MoneyInput.tsx";
+import { NaturezaSegmented } from "../components/lancamento/NaturezaSegmented.tsx";
+import { RepeticaoSelector, type ModoDistribuicaoProjecao } from "../components/lancamento/RepeticaoSelector.tsx";
+import { ResumoPainel } from "../components/lancamento/ResumoPainel.tsx";
+import { ValorCalculadoEditor } from "../components/lancamento/ValorCalculadoEditor.tsx";
 import { calcularBaseProjecoes, calcularValorVinculado } from "../data/calc.ts";
 import { anos, categorias, contas, projecoes } from "../data/repo.ts";
 import { type Categoria, type Conta, type Natureza, NATUREZAS, type RegraVinculo } from "../data/types.ts";
@@ -17,28 +24,19 @@ import { anoAtivo, empresaAtiva } from "../state.ts";
 interface ModalNovaProjecaoState {
   natureza: Natureza;
   categoriaId: string;
-  novaCategoriaNome: string;
-  criandoNovaCat: boolean;
-  modoConta: "nova" | "existente";
   contaId: string;
-  novaContaNome: string;
-  modoValor: "fixo" | "parcelado" | "especifico" | "mensal" | "vinculado";
-  valorFixo: number | string;
+  origemValor: "manual" | "calculado";
+  distribuicao: ModoDistribuicaoProjecao;
+  valorFixoCentavos: number;
   parcelaMesInicio: number;
   parcelaQtd: number;
-  parcelaValorTotalOuUnitario: number | string;
+  parcelaValorCentavos: number;
   parcelaDividirValor: boolean;
   mesEspecifico: number;
-  valorEspecifico: number | string;
-  valoresMensais: (number | string)[];
+  valorEspecificoCentavos: number;
+  valoresMensais: string[];
   obs: string;
-  vinculoModoTipo: "simples" | "formula";
-  vinculoTipo: "conta" | "categoria";
-  vinculoOrigemId: string;
-  vinculoModo: "percentual" | "fixo";
-  vinculoPercentual: number | string;
-  vinculoValorFixo: number | string;
-  vinculoFormula: string;
+  regraCalculo: RegraVinculo;
   salvarVinculoNaConta: boolean;
 }
 
@@ -304,149 +302,55 @@ export function Projecoes() {
     const contasDestaCat = todasContas.filter((c) => c.natureza === natEscolhida && c.categoriaId === catId && c.ativa);
     const defaultOrigemId = todasContas.find((c) => c.natureza === "receber" && c.ativa)?.id || todasContas[0]?.id || "";
 
+    const isVinculado = modoValorPadrao === "vinculado";
+    const dist: ModoDistribuicaoProjecao = (modoValorPadrao && modoValorPadrao !== "vinculado")
+      ? modoValorPadrao
+      : "fixo";
+
     setModalNovaProjecao({
       natureza: natEscolhida,
       categoriaId: catId,
-      novaCategoriaNome: "",
-      criandoNovaCat: catsDestaNat.length === 0,
-      modoConta: contaIdPadrao ? "existente" : "nova",
-      contaId: contaIdPadrao || contasDestaCat[0]?.id || "",
-      novaContaNome: "",
-      modoValor: modoValorPadrao || "fixo",
-      valorFixo: "",
+      contaId: contaIdPadrao || contasDestaCat[0]?.id || todasContas.find((c) => c.natureza === natEscolhida && c.ativa)?.id || "",
+      origemValor: isVinculado ? "calculado" : "manual",
+      distribuicao: dist,
+      valorFixoCentavos: 0,
       parcelaMesInicio: mesAtivo,
       parcelaQtd: 12,
-      parcelaValorTotalOuUnitario: "",
+      parcelaValorCentavos: 0,
       parcelaDividirValor: true,
       mesEspecifico: mesAtivo,
-      valorEspecifico: "",
+      valorEspecificoCentavos: 0,
       valoresMensais: Array(12).fill(""),
       obs: "",
-      vinculoModoTipo: "simples",
-      vinculoTipo: "conta",
-      vinculoOrigemId: defaultOrigemId,
-      vinculoModo: "percentual",
-      vinculoPercentual: 30,
-      vinculoValorFixo: "",
-      vinculoFormula: "",
+      regraCalculo: {
+        modo: "simples",
+        tipo: "conta",
+        origemId: defaultOrigemId,
+        percentual: 30,
+      },
       salvarVinculoNaConta: true,
     });
   };
 
-  const salvarNovaProjecao = async (e: Event) => {
-    e.preventDefault();
+  const salvarNovaProjecao = async (e?: Event) => {
+    if (e) e.preventDefault();
     if (!modalNovaProjecao) return;
 
-    let targetCatId = modalNovaProjecao.categoriaId;
-
-    // Se estiver criando uma nova categoria
-    if (modalNovaProjecao.criandoNovaCat || !targetCatId) {
-      const nomeCat = modalNovaProjecao.novaCategoriaNome.trim();
-      if (!nomeCat) {
-        toast.warn("Informe o nome da categoria.");
-        return;
-      }
-      const novaCat = await categorias.create({
-        empresaId: empId,
-        natureza: modalNovaProjecao.natureza,
-        nome: nomeCat,
-      });
-      targetCatId = novaCat.id;
-    }
-
-    let targetContaId = modalNovaProjecao.contaId;
-
-    // Se estiver cadastrando nova conta
-    if (modalNovaProjecao.modoConta === "nova" || !targetContaId) {
-      const nomeConta = modalNovaProjecao.novaContaNome.trim();
-      if (!nomeConta) {
-        toast.warn("Informe o nome da conta a ser projetada.");
-        return;
-      }
-      const novaC = await contas.create({
-        empresaId: empId,
-        categoriaId: targetCatId,
-        natureza: modalNovaProjecao.natureza,
-        nome: nomeConta,
-        ativa: true,
-      });
-      targetContaId = novaC.id;
+    const targetContaId = modalNovaProjecao.contaId;
+    if (!targetContaId) {
+      toast.warn("Selecione ou crie uma conta para projetar.");
+      return;
     }
 
     // Grava as projeções de acordo com o modo escolhido
     const obsTexto = modalNovaProjecao.obs.trim() || undefined;
 
-    if (modalNovaProjecao.modoValor === "fixo") {
-      const centavos = Math.round(Number(modalNovaProjecao.valorFixo || 0) * 100);
-      for (let m = 0; m < 12; m++) {
-        await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
-      }
-    } else if (modalNovaProjecao.modoValor === "parcelado") {
-      const totalParcelas = Math.max(2, Math.min(60, Number(modalNovaProjecao.parcelaQtd) || 2));
-      const mesInicio = Math.max(0, Math.min(11, Number(modalNovaProjecao.parcelaMesInicio) || 0));
-      const centavosEntrada = Math.round(Number(modalNovaProjecao.parcelaValorTotalOuUnitario || 0) * 100);
+    if (modalNovaProjecao.origemValor === "calculado") {
+      const regra = modalNovaProjecao.regraCalculo;
+      const todasPs = await projecoes.byAno(ano.id);
 
-      if (centavosEntrada <= 0) {
-        toast.warn("Informe um valor válido para o parcelamento.");
-        return;
-      }
-
-      const dividir = modalNovaProjecao.parcelaDividirValor;
-      const valorPorParcela = dividir ? Math.floor(centavosEntrada / totalParcelas) : centavosEntrada;
-      const resto = dividir ? centavosEntrada - (valorPorParcela * totalParcelas) : 0;
-
-      // Se for nova conta, inicializa os 12 meses do ano atual com 0
-      if (modalNovaProjecao.modoConta === "nova") {
-        for (let m = 0; m < 12; m++) {
-          await projecoes.set(ano.id, targetContaId, m, 0);
-        }
-      }
-
-      for (let i = 1; i <= totalParcelas; i++) {
-        const valorParcela = i === 1 ? valorPorParcela + resto : valorPorParcela;
-        const mesTotal = mesInicio + (i - 1);
-        const targetYear = anoNum + Math.floor(mesTotal / 12);
-        const targetMonth = mesTotal % 12;
-
-        let anoAlvoId = ano.id;
-        if (targetYear !== anoNum) {
-          let anoTarget = await anos.find(empId, targetYear);
-          if (!anoTarget) {
-            anoTarget = await anos.create({ empresaId: empId, ano: targetYear, bancaInicial: 0 });
-          }
-          anoAlvoId = anoTarget.id;
-        }
-
-        const obsParcela = obsTexto
-          ? `Parcela ${i}/${totalParcelas} - ${obsTexto}`
-          : `Parcela ${i}/${totalParcelas}`;
-
-        await projecoes.set(
-          anoAlvoId,
-          targetContaId,
-          targetMonth,
-          valorParcela,
-          obsParcela,
-          undefined,
-          { parcela: i, totalParcelas }
-        );
-      }
-    } else if (modalNovaProjecao.modoValor === "especifico") {
-      const centavos = Math.round(Number(modalNovaProjecao.valorEspecifico || 0) * 100);
-      for (let m = 0; m < 12; m++) {
-        const val = m === modalNovaProjecao.mesEspecifico ? centavos : 0;
-        await projecoes.set(ano.id, targetContaId, m, val, m === modalNovaProjecao.mesEspecifico ? obsTexto : undefined);
-      }
-    } else if (modalNovaProjecao.modoValor === "mensal") {
-      // Modo mensal individual
-      for (let m = 0; m < 12; m++) {
-        const centavos = Math.round(Number(modalNovaProjecao.valoresMensais[m] || 0) * 100);
-        await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
-      }
-    } else if (modalNovaProjecao.modoValor === "vinculado") {
-      if (modalNovaProjecao.vinculoModoTipo === "formula") {
-        const formulaTexto = modalNovaProjecao.vinculoFormula.trim();
-        const todasPs = await projecoes.byAno(ano.id);
+      if (regra.modo === "formula" && regra.formula) {
+        const formulaTexto = regra.formula.trim();
         for (let m = 0; m < 12; m++) {
           const res = calcularFormulaProjecoes(formulaTexto, m, todasPs, todasContas, todasCats);
           await projecoes.set(ano.id, targetContaId, m, res.valorCentavos, obsTexto);
@@ -461,42 +365,141 @@ export function Projecoes() {
           });
         }
       } else {
-        const regra: RegraVinculo = {
-          modo: "simples",
-          tipo: modalNovaProjecao.vinculoTipo,
-          origemId: modalNovaProjecao.vinculoOrigemId,
-          percentual: modalNovaProjecao.vinculoModo === "percentual" ? Number(modalNovaProjecao.vinculoPercentual || 0) : undefined,
-          valorFixo: modalNovaProjecao.vinculoModo === "fixo" ? Math.round(Number(modalNovaProjecao.vinculoValorFixo || 0) * 100) : undefined,
-        };
-
-        const todasPs = await projecoes.byAno(ano.id);
         for (let m = 0; m < 12; m++) {
           const baseCentavos = calcularBaseProjecoes(regra, m, todasPs, todasContas);
           const valorCalculado = calcularValorVinculado(baseCentavos, regra);
-          await projecoes.set(ano.id, targetContaId, m, valorCalculado, obsTexto, modalNovaProjecao.vinculoOrigemId);
+          await projecoes.set(ano.id, targetContaId, m, valorCalculado, obsTexto, regra.origemId);
         }
 
         if (modalNovaProjecao.salvarVinculoNaConta) {
           await contas.update(targetContaId, { vinculo: regra });
         }
       }
+      toast.success("Projeção vinculada salva com sucesso!");
+    } else {
+      const dist = modalNovaProjecao.distribuicao;
+      if (dist === "fixo") {
+        const centavos = modalNovaProjecao.valorFixoCentavos;
+        for (let m = 0; m < 12; m++) {
+          await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
+        }
+        toast.success("Projeção fixa mensal salva com sucesso!");
+      } else if (dist === "parcelado") {
+        const totalParcelas = Math.max(2, Math.min(60, Number(modalNovaProjecao.parcelaQtd) || 2));
+        const mesInicio = Math.max(0, Math.min(11, Number(modalNovaProjecao.parcelaMesInicio) || 0));
+        const centavosEntrada = modalNovaProjecao.parcelaValorCentavos;
+
+        if (centavosEntrada <= 0) {
+          toast.warn("Informe um valor válido para o parcelamento.");
+          return;
+        }
+
+        const dividir = modalNovaProjecao.parcelaDividirValor;
+        const valorPorParcela = dividir ? Math.floor(centavosEntrada / totalParcelas) : centavosEntrada;
+        const resto = dividir ? centavosEntrada - (valorPorParcela * totalParcelas) : 0;
+
+        for (let i = 1; i <= totalParcelas; i++) {
+          const valorParcela = i === 1 ? valorPorParcela + resto : valorPorParcela;
+          const mesTotal = mesInicio + (i - 1);
+          const targetYear = anoNum + Math.floor(mesTotal / 12);
+          const targetMonth = mesTotal % 12;
+
+          let anoAlvoId = ano.id;
+          if (targetYear !== anoNum) {
+            let anoTarget = await anos.find(empId, targetYear);
+            if (!anoTarget) {
+              anoTarget = await anos.create({ empresaId: empId, ano: targetYear, bancaInicial: 0 });
+            }
+            anoAlvoId = anoTarget.id;
+          }
+
+          const obsParcela = obsTexto
+            ? `Parcela ${i}/${totalParcelas} - ${obsTexto}`
+            : `Parcela ${i}/${totalParcelas}`;
+
+          await projecoes.set(
+            anoAlvoId,
+            targetContaId,
+            targetMonth,
+            valorParcela,
+            obsParcela,
+            undefined,
+            { parcela: i, totalParcelas }
+          );
+        }
+        toast.success(`${totalParcelas} parcelas projetadas com sucesso!`);
+      } else if (dist === "especifico") {
+        const centavos = modalNovaProjecao.valorEspecificoCentavos;
+        for (let m = 0; m < 12; m++) {
+          const val = m === modalNovaProjecao.mesEspecifico ? centavos : 0;
+          await projecoes.set(ano.id, targetContaId, m, val, m === modalNovaProjecao.mesEspecifico ? obsTexto : undefined);
+        }
+        toast.success(`Projeção de ${MONTHS[modalNovaProjecao.mesEspecifico]} salva com sucesso!`);
+      } else if (dist === "mensal") {
+        for (let m = 0; m < 12; m++) {
+          const centavos = Math.round(Number(modalNovaProjecao.valoresMensais[m] || 0) * 100);
+          await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
+        }
+        toast.success("Grade mensal de projeções salva com sucesso!");
+      }
     }
 
     // Se a alteração afetou outras contas vinculadas ou com fórmulas, recalcula
     await recalcularDependentes();
 
-    // Se a natureza da nova projeção for diferente da aba atual, comuta para ela
     if (modalNovaProjecao.natureza !== nat) {
       setNat(modalNovaProjecao.natureza);
     }
-
-    if (modalNovaProjecao.modoValor === "parcelado") {
-      toast.success(`${modalNovaProjecao.parcelaQtd} parcelas projetadas com sucesso!`);
-    } else {
-      toast.success("Projeção e conta registradas com sucesso!");
-    }
     setModalNovaProjecao(null);
   };
+
+  // Cálculo da prévia dos 12 meses para o ResumoPainel em tempo real
+  const mesesValoresResumo = modalNovaProjecao ? (() => {
+    if (modalNovaProjecao.origemValor === "calculado") {
+      const regra = modalNovaProjecao.regraCalculo;
+      if (regra.modo === "formula" && regra.formula) {
+        return MONTHS.map((_, idx) =>
+          calcularFormulaProjecoes(regra.formula || "", idx, ps, todasContas, todasCats).valorCentavos
+        );
+      } else {
+        return MONTHS.map((_, idx) => {
+          const base = calcularBaseProjecoes(regra, idx, ps, todasContas);
+          return calcularValorVinculado(base, regra);
+        });
+      }
+    }
+    const dist = modalNovaProjecao.distribuicao;
+    if (dist === "fixo") {
+      return MONTHS.map(() => modalNovaProjecao.valorFixoCentavos);
+    }
+    if (dist === "especifico") {
+      return MONTHS.map((_, idx) => (idx === modalNovaProjecao.mesEspecifico ? modalNovaProjecao.valorEspecificoCentavos : 0));
+    }
+    if (dist === "mensal") {
+      return MONTHS.map((_, idx) => Math.round(Number(modalNovaProjecao.valoresMensais[idx] || 0) * 100));
+    }
+    if (dist === "parcelado") {
+      const qtd = Math.max(2, modalNovaProjecao.parcelaQtd);
+      const mesIni = modalNovaProjecao.parcelaMesInicio;
+      const dividir = modalNovaProjecao.parcelaDividirValor;
+      const totalOuUnit = modalNovaProjecao.parcelaValorCentavos;
+      const valorParcela = dividir ? Math.floor(totalOuUnit / qtd) : totalOuUnit;
+      const resto = dividir ? totalOuUnit - (valorParcela * qtd) : 0;
+      return MONTHS.map((_, idx) => {
+        let soma = 0;
+        for (let i = 1; i <= qtd; i++) {
+          const mesTotal = mesIni + (i - 1);
+          const targetYear = anoNum + Math.floor(mesTotal / 12);
+          const targetMonth = mesTotal % 12;
+          if (targetYear === anoNum && targetMonth === idx) {
+            soma += i === 1 ? valorParcela + resto : valorParcela;
+          }
+        }
+        return soma;
+      });
+    }
+    return Array(12).fill(0);
+  })() : [];
 
   const recalcularVinculadas = async () => {
     const vinculadas = todasContas.filter(
@@ -1298,733 +1301,262 @@ export function Projecoes() {
           title={`Nova Projeção Financeira (${NATURE_META[modalNovaProjecao.natureza].label})`}
           isOpen={true}
           subtela={true}
+          size="lg"
           onClose={() => setModalNovaProjecao(null)}
+          onSubmitShortcut={() => salvarNovaProjecao()}
+          aside={
+            <ResumoPainel
+              modo="projecao"
+              natureza={modalNovaProjecao.natureza}
+              contaNome={todasContas.find((c) => c.id === modalNovaProjecao.contaId)?.nome}
+              categoriaNome={todasCats.find((c) => c.id === modalNovaProjecao.categoriaId)?.nome}
+              distribuicao={modalNovaProjecao.distribuicao}
+              ano={anoNum}
+              mesesValores={mesesValoresResumo}
+              parcelaInfo={
+                modalNovaProjecao.distribuicao === "parcelado"
+                  ? {
+                      qtd: modalNovaProjecao.parcelaQtd,
+                      mesInicio: modalNovaProjecao.parcelaMesInicio,
+                      dividir: modalNovaProjecao.parcelaDividirValor,
+                      valorInformadoCentavos: modalNovaProjecao.parcelaValorCentavos,
+                    }
+                  : undefined
+              }
+              obs={modalNovaProjecao.obs}
+            />
+          }
           footer={
-            <>
-              <button type="button" class="btn btn--ghost" onClick={() => setModalNovaProjecao(null)}>
-                Cancelar
-              </button>
-              <button type="submit" form="form-nova-projecao" class="btn btn--primary">
-                Salvar Projeção
-              </button>
-            </>
+            <div style="display:flex;align-items:center;justify-content:space-between;width:100%;flex-wrap:gap;gap:8px;">
+              <span class="muted only-desktop" style="font-size:11px;">
+                Pressione <kbd style="padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:3px;font-family:inherit;">Ctrl</kbd> + <kbd style="padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:3px;font-family:inherit;">Enter</kbd> para salvar
+              </span>
+              <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+                <button type="button" class="btn btn--ghost" onClick={() => setModalNovaProjecao(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" form="form-nova-projecao" class="btn btn--primary">
+                  Salvar Projeção
+                </button>
+              </div>
+            </div>
           }
         >
           <form id="form-nova-projecao" onSubmit={salvarNovaProjecao}>
             {/* Seletor de Natureza */}
-            <div class="tabs" style="margin-bottom:var(--sp-3);">
-              {NATUREZAS.map((n) => {
-                const meta = NATURE_META[n];
-                return (
+            <div style="margin-bottom:var(--sp-2);">
+              <NaturezaSegmented
+                value={modalNovaProjecao.natureza}
+                onChange={(novaNat) => {
+                  const catsDestaNat = todasCats.filter((c) => c.natureza === novaNat);
+                  const primCat = catsDestaNat[0]?.id || "";
+                  const contasDestaCat = todasContas.filter((c) => c.natureza === novaNat && c.categoriaId === primCat && c.ativa);
+                  setModalNovaProjecao({
+                    ...modalNovaProjecao,
+                    natureza: novaNat,
+                    categoriaId: primCat,
+                    contaId: contasDestaCat[0]?.id || todasContas.find((c) => c.natureza === novaNat && c.ativa)?.id || "",
+                  });
+                }}
+              />
+            </div>
+
+            {/* Seção 1: O Quê? (Conta) */}
+            <FormSection num={1} title="O quê? (Conta)">
+              <ContaPicker
+                natureza={modalNovaProjecao.natureza}
+                categorias={todasCats}
+                contas={todasContas}
+                selectedContaId={modalNovaProjecao.contaId}
+                onChange={(contaId, catId) => {
+                  setModalNovaProjecao({
+                    ...modalNovaProjecao,
+                    contaId,
+                    categoriaId: catId,
+                  });
+                }}
+                onCriarCategoria={async (nome) => {
+                  const criada = await categorias.create({
+                    empresaId: empId,
+                    natureza: modalNovaProjecao.natureza,
+                    nome,
+                  });
+                  toast.success(`Categoria "${criada.nome}" criada!`);
+                  return criada.id;
+                }}
+                onCriarConta={async (nome, categoriaId) => {
+                  const criada = await contas.create({
+                    empresaId: empId,
+                    categoriaId,
+                    natureza: modalNovaProjecao.natureza,
+                    nome,
+                    ativa: true,
+                  });
+                  toast.success(`Conta "${criada.nome}" criada!`);
+                  return criada.id;
+                }}
+              />
+            </FormSection>
+
+            {/* Seção 2: Valor e Distribuição */}
+            <FormSection num={2} title="Valor e Distribuição">
+              {/* Origem do valor: Manual ou Calculado */}
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <label class="form-label" style="margin:0;font-size:var(--fs-xs);">
+                  Origem do Valor *
+                </label>
+                <div class="tabs tabs--sm" style="margin:0;">
                   <button
                     type="button"
-                    key={n}
-                    class={`tab ${modalNovaProjecao.natureza === n ? "is-active" : ""}`}
-                    onClick={() => {
-                      const catsDestaNat = todasCats.filter((c) => c.natureza === n);
-                      const primCat = catsDestaNat[0]?.id || "";
-                      const contasDestaCat = todasContas.filter((c) => c.natureza === n && c.categoriaId === primCat && c.ativa);
-                      setModalNovaProjecao({
-                        ...modalNovaProjecao,
-                        natureza: n,
-                        categoriaId: primCat,
-                        criandoNovaCat: catsDestaNat.length === 0,
-                        contaId: contasDestaCat[0]?.id || "",
-                        modoConta: "nova",
-                      });
-                    }}
+                    class={`tab ${modalNovaProjecao.origemValor === "manual" ? "is-active" : ""}`}
+                    style="font-size:var(--fs-xs);padding:2px 8px;"
+                    onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, origemValor: "manual" })}
                   >
-                    <Icon name={meta.icon} /> {meta.label}
+                    Manual
                   </button>
-                );
-              })}
-            </div>
-
-            {/* Categoria: Escolha existente ou crie uma nova */}
-            <div class="form-group">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <label class="form-label" style="margin-bottom:0;">
-                  Categoria *
-                </label>
-                <button
-                  type="button"
-                  class="btn btn--ghost"
-                  style="font-size:var(--fs-xs);padding:2px 6px;min-height:24px;"
-                  onClick={() =>
-                    setModalNovaProjecao({
-                      ...modalNovaProjecao,
-                      criandoNovaCat: !modalNovaProjecao.criandoNovaCat,
-                      novaCategoriaNome: "",
-                    })
-                  }
-                >
-                  {modalNovaProjecao.criandoNovaCat ? "Selecionar existente" : "+ Nova Categoria"}
-                </button>
+                  <button
+                    type="button"
+                    class={`tab ${modalNovaProjecao.origemValor === "calculado" ? "is-active" : ""}`}
+                    style="font-size:var(--fs-xs);padding:2px 8px;"
+                    onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, origemValor: "calculado" })}
+                  >
+                    Calculado (Vínculo / fx)
+                  </button>
+                </div>
               </div>
 
-              {modalNovaProjecao.criandoNovaCat ? (
-                <input
-                  class="input"
-                  required
-                  autoFocus
-                  placeholder="Ex: Assinaturas de Software, Pessoal, Marketing..."
-                  value={modalNovaProjecao.novaCategoriaNome}
-                  onInput={(e) =>
-                    setModalNovaProjecao({ ...modalNovaProjecao, novaCategoriaNome: e.currentTarget.value })
-                  }
-                />
-              ) : (
-                <CustomSelect
-                  value={modalNovaProjecao.categoriaId}
-                  placeholder="Selecione uma Categoria"
-                  options={todasCats
-                    .filter((c) => c.natureza === modalNovaProjecao.natureza)
-                    .map((c) => ({ value: c.id, label: c.nome }))}
-                  onChange={(novaCatId) => {
-                    const contasDestaCat = todasContas.filter(
-                      (c) => c.natureza === modalNovaProjecao.natureza && c.categoriaId === novaCatId && c.ativa
-                    );
-                    setModalNovaProjecao({
-                      ...modalNovaProjecao,
-                      categoriaId: novaCatId,
-                      contaId: contasDestaCat[0]?.id || "",
-                    });
-                  }}
-                  action={{
-                    label: "Nova Categoria...",
-                    icon: "plus",
-                    onClick: () =>
-                      setModalNovaProjecao({
-                        ...modalNovaProjecao,
-                        criandoNovaCat: true,
-                        novaCategoriaNome: "",
-                      }),
-                  }}
-                />
-              )}
-            </div>
-
-            {/* Conta / Item a projetar */}
-            <div class="form-group">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <label class="form-label" style="margin-bottom:0;">
-                  Nome da Conta / Item de Projeção *
-                </label>
-                {!modalNovaProjecao.criandoNovaCat &&
-                  todasContas.filter(
-                    (c) =>
-                      c.natureza === modalNovaProjecao.natureza &&
-                      c.categoriaId === modalNovaProjecao.categoriaId &&
-                      c.ativa
-                  ).length > 0 && (
-                    <div style="display:flex;gap:4px;">
-                      <button
-                        type="button"
-                        class={`btn btn--ghost ${modalNovaProjecao.modoConta === "nova" ? "is-active" : ""}`}
-                        style="font-size:var(--fs-xs);padding:2px 6px;min-height:24px;"
-                        onClick={() =>
-                          setModalNovaProjecao({ ...modalNovaProjecao, modoConta: "nova", novaContaNome: "" })
-                        }
-                      >
-                        Nova Conta
-                      </button>
-                      <button
-                        type="button"
-                        class={`btn btn--ghost ${modalNovaProjecao.modoConta === "existente" ? "is-active" : ""}`}
-                        style="font-size:var(--fs-xs);padding:2px 6px;min-height:24px;"
-                        onClick={() =>
-                          setModalNovaProjecao({ ...modalNovaProjecao, modoConta: "existente" })
-                        }
-                      >
-                        Existente
-                      </button>
-                    </div>
-                  )}
-              </div>
-
-              {modalNovaProjecao.modoConta === "existente" ? (
-                <CustomSelect
-                  value={modalNovaProjecao.contaId}
-                  placeholder="Selecione uma conta existente"
-                  options={todasContas
-                    .filter(
-                      (c) =>
-                        c.natureza === modalNovaProjecao.natureza &&
-                        c.categoriaId === modalNovaProjecao.categoriaId &&
-                        c.ativa
-                    )
-                    .map((c) => ({ value: c.id, label: c.nome }))}
-                  onChange={(cId) => setModalNovaProjecao({ ...modalNovaProjecao, contaId: cId })}
-                />
-              ) : (
-                <input
-                  class="input"
-                  required
-                  placeholder="Ex: Google Ads, Aluguel Matriz, Mensalidade Fibra..."
-                  value={modalNovaProjecao.novaContaNome}
-                  onInput={(e) =>
-                    setModalNovaProjecao({ ...modalNovaProjecao, novaContaNome: e.currentTarget.value })
-                  }
-                />
-              )}
-            </div>
-
-            {/* Modo de Definição de Valor */}
-            <div
-              style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);"
-            >
-              <label class="form-label" style="margin-bottom:var(--sp-2);">
-                Como deseja definir os valores para {anoNum}?
-              </label>
-
-              <div class="tabs" style="margin-bottom:var(--sp-3);">
-                <button
-                  type="button"
-                  class={`tab ${modalNovaProjecao.modoValor === "fixo" ? "is-active" : ""}`}
-                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "fixo" })}
-                >
-                  Fixo Mensal (12x)
-                </button>
-                <button
-                  type="button"
-                  class={`tab ${modalNovaProjecao.modoValor === "parcelado" ? "is-active" : ""}`}
-                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "parcelado" })}
-                >
-                  <Icon name="calendar" style="width:13px;height:13px;" /> Parcelado
-                </button>
-                <button
-                  type="button"
-                  class={`tab ${modalNovaProjecao.modoValor === "especifico" ? "is-active" : ""}`}
-                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "especifico" })}
-                >
-                  Mês Pontual
-                </button>
-                <button
-                  type="button"
-                  class={`tab ${modalNovaProjecao.modoValor === "mensal" ? "is-active" : ""}`}
-                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "mensal" })}
-                >
-                  Grade Mês a Mês
-                </button>
-                <button
-                  type="button"
-                  class={`tab ${modalNovaProjecao.modoValor === "vinculado" ? "is-active" : ""}`}
-                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "vinculado" })}
-                >
-                  <Icon name="link" style="width:13px;height:13px;" /> Vinculado
-                </button>
-              </div>
-
-              {modalNovaProjecao.modoValor === "fixo" && (
-                <div>
-                  <div class="form-group" style="margin-bottom:6px;">
-                    <label class="form-label">Valor Mensal Previsto (R$) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      required
-                      class="input"
-                      placeholder="0,00"
-                      value={modalNovaProjecao.valorFixo}
-                      onInput={(e) =>
-                        setModalNovaProjecao({ ...modalNovaProjecao, valorFixo: e.currentTarget.value })
+              {modalNovaProjecao.origemValor === "manual" ? (
+                <div style="display:flex;flex-direction:column;gap:12px;">
+                  {/* Distribuição no tempo */}
+                  <div>
+                    <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:6px;">
+                      Como deseja distribuir os valores em {anoNum}?
+                    </label>
+                    <RepeticaoSelector
+                      modo="projecao"
+                      distribuicao={modalNovaProjecao.distribuicao}
+                      onChangeDistribuicao={(dist) =>
+                        setModalNovaProjecao({ ...modalNovaProjecao, distribuicao: dist })
+                      }
+                      mesInicioParcela={modalNovaProjecao.parcelaMesInicio}
+                      onChangeMesInicioParcela={(mes) =>
+                        setModalNovaProjecao({ ...modalNovaProjecao, parcelaMesInicio: mes })
+                      }
+                      numParcelas={modalNovaProjecao.parcelaQtd}
+                      onChangeNumParcelas={(qtd) =>
+                        setModalNovaProjecao({ ...modalNovaProjecao, parcelaQtd: qtd })
+                      }
+                      dividirValor={modalNovaProjecao.parcelaDividirValor}
+                      onChangeDividirValor={(dividir) =>
+                        setModalNovaProjecao({ ...modalNovaProjecao, parcelaDividirValor: dividir })
+                      }
+                      mesEspecifico={modalNovaProjecao.mesEspecifico}
+                      onChangeMesEspecifico={(mes) =>
+                        setModalNovaProjecao({ ...modalNovaProjecao, mesEspecifico: mes })
+                      }
+                      valoresMensais={modalNovaProjecao.valoresMensais}
+                      onChangeValoresMensais={(vals) =>
+                        setModalNovaProjecao({ ...modalNovaProjecao, valoresMensais: vals })
                       }
                     />
                   </div>
-                  <div class="muted" style="font-size:var(--fs-xs);">
-                    💡 Será projetado{" "}
-                    <b>{money(Math.round(Number(modalNovaProjecao.valorFixo || 0) * 100))}</b> em cada um dos 12 meses (Total anual:{" "}
-                    <b>{money(Math.round(Number(modalNovaProjecao.valorFixo || 0) * 100) * 12)}</b>).
-                  </div>
-                </div>
-              )}
 
-              {modalNovaProjecao.modoValor === "parcelado" && (
-                <div>
-                  <div class="form-row form-row--2" style="margin-bottom:8px;">
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label class="form-label">Mês Inicial da 1ª Parcela *</label>
-                      <CustomSelect
-                        value={modalNovaProjecao.parcelaMesInicio}
-                        options={MONTHS.map((m, idx) => ({ value: idx, label: `${m} de ${anoNum}` }))}
-                        onChange={(val) =>
-                          setModalNovaProjecao({ ...modalNovaProjecao, parcelaMesInicio: parseInt(val, 10) })
-                        }
-                      />
-                    </div>
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label class="form-label">Nº de Parcelas *</label>
-                      <input
-                        type="number"
-                        min="2"
-                        max="60"
-                        required
-                        class="input"
-                        value={modalNovaProjecao.parcelaQtd}
-                        onInput={(e) =>
-                          setModalNovaProjecao({
-                            ...modalNovaProjecao,
-                            parcelaQtd: Math.max(2, Math.min(60, parseInt(e.currentTarget.value, 10) || 2)),
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <div class="form-row form-row--2" style="margin-bottom:8px;align-items:flex-end;">
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label class="form-label">
-                        {modalNovaProjecao.parcelaDividirValor ? "Valor Total da Compra/Venda (R$) *" : "Valor por Parcela (R$) *"}
+                  {/* Campo de valor correspondente ao modo selecionado */}
+                  {modalNovaProjecao.distribuicao === "fixo" && (
+                    <div>
+                      <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:4px;">
+                        Valor Mensal Previsto (12x) *
                       </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        required
-                        class="input"
-                        placeholder="0,00"
-                        value={modalNovaProjecao.parcelaValorTotalOuUnitario}
-                        onInput={(e) =>
-                          setModalNovaProjecao({
-                            ...modalNovaProjecao,
-                            parcelaValorTotalOuUnitario: e.currentTarget.value,
-                          })
+                      <MoneyInput
+                        variant="hero"
+                        autoFocus
+                        valueCentavos={modalNovaProjecao.valorFixoCentavos}
+                        onChangeCentavos={(cents) =>
+                          setModalNovaProjecao({ ...modalNovaProjecao, valorFixoCentavos: cents })
                         }
                       />
                     </div>
+                  )}
 
-                    <div class="form-group" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:center;gap:6px;">
-                      <label class="form-label">Distribuição do Valor</label>
-                      <div style="display:flex;gap:12px;align-items:center;font-size:var(--fs-xs);flex-wrap:wrap;min-height:36px;">
-                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
-                          <input
-                            type="radio"
-                            name="proj-dividir-valor"
-                            checked={modalNovaProjecao.parcelaDividirValor}
-                            onChange={() => setModalNovaProjecao({ ...modalNovaProjecao, parcelaDividirValor: true })}
-                          />
-                          Dividir total
-                        </label>
-                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
-                          <input
-                            type="radio"
-                            name="proj-dividir-valor"
-                            checked={!modalNovaProjecao.parcelaDividirValor}
-                            onChange={() => setModalNovaProjecao({ ...modalNovaProjecao, parcelaDividirValor: false })}
-                          />
-                          Valor por parcela
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Prévia dinâmica das parcelas */}
-                  {(() => {
-                    const centavosEntrada = Math.round(Number(modalNovaProjecao.parcelaValorTotalOuUnitario || 0) * 100);
-                    const qtd = Number(modalNovaProjecao.parcelaQtd) || 2;
-                    const dividir = modalNovaProjecao.parcelaDividirValor;
-                    const valorParcela = dividir ? Math.round(centavosEntrada / qtd) : centavosEntrada;
-                    const totalFinal = dividir ? centavosEntrada : centavosEntrada * qtd;
-                    const mesInicio = Number(modalNovaProjecao.parcelaMesInicio) || 0;
-                    const mesFimTotal = mesInicio + qtd - 1;
-                    const anoFim = anoNum + Math.floor(mesFimTotal / 12);
-                    const mesFim = mesFimTotal % 12;
-
-                    return (
-                      <div class="muted" style="font-size:var(--fs-xs);margin-top:6px;line-height:1.4;">
-                        💡 Serão geradas <b>{qtd} parcelas</b> de <b>~{money(valorParcela)}</b> cada, começando em{" "}
-                        <b>{MONTHS[mesInicio]}/{anoNum}</b> até <b>{MONTHS[mesFim]}/{anoFim}</b> (Total: <b>{money(totalFinal)}</b>).
-                        {anoFim > anoNum && (
-                          <div style="color:var(--primary);margin-top:4px;">
-                            ℹ️ As parcelas que ultrapassarem dezembro serão projetadas automaticamente nos exercícios seguintes ({anoFim}).
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {modalNovaProjecao.modoValor === "especifico" && (
-                <div>
-                  <div class="form-row form-row--2" style="margin-bottom:6px;">
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label class="form-label">Mês Previsto *</label>
-                      <CustomSelect
-                        value={modalNovaProjecao.mesEspecifico}
-                        options={MONTHS.map((m, idx) => ({ value: idx, label: m }))}
-                        onChange={(val) =>
-                          setModalNovaProjecao({ ...modalNovaProjecao, mesEspecifico: parseInt(val, 10) })
+                  {modalNovaProjecao.distribuicao === "parcelado" && (
+                    <div>
+                      <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:4px;">
+                        {modalNovaProjecao.parcelaDividirValor ? "Valor Total da Compra/Venda *" : "Valor por Parcela *"}
+                      </label>
+                      <MoneyInput
+                        variant="hero"
+                        valueCentavos={modalNovaProjecao.parcelaValorCentavos}
+                        onChangeCentavos={(cents) =>
+                          setModalNovaProjecao({ ...modalNovaProjecao, parcelaValorCentavos: cents })
                         }
                       />
                     </div>
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label class="form-label">Valor Previsto (R$) *</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        required
-                        class="input"
-                        placeholder="0,00"
-                        value={modalNovaProjecao.valorEspecifico}
-                        onInput={(e) =>
-                          setModalNovaProjecao({ ...modalNovaProjecao, valorEspecifico: e.currentTarget.value })
+                  )}
+
+                  {modalNovaProjecao.distribuicao === "especifico" && (
+                    <div>
+                      <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:4px;">
+                        Valor Previsto em {MONTHS[modalNovaProjecao.mesEspecifico]} *
+                      </label>
+                      <MoneyInput
+                        variant="hero"
+                        valueCentavos={modalNovaProjecao.valorEspecificoCentavos}
+                        onChangeCentavos={(cents) =>
+                          setModalNovaProjecao({ ...modalNovaProjecao, valorEspecificoCentavos: cents })
                         }
                       />
                     </div>
-                  </div>
-                  <div class="muted" style="font-size:var(--fs-xs);">
-                    💡 Ideal para receitas ou despesas que ocorrem apenas em um mês específico (ex: 13º, IPVA, seguros anuais). Os outros meses ficarão R$ 0,00.
-                  </div>
+                  )}
+                </div>
+              ) : (
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <ValorCalculadoEditor
+                    contas={todasContas}
+                    categorias={todasCats}
+                    currentContaId={modalNovaProjecao.contaId}
+                    regra={modalNovaProjecao.regraCalculo}
+                    onChangeRegra={(regra) =>
+                      setModalNovaProjecao({ ...modalNovaProjecao, regraCalculo: regra })
+                    }
+                    mesAtivo={mesAtivo}
+                    avaliarMes={(m) => {
+                      const regra = modalNovaProjecao.regraCalculo;
+                      if (regra.modo === "formula" && regra.formula) {
+                        const res = calcularFormulaProjecoes(regra.formula, m, ps, todasContas, todasCats);
+                        return { ok: res.ok, valorCentavos: res.valorCentavos, erro: res.erro };
+                      }
+                      const base = calcularBaseProjecoes(regra, m, ps, todasContas);
+                      const val = calcularValorVinculado(base, regra);
+                      return { ok: true, valorCentavos: val, base };
+                    }}
+                    mostrarSalvarNaConta={true}
+                    salvarNaConta={modalNovaProjecao.salvarVinculoNaConta}
+                    onChangeSalvarNaConta={(val) =>
+                      setModalNovaProjecao({ ...modalNovaProjecao, salvarVinculoNaConta: val })
+                    }
+                  />
                 </div>
               )}
+            </FormSection>
 
-              {modalNovaProjecao.modoValor === "mensal" && (
-                <div>
-                  <div class="muted" style="font-size:var(--fs-xs);margin-bottom:8px;">
-                    Preencha o valor previsto para cada mês:
-                  </div>
-                  <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));gap:8px;">
-                    {MONTHS.map((m, idx) => (
-                      <div key={m} style="display:flex;flex-direction:column;gap:2px;">
-                        <span style="font-size:0.7rem;font-weight:600;color:var(--text-muted);">{m}</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          class="input"
-                          style="min-height:30px;padding:2px 6px;font-size:var(--fs-xs);text-align:right;"
-                          placeholder="0,00"
-                          value={modalNovaProjecao.valoresMensais[idx]}
-                          onInput={(e) => {
-                            const novos = [...modalNovaProjecao.valoresMensais];
-                            novos[idx] = e.currentTarget.value;
-                            setModalNovaProjecao({ ...modalNovaProjecao, valoresMensais: novos });
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {modalNovaProjecao.modoValor === "vinculado" && (() => {
-                const regraSimulada: RegraVinculo = {
-                  modo: modalNovaProjecao.vinculoModoTipo,
-                  tipo: modalNovaProjecao.vinculoTipo,
-                  origemId: modalNovaProjecao.vinculoOrigemId,
-                  percentual: modalNovaProjecao.vinculoModo === "percentual" ? Number(modalNovaProjecao.vinculoPercentual || 0) : undefined,
-                  valorFixo: modalNovaProjecao.vinculoModo === "fixo" ? Math.round(Number(modalNovaProjecao.vinculoValorFixo || 0) * 100) : undefined,
-                  formula: modalNovaProjecao.vinculoFormula,
-                };
-                let totalAnualCalculado = 0;
-                const previsaoMeses = MONTHS.map((m, idx) => {
-                  if (modalNovaProjecao.vinculoModoTipo === "formula") {
-                    const res = calcularFormulaProjecoes(modalNovaProjecao.vinculoFormula || "", idx, ps, todasContas, todasCats);
-                    totalAnualCalculado += res.valorCentavos;
-                    return { mes: m, base: 0, valor: res.valorCentavos };
-                  } else {
-                    const baseMes = calcularBaseProjecoes(regraSimulada, idx, ps, todasContas);
-                    const valorCalculado = calcularValorVinculado(baseMes, regraSimulada);
-                    totalAnualCalculado += valorCalculado;
-                    return { mes: m, base: baseMes, valor: valorCalculado };
+            {/* Seção 3: Observações (Recolhível) */}
+            <Disclosure
+              title="Observação / Justificativa (Opcional)"
+              defaultOpen={Boolean(modalNovaProjecao.obs)}
+            >
+              <div class="form-group" style="margin-bottom:0;">
+                <textarea
+                  id="nova-proj-obs"
+                  class="textarea"
+                  rows={2}
+                  placeholder="Ex: Contrato de 12 meses com reajuste anual pelo IPCA em Junho..."
+                  value={modalNovaProjecao.obs}
+                  onInput={(e) =>
+                    setModalNovaProjecao({ ...modalNovaProjecao, obs: (e.currentTarget as HTMLTextAreaElement).value })
                   }
-                });
-
-                return (
-                  <div class="stack" style="gap:10px;">
-                    {/* Sub-tabs: Vínculo Simples vs Fórmula */}
-                    <div class="tabs tabs--sm" style="margin:0;">
-                      <button
-                        type="button"
-                        class={`tab ${modalNovaProjecao.vinculoModoTipo === "simples" ? "is-active" : ""}`}
-                        style="font-size:var(--fs-xs);padding:4px 10px;"
-                        onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModoTipo: "simples" })}
-                      >
-                        <Icon name="link" style="width:12px;height:12px;" /> Vínculo Direto
-                      </button>
-                      <button
-                        type="button"
-                        class={`tab ${modalNovaProjecao.vinculoModoTipo === "formula" ? "is-active" : ""}`}
-                        style="font-size:var(--fs-xs);padding:4px 10px;"
-                        onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModoTipo: "formula" })}
-                      >
-                        <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span> Fórmula com Variáveis
-                      </button>
-                    </div>
-
-                    {modalNovaProjecao.vinculoModoTipo === "simples" ? (
-                      <>
-                        <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;">
-                          <div>
-                            <label class="form-label" style="font-size:var(--fs-xs);">Vincular a:</label>
-                            <div class="tabs tabs--sm" style="margin:0;">
-                              <button
-                                type="button"
-                                class={`tab ${modalNovaProjecao.vinculoTipo === "conta" ? "is-active" : ""}`}
-                                style="font-size:var(--fs-xs);padding:4px 8px;"
-                                onClick={() => {
-                                  const def = todasContas.find((c) => c.natureza === "receber")?.id || todasContas[0]?.id || "";
-                                  setModalNovaProjecao({ ...modalNovaProjecao, vinculoTipo: "conta", vinculoOrigemId: def });
-                                }}
-                              >
-                                Conta
-                              </button>
-                              <button
-                                type="button"
-                                class={`tab ${modalNovaProjecao.vinculoTipo === "categoria" ? "is-active" : ""}`}
-                                style="font-size:var(--fs-xs);padding:4px 8px;"
-                                onClick={() => {
-                                  const def = todasCats.find((c) => c.natureza === "receber")?.id || todasCats[0]?.id || "";
-                                  setModalNovaProjecao({ ...modalNovaProjecao, vinculoTipo: "categoria", vinculoOrigemId: def });
-                                }}
-                              >
-                                Categoria
-                              </button>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label class="form-label" style="font-size:var(--fs-xs);">Cálculo:</label>
-                            <div class="tabs tabs--sm" style="margin:0;">
-                              <button
-                                type="button"
-                                class={`tab ${modalNovaProjecao.vinculoModo === "percentual" ? "is-active" : ""}`}
-                                style="font-size:var(--fs-xs);padding:4px 8px;"
-                                onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModo: "percentual" })}
-                              >
-                                % Percentual
-                              </button>
-                              <button
-                                type="button"
-                                class={`tab ${modalNovaProjecao.vinculoModo === "fixo" ? "is-active" : ""}`}
-                                style="font-size:var(--fs-xs);padding:4px 8px;"
-                                onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModo: "fixo" })}
-                              >
-                                Valor Fixo
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="form-group" style="margin-bottom:0;">
-                          <label class="form-label" style="font-size:var(--fs-xs);">
-                            {modalNovaProjecao.vinculoTipo === "conta" ? "Conta de Origem *" : "Categoria de Origem *"}
-                          </label>
-                          {modalNovaProjecao.vinculoTipo === "conta" ? (
-                            <CustomSelect
-                              value={modalNovaProjecao.vinculoOrigemId}
-                              placeholder="Selecione a conta base..."
-                              options={todasContas.map((c) => ({
-                                value: c.id,
-                                label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
-                              }))}
-                              onChange={(origemId) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoOrigemId: origemId })}
-                            />
-                          ) : (
-                            <CustomSelect
-                              value={modalNovaProjecao.vinculoOrigemId}
-                              placeholder="Selecione a categoria base..."
-                              options={todasCats.map((cat) => ({
-                                value: cat.id,
-                                label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
-                              }))}
-                              onChange={(origemId) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoOrigemId: origemId })}
-                            />
-                          )}
-                        </div>
-
-                        {modalNovaProjecao.vinculoModo === "percentual" ? (
-                          <div class="form-group" style="margin-bottom:0;">
-                            <label class="form-label" style="font-size:var(--fs-xs);">Percentual da Origem (%) *</label>
-                            <div style="display:flex;align-items:center;gap:6px;">
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0.01"
-                                max="1000"
-                                required
-                                class="input"
-                                placeholder="Ex: 30 para 30%"
-                                value={modalNovaProjecao.vinculoPercentual}
-                                onInput={(e) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoPercentual: e.currentTarget.value })}
-                              />
-                              <span style="font-weight:600;font-size:var(--fs-md);">%</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div class="form-group" style="margin-bottom:0;">
-                            <label class="form-label" style="font-size:var(--fs-xs);">Valor Fixo Previsto (R$) *</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0.01"
-                              required
-                              class="input"
-                              placeholder="0,00"
-                              value={modalNovaProjecao.vinculoValorFixo}
-                              onInput={(e) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoValorFixo: e.currentTarget.value })}
-                            />
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div class="muted" style="font-size:var(--fs-xs);">
-                          💡 Crie fórmulas combinando contas entre colchetes como <code>[Salário Bruto]</code> e use operadores aritméticos. Exemplo: <code>([Salário Bruto] - [INSS]) * 30%</code>
-                        </div>
-
-                        {/* Variáveis rápidas */}
-                        <div>
-                          <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:4px;">
-                            Contas Disponíveis (clique para inserir):
-                          </label>
-                          <div
-                            style="display:flex;gap:4px;flex-wrap:wrap;max-height:80px;overflow-y:auto;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);"
-                          >
-                            {todasContas.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                class="badge"
-                                style="cursor:pointer;background:var(--surface-soft);border:1px solid var(--border);color:var(--text);font-size:11px;padding:3px 6px;"
-                                onClick={() => {
-                                  const varNome = `[${c.nome}]`;
-                                  const atual = (modalNovaProjecao.vinculoFormula || "").trim();
-                                  setModalNovaProjecao({
-                                    ...modalNovaProjecao,
-                                    vinculoFormula: atual ? `${atual} + ${varNome}` : varNome,
-                                  });
-                                }}
-                              >
-                                + [{c.nome}]
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Operadores rápidos */}
-                        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
-                          <span class="muted" style="font-size:11px;">Operadores:</span>
-                          {["+", "-", "*", "/", "(", ")", "%"].map((op) => (
-                            <button
-                              key={op}
-                              type="button"
-                              class="btn btn--ghost"
-                              style="min-height:22px;padding:1px 6px;font-size:var(--fs-xs);font-weight:700;"
-                              onClick={() => {
-                                const atual = modalNovaProjecao.vinculoFormula || "";
-                                setModalNovaProjecao({
-                                  ...modalNovaProjecao,
-                                  vinculoFormula: `${atual} ${op} `,
-                                });
-                              }}
-                            >
-                              {op}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div class="form-group" style="margin-bottom:0;">
-                          <label class="form-label" style="font-size:var(--fs-xs);">Fórmula de Cálculo *</label>
-                          <textarea
-                            class="textarea"
-                            rows={2}
-                            placeholder="Ex: ([Salário Bruto] - [Previdência]) * 30%"
-                            value={modalNovaProjecao.vinculoFormula}
-                            onInput={(e) =>
-                              setModalNovaProjecao({ ...modalNovaProjecao, vinculoFormula: e.currentTarget.value })
-                            }
-                          />
-                        </div>
-
-                        {modalNovaProjecao.vinculoFormula.trim() && (() => {
-                          const evalTeste = calcularFormulaProjecoes(
-                            modalNovaProjecao.vinculoFormula,
-                            mesAtivo,
-                            ps,
-                            todasContas,
-                            todasCats
-                          );
-                          return evalTeste.ok ? (
-                            <div
-                              class="banner banner--success"
-                              style="padding:6px 10px;font-size:var(--fs-xs);margin:0;border-radius:var(--r-sm);"
-                            >
-                              ✓ Fórmula válida! Prévia em {MONTHS[mesAtivo]}: <b>{money(evalTeste.valorCentavos)}</b>
-                            </div>
-                          ) : (
-                            <div
-                              class="banner banner--warning"
-                              style="padding:6px 10px;font-size:var(--fs-xs);margin:0;border-radius:var(--r-sm);"
-                            >
-                              ⚠️ {evalTeste.erro}
-                            </div>
-                          );
-                        })()}
-                      </>
-                    )}
-
-                    <div style="display:flex;align-items:center;gap:8px;padding-top:4px;">
-                      <input
-                        id="salvar-vinculo-conta"
-                        type="checkbox"
-                        checked={modalNovaProjecao.salvarVinculoNaConta}
-                        onChange={(e) => setModalNovaProjecao({ ...modalNovaProjecao, salvarVinculoNaConta: e.currentTarget.checked })}
-                      />
-                      <label for="salvar-vinculo-conta" style="font-size:var(--fs-xs);cursor:pointer;">
-                        Salvar regra na conta (para sugerir lançamentos futuros e sincronizar)
-                      </label>
-                    </div>
-
-                    {/* Pré-visualização dos 12 meses calculados */}
-                    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:10px;">
-                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <span style="font-size:var(--fs-xs);font-weight:600;color:var(--text);">
-                          📊 Prévia dos 12 Meses Calculados
-                        </span>
-                        <span style="font-size:var(--fs-xs);font-weight:700;color:var(--primary);">
-                          Total: {money(totalAnualCalculado)}
-                        </span>
-                      </div>
-                      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(80px, 1fr));gap:6px;">
-                        {previsaoMeses.map((p) => (
-                          <div key={p.mes} style="background:var(--surface-soft);padding:4px 6px;border-radius:4px;text-align:center;">
-                            <div style="font-size:10px;color:var(--text-muted);font-weight:600;">{p.mes}</div>
-                            <div style={`font-size:11px;font-weight:700;color:${p.valor > 0 ? "var(--text)" : "var(--text-muted)"};`}>
-                              {money(p.valor)}
-                            </div>
-                            {modalNovaProjecao.vinculoModoTipo === "simples" && (
-                              <div style="font-size:9px;color:var(--text-muted);">
-                                Base: {money(p.base)}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Observação / Detalhes */}
-            <div class="form-group">
-              <label class="form-label" for="nova-proj-obs">
-                Observação / Justificativa (Opcional)
-              </label>
-              <textarea
-                id="nova-proj-obs"
-                class="textarea"
-                rows={2}
-                placeholder="Ex: Contrato de 12 meses com reajuste anual pelo IPCA em Junho..."
-                value={modalNovaProjecao.obs}
-                onInput={(e) =>
-                  setModalNovaProjecao({ ...modalNovaProjecao, obs: e.currentTarget.value })
-                }
-              />
-            </div>
+                />
+              </div>
+            </Disclosure>
           </form>
         </Modal>
       )}

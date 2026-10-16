@@ -10,17 +10,36 @@ export interface ModalProps {
   footer?: ComponentChildren;
   subtela?: boolean;
   zIndex?: number;
+  size?: "md" | "lg";
+  aside?: ComponentChildren;
+  onSubmitShortcut?: () => void;
 }
 
-export function Modal({ title, isOpen, onClose, children, footer, subtela = false, zIndex }: ModalProps) {
+export function Modal({
+  title,
+  isOpen,
+  onClose,
+  children,
+  footer,
+  subtela = false,
+  zIndex,
+  size = "md",
+  aside,
+  onSubmitShortcut,
+}: ModalProps) {
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && onSubmitShortcut) {
+        e.preventDefault();
+        onSubmitShortcut();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, onSubmitShortcut]);
 
   if (!isOpen) return null;
 
@@ -33,7 +52,7 @@ export function Modal({ title, isOpen, onClose, children, footer, subtela = fals
       }}
     >
       <div
-        class={`modal ${subtela ? "modal--subscreen" : ""}`}
+        class={`modal ${size === "lg" ? "modal--lg" : ""} ${subtela ? "modal--subscreen" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
@@ -57,7 +76,16 @@ export function Modal({ title, isOpen, onClose, children, footer, subtela = fals
             <Icon name="x" />
           </button>
         </div>
-        <div class="modal__body">{children}</div>
+        <div class="modal__body">
+          {aside ? (
+            <div class="modal__layout">
+              <div class="modal__main">{children}</div>
+              <aside class="modal__aside">{aside}</aside>
+            </div>
+          ) : (
+            children
+          )}
+        </div>
         {footer && <div class="modal__foot">{footer}</div>}
       </div>
     </div>
