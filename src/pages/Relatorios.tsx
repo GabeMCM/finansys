@@ -5,7 +5,7 @@ import { db } from "../data/db.ts";
 import { anos, categorias, contas, empresas } from "../data/repo.ts";
 import { type Ano, type Conta, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
-import { money, signed } from "../lib/format.ts";
+import { labelCpfCnpj, money, signed } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
 
@@ -405,7 +405,7 @@ export function Relatorios() {
               <div>
                 <h2 style="font-size:var(--fs-lg);font-weight:800;margin:0;">{emp.nome}</h2>
                 <div class="muted" style="font-size:var(--fs-xs);margin-top:2px;">
-                  {emp.cnpj ? (emp.cnpj.replace(/\D/g, "").length <= 11 ? `CPF: ${emp.cnpj}` : `CNPJ: ${emp.cnpj}`) : ""}
+                  {emp.cnpj ? labelCpfCnpj(emp.cnpj) : ""}
                   {emp.endereco ? ` · ${emp.endereco}` : ""}
                 </div>
               </div>

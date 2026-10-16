@@ -13,7 +13,7 @@ import { anos, categorias, contas, empresas } from "../data/repo.ts";
 import { seedExemplo } from "../data/seed.ts";
 import { type Ano, type Categoria, type Conta, type Empresa, type Natureza, NATUREZAS } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
-import { money } from "../lib/format.ts";
+import { formatCpfCnpj, labelCpfCnpj, money } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
 
@@ -194,7 +194,7 @@ export function Ajustes() {
                         {isSelected && <span class="badge badge--in">Ativa</span>}
                       </div>
                       <div class="list__sub">
-                        {emp.cnpj ? (emp.cnpj.replace(/\D/g, "").length <= 11 ? `CPF: ${emp.cnpj}` : `CNPJ: ${emp.cnpj}`) : "Sem CPF/CNPJ informado"}
+                        {emp.cnpj ? labelCpfCnpj(emp.cnpj) : "Sem CPF/CNPJ informado"}
                         {emp.endereco ? ` · ${emp.endereco}` : ""}
                       </div>
                     </div>
@@ -204,7 +204,12 @@ export function Ajustes() {
                           Selecionar
                         </button>
                       )}
-                      <button type="button" class="btn btn--ghost btn--icon" onClick={() => setModalEmpresa(emp)} aria-label="Editar empresa">
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--icon"
+                        onClick={() => setModalEmpresa({ ...emp, cnpj: formatCpfCnpj(emp.cnpj || "") })}
+                        aria-label="Editar empresa"
+                      >
                         <Icon name="pencil" />
                       </button>
                       <button
@@ -895,8 +900,12 @@ export function Ajustes() {
             <input
               id="emp-cnpj"
               class="input"
+              inputMode="numeric"
+              maxLength={18}
               value={modalEmpresa?.cnpj || ""}
-              onInput={(e) => setModalEmpresa({ ...modalEmpresa, cnpj: e.currentTarget.value })}
+              onInput={(e) =>
+                setModalEmpresa({ ...modalEmpresa, cnpj: formatCpfCnpj(e.currentTarget.value) })
+              }
               placeholder="000.000.000-00 ou 00.000.000/0001-00"
             />
           </div>
