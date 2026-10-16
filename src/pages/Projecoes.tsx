@@ -116,10 +116,64 @@ export function Projecoes() {
     return pMap.get(`${contaId}_${mes}`) || { valor: 0 };
   };
 
+  const recalcularDependentes = async (meses: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) => {
+    const vinculadas = todasContas.filter(
+      (c) => c.vinculo && (c.vinculo.origemId || (c.vinculo.modo === "formula" && c.vinculo.formula))
+    );
+    if (vinculadas.length === 0) return;
+
+    // Busca as projeções mais recentes direto do banco
+    const todasPs = await projecoes.byAno(ano.id);
+
+    for (const c of vinculadas) {
+      if (!c.vinculo) continue;
+      if (c.vinculo.modo === "formula" && c.vinculo.formula) {
+        for (const m of meses) {
+          const res = calcularFormulaProjecoes(c.vinculo.formula, m, todasPs, todasContas, todasCats);
+          const atual = getProj(c.id, m);
+          if (atual.valor !== res.valorCentavos) {
+            await projecoes.set(ano.id, c.id, m, res.valorCentavos, atual.obs);
+          }
+        }
+      } else if (c.vinculo.origemId) {
+        for (const m of meses) {
+          const baseCentavos = calcularBaseProjecoes(c.vinculo, m, todasPs, todasContas);
+          const valorCalculado = calcularValorVinculado(baseCentavos, c.vinculo);
+          const atual = getProj(c.id, m);
+          if (atual.valor !== valorCalculado) {
+            await projecoes.set(ano.id, c.id, m, valorCalculado, atual.obs, c.vinculo.origemId);
+          }
+        }
+      }
+    }
+  };
+
+  const recalcularContaIndividual = async (c: Conta) => {
+    if (!c.vinculo) return;
+    const todasPs = await projecoes.byAno(ano.id);
+    if (c.vinculo.modo === "formula" && c.vinculo.formula) {
+      for (let m = 0; m < 12; m++) {
+        const res = calcularFormulaProjecoes(c.vinculo.formula, m, todasPs, todasContas, todasCats);
+        const atual = getProj(c.id, m);
+        await projecoes.set(ano.id, c.id, m, res.valorCentavos, atual.obs);
+      }
+      toast.success(`Fórmula de "${c.nome}" recalculada nos 12 meses!`);
+    } else if (c.vinculo.origemId) {
+      for (let m = 0; m < 12; m++) {
+        const baseCentavos = calcularBaseProjecoes(c.vinculo, m, todasPs, todasContas);
+        const valorCalculado = calcularValorVinculado(baseCentavos, c.vinculo);
+        const atual = getProj(c.id, m);
+        await projecoes.set(ano.id, c.id, m, valorCalculado, atual.obs, c.vinculo.origemId);
+      }
+      toast.success(`Vínculo de "${c.nome}" recalculado nos 12 meses!`);
+    }
+  };
+
   const atualizarValor = async (contaId: string, mes: number, valorReais: number) => {
     const centavos = Math.round(Number(valorReais || 0) * 100);
     const atual = getProj(contaId, mes);
     await projecoes.set(ano.id, contaId, mes, centavos, atual.obs);
+    await recalcularDependentes([mes]);
   };
 
   const replicarParaAno = async (contaId: string, mesOrigem: number) => {
@@ -135,6 +189,7 @@ export function Projecoes() {
       for (let m = 0; m < 12; m++) {
         await projecoes.set(ano.id, contaId, m, origem.valor, origem.obs);
       }
+      await recalcularDependentes([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
       toast.success(`Valor de ${money(origem.valor)} replicado para os 12 meses.`);
     }
   };
@@ -152,9 +207,46 @@ export function Projecoes() {
         const atual = getProj(contaId, m);
         await projecoes.set(ano.id, contaId, m, 0, atual.obs);
       }
+      await recalcularDependentes();
       toast.success(`Projeções de "${conta?.nome}" zeradas.`);
     }
   };
+
+  // Auto-sincronização de contas vinculadas/fórmulas se estiverem divergentes
+  useEffect(() => {
+    if (!dados || !ano) return;
+    const vinculadas = todasContas.filter(
+      (c) => c.vinculo && (c.vinculo.origemId || (c.vinculo.modo === "formula" && c.vinculo.formula))
+    );
+    if (vinculadas.length === 0) return;
+
+    let precisaSync = false;
+    for (const c of vinculadas) {
+      if (c.vinculo?.modo === "formula" && c.vinculo.formula) {
+        for (let m = 0; m < 12; m++) {
+          const res = calcularFormulaProjecoes(c.vinculo.formula, m, ps, todasContas, todasCats);
+          if (res.ok && getProj(c.id, m).valor !== res.valorCentavos) {
+            precisaSync = true;
+            break;
+          }
+        }
+      } else if (c.vinculo?.origemId) {
+        for (let m = 0; m < 12; m++) {
+          const baseCentavos = calcularBaseProjecoes(c.vinculo, m, ps, todasContas);
+          const valorCalculado = calcularValorVinculado(baseCentavos, c.vinculo);
+          if (getProj(c.id, m).valor !== valorCalculado) {
+            precisaSync = true;
+            break;
+          }
+        }
+      }
+      if (precisaSync) break;
+    }
+
+    if (precisaSync) {
+      recalcularDependentes();
+    }
+  }, [ano?.id, todasContas.length]);
 
   const salvarObs = async () => {
     if (!modalObs) return;
@@ -284,8 +376,9 @@ export function Projecoes() {
     } else if (modalNovaProjecao.modoValor === "vinculado") {
       if (modalNovaProjecao.vinculoModoTipo === "formula") {
         const formulaTexto = modalNovaProjecao.vinculoFormula.trim();
+        const todasPs = await projecoes.byAno(ano.id);
         for (let m = 0; m < 12; m++) {
-          const res = calcularFormulaProjecoes(formulaTexto, m, ps, todasContas, todasCats);
+          const res = calcularFormulaProjecoes(formulaTexto, m, todasPs, todasContas, todasCats);
           await projecoes.set(ano.id, targetContaId, m, res.valorCentavos, obsTexto);
         }
 
@@ -306,8 +399,9 @@ export function Projecoes() {
           valorFixo: modalNovaProjecao.vinculoModo === "fixo" ? Math.round(Number(modalNovaProjecao.vinculoValorFixo || 0) * 100) : undefined,
         };
 
+        const todasPs = await projecoes.byAno(ano.id);
         for (let m = 0; m < 12; m++) {
-          const baseCentavos = calcularBaseProjecoes(regra, m, ps, todasContas);
+          const baseCentavos = calcularBaseProjecoes(regra, m, todasPs, todasContas);
           const valorCalculado = calcularValorVinculado(baseCentavos, regra);
           await projecoes.set(ano.id, targetContaId, m, valorCalculado, obsTexto, modalNovaProjecao.vinculoOrigemId);
         }
@@ -317,6 +411,9 @@ export function Projecoes() {
         }
       }
     }
+
+    // Se a alteração afetou outras contas vinculadas ou com fórmulas, recalcula
+    await recalcularDependentes();
 
     // Se a natureza da nova projeção for diferente da aba atual, comuta para ela
     if (modalNovaProjecao.natureza !== nat) {
@@ -344,19 +441,20 @@ export function Projecoes() {
     });
     if (!ok) return;
 
+    const todasPs = await projecoes.byAno(ano.id);
     let alteradas = 0;
     for (const c of vinculadas) {
       if (!c.vinculo) continue;
       if (c.vinculo.modo === "formula" && c.vinculo.formula) {
         for (let m = 0; m < 12; m++) {
-          const res = calcularFormulaProjecoes(c.vinculo.formula, m, ps, todasContas, todasCats);
+          const res = calcularFormulaProjecoes(c.vinculo.formula, m, todasPs, todasContas, todasCats);
           const atual = getProj(c.id, m);
           await projecoes.set(ano.id, c.id, m, res.valorCentavos, atual.obs);
         }
         alteradas++;
       } else if (c.vinculo.origemId) {
         for (let m = 0; m < 12; m++) {
-          const baseCentavos = calcularBaseProjecoes(c.vinculo, m, ps, todasContas);
+          const baseCentavos = calcularBaseProjecoes(c.vinculo, m, todasPs, todasContas);
           const valorCalculado = calcularValorVinculado(baseCentavos, c.vinculo);
           const atual = getProj(c.id, m);
           await projecoes.set(ano.id, c.id, m, valorCalculado, atual.obs, c.vinculo.origemId);
@@ -458,16 +556,16 @@ export function Projecoes() {
             </button>
           </div>
 
-          {/* Botão de Recalcular Projeções Vinculadas */}
-          {todasContas.some((c) => c.vinculo && c.vinculo.origemId) && (
+          {/* Botão de Recalcular Projeções Vinculadas & Fórmulas */}
+          {todasContas.some((c) => c.vinculo && (c.vinculo.origemId || (c.vinculo.modo === "formula" && c.vinculo.formula))) && (
             <button
               type="button"
               class="btn btn--secondary"
               onClick={recalcularVinculadas}
-              title="Recalcular projeções vinculadas com base nos valores das origens"
+              title="Recalcular todas as fórmulas e vínculos com base nos valores das origens"
               style="display:inline-flex;align-items:center;gap:6px;"
             >
-              <Icon name="refresh" /> Recalcular Vinculadas
+              <Icon name="refresh" /> Recalcular Fórmulas & Vínculos
             </button>
           )}
 
@@ -732,11 +830,12 @@ export function Projecoes() {
                                       {c.vinculo && (
                                         <span
                                           class="badge"
-                                          style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
+                                          style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;cursor:pointer;"
+                                          onClick={() => recalcularContaIndividual(c)}
                                           title={
                                             c.vinculo.modo === "formula"
-                                              ? `Fórmula: ${c.vinculo.formula || ""}`
-                                              : `Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : money(c.vinculo.valorFixo || 0)}`
+                                              ? `Fórmula: ${c.vinculo.formula || ""} (Clique para recalcular)`
+                                              : `Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : money(c.vinculo.valorFixo || 0)} (Clique para recalcular)`
                                           }
                                         >
                                           {c.vinculo.modo === "formula" ? (
@@ -797,6 +896,17 @@ export function Projecoes() {
 
                                 <td style="text-align:center;padding:4px 6px;">
                                   <div style="display:inline-flex;align-items:center;gap:2px;">
+                                    {c.vinculo && (
+                                      <button
+                                        type="button"
+                                        class="btn btn--ghost btn--icon"
+                                        style="min-height:24px;width:24px;color:var(--primary);"
+                                        onClick={() => recalcularContaIndividual(c)}
+                                        title={c.vinculo.modo === "formula" ? `Recalcular fórmula: ${c.vinculo.formula}` : "Recalcular projeção vinculada"}
+                                      >
+                                        <Icon name="refresh" style="width:12px;height:12px;" />
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       class="btn btn--ghost btn--icon"
@@ -973,11 +1083,12 @@ export function Projecoes() {
                                   {c.vinculo && (
                                     <span
                                       class="badge"
-                                      style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
+                                      style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;cursor:pointer;"
+                                      onClick={() => recalcularContaIndividual(c)}
                                       title={
                                         c.vinculo.modo === "formula"
-                                          ? `Fórmula: ${c.vinculo.formula || ""}`
-                                          : `Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : money(c.vinculo.valorFixo || 0)}`
+                                          ? `Fórmula: ${c.vinculo.formula || ""} (Clique para recalcular)`
+                                          : `Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : money(c.vinculo.valorFixo || 0)} (Clique para recalcular)`
                                       }
                                     >
                                       {c.vinculo.modo === "formula" ? (
@@ -1020,6 +1131,18 @@ export function Projecoes() {
                                     }}
                                   />
                                 </div>
+
+                                {c.vinculo && (
+                                  <button
+                                    type="button"
+                                    class="btn btn--ghost btn--icon"
+                                    style="min-height:36px;width:36px;color:var(--primary);"
+                                    onClick={() => recalcularContaIndividual(c)}
+                                    title={c.vinculo.modo === "formula" ? `Recalcular fórmula: ${c.vinculo.formula}` : "Recalcular projeção vinculada"}
+                                  >
+                                    <Icon name="refresh" />
+                                  </button>
+                                )}
 
                                 <button
                                   type="button"

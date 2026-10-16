@@ -131,3 +131,26 @@ Deno.test("calcularFormulaLancamentos resolve variáveis de lançamentos reais",
   assertEquals(resCat.ok, true);
   assertEquals(resCat.valorCentavos, 1100_00);
 });
+
+Deno.test("calcularFormulaProjecoes tolera acentos e identificadores sem colchetes", () => {
+  const cSalario: Conta = {
+    ...base,
+    id: "c_sal",
+    empresaId: "e",
+    categoriaId: "cat_rec",
+    natureza: "receber",
+    nome: "Salário Bruto",
+    ativa: true,
+  };
+  const p1: Projecao = { ...base, id: "p1", anoId: "a", contaId: "c_sal", mes: 0, valor: 5000_00 };
+
+  // Usuário digitou [Salario] sem acento, mas a conta é "Salário Bruto"
+  const res1 = calcularFormulaProjecoes("[Salario] * 30%", 0, [p1], [cSalario], []);
+  assertEquals(res1.ok, true);
+  assertEquals(res1.valorCentavos, 1500_00);
+
+  // Usuário digitou fórmula sem colchetes: Salario * 0,3
+  const res2 = calcularFormulaProjecoes("Salario * 0,3", 0, [p1], [cSalario], []);
+  assertEquals(res2.ok, true);
+  assertEquals(res2.valorCentavos, 1500_00);
+});

@@ -9,12 +9,13 @@ import { toast } from "../components/Toast.tsx";
 import { dumpDatabase, restoreDatabase } from "../data/backup.ts";
 import { atualizarNomePerfil, cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem, puxarBackupNuvem } from "../data/cloudSync.ts";
 import { conectarGoogleDrive, desconectarGoogleDrive, googleUser, realizarBackupDrive, restaurarDoDrive, syncStatus, ultimoBackup } from "../data/driveSync.ts";
-import { anos, categorias, contas, empresas } from "../data/repo.ts";
+import { anos, categorias, contas, empresas, projecoes } from "../data/repo.ts";
+import { calcularBaseProjecoes, calcularValorVinculado } from "../data/calc.ts";
 import { seedExemplo } from "../data/seed.ts";
 import { type Ano, type Categoria, type Conta, type Empresa, type Natureza, NATUREZAS, type RegraVinculo, type ModoVinculo } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { formatCpfCnpj, labelCpfCnpj, money } from "../lib/format.ts";
-import { avaliarFormula, extrairVariaveis } from "../lib/formula.ts";
+import { avaliarFormula, calcularFormulaProjecoes, extrairVariaveis } from "../lib/formula.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
 
@@ -172,6 +173,7 @@ export function Ajustes() {
       }
     }
 
+    let targetContaId = modalConta.id;
     if (modalConta.id) {
       await contas.update(modalConta.id, {
         nome: modalConta.nome.trim(),
@@ -180,7 +182,7 @@ export function Ajustes() {
         vinculo: vinculoPayload,
       });
     } else {
-      await contas.create({
+      const criada = await contas.create({
         empresaId: empId,
         categoriaId: modalConta.categoriaId,
         natureza: natTab,
@@ -188,7 +190,33 @@ export function Ajustes() {
         ativa: true,
         vinculo: vinculoPayload,
       });
+      targetContaId = criada.id;
     }
+
+    // Se possui regra de vínculo/fórmula e o ano ativo está aberto, calcula e aplica as projeções
+    if (targetContaId && vinculoPayload && anoAtivo.value) {
+      const anoCorrente = await anos.find(empId, anoAtivo.value);
+      if (anoCorrente) {
+        const [todasCs, todasCats, todasPs] = await Promise.all([
+          contas.byEmpresa(empId),
+          categorias.byEmpresa(empId),
+          projecoes.byAno(anoCorrente.id),
+        ]);
+        if (vinculoPayload.modo === "formula" && vinculoPayload.formula) {
+          for (let m = 0; m < 12; m++) {
+            const res = calcularFormulaProjecoes(vinculoPayload.formula, m, todasPs, todasCs, todasCats);
+            await projecoes.set(anoCorrente.id, targetContaId, m, res.valorCentavos);
+          }
+        } else if (vinculoPayload.origemId) {
+          for (let m = 0; m < 12; m++) {
+            const baseCentavos = calcularBaseProjecoes(vinculoPayload, m, todasPs, todasCs);
+            const val = calcularValorVinculado(baseCentavos, vinculoPayload);
+            await projecoes.set(anoCorrente.id, targetContaId, m, val, undefined, vinculoPayload.origemId);
+          }
+        }
+      }
+    }
+
     setModalConta(null);
   };
 

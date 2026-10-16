@@ -11,6 +11,27 @@ export interface Token {
   valor: string | number;
 }
 
+export function normalizarNome(texto: string): string {
+  return texto
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+export function parseNumeroPtBr(raw: string): number {
+  let s = raw.trim();
+  if (s.includes(".") && s.includes(",")) {
+    s = s.replace(/\./g, "").replace(",", ".");
+  } else if (s.includes(",")) {
+    s = s.replace(",", ".");
+  } else if ((s.match(/\./g) || []).length > 1) {
+    s = s.replace(/\./g, "");
+  }
+  return parseFloat(s);
+}
+
 export function extrairVariaveis(formula: string): string[] {
   const vars: string[] = [];
   const regex = /\[([^\]]+)\]/g;
@@ -21,6 +42,22 @@ export function extrairVariaveis(formula: string): string[] {
       vars.push(nomeVar);
     }
   }
+
+  // Identificadores sem colchetes (ex: Salario, Vendas)
+  try {
+    const tokens = tokenizar(formula);
+    for (const t of tokens) {
+      if (t.tipo === "VAR") {
+        const v = String(t.valor).trim();
+        if (v && !vars.includes(v)) {
+          vars.push(v);
+        }
+      }
+    }
+  } catch {
+    // Silencia erros durante digitação
+  }
+
   return vars;
 }
 
@@ -69,14 +106,14 @@ export function tokenizar(expr: string): Token[] {
       continue;
     }
 
-    // Números (inteiros, decimais com ponto ou vírgula, e com sufixo %)
-    if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(s[i + 1] || ""))) {
+    // Números (inteiros, decimais brasileiros ou americanos, e com sufixo %)
+    if (/[0-9]/.test(c) || (c === "." && /[0-9]/.test(s[i + 1] || "")) || (c === "," && /[0-9]/.test(s[i + 1] || ""))) {
       let numStr = "";
       while (i < s.length && (/[0-9]/.test(s[i]) || s[i] === "." || s[i] === ",")) {
-        numStr += s[i] === "," ? "." : s[i];
+        numStr += s[i];
         i++;
       }
-      let val = parseFloat(numStr);
+      let val = parseNumeroPtBr(numStr);
       if (isNaN(val)) throw new Error(`Número inválido: ${numStr}`);
 
       // Verifica se tem % logo após o número (ex: 30%)
@@ -89,10 +126,21 @@ export function tokenizar(expr: string): Token[] {
       continue;
     }
 
-    // Se encontrar % isolado logo após variável ou expressão
+    // % isolado após expressão ou variável
     if (c === "%") {
       tokens.push({ tipo: "OP", valor: "%" });
       i++;
+      continue;
+    }
+
+    // Identificador de variável sem colchetes (ex: Salario, INSS, Vendas)
+    if (/[a-zA-Z\u00C0-\u00FF_]/.test(c)) {
+      let ident = "";
+      while (i < s.length && /[a-zA-Z0-9\u00C0-\u00FF_:\-]/.test(s[i])) {
+        ident += s[i];
+        i++;
+      }
+      tokens.push({ tipo: "VAR", valor: ident });
       continue;
     }
 
@@ -262,40 +310,70 @@ export function resolverValorVariavelProjecoes(
   categorias: Categoria[],
 ): number {
   const clean = varName.trim();
-  const lower = clean.toLowerCase();
+  const norm = normalizarNome(clean);
 
-  // Verifica prefixo cat: ou categoria:
-  if (lower.startsWith("cat:") || lower.startsWith("categoria:")) {
-    const catRef = clean.replace(/^(cat:|categoria:)\s*/i, "").trim().toLowerCase();
-    const cat = categorias.find((c) => c.id === catRef || c.nome.toLowerCase() === catRef);
+  // 1. Verifica prefixo cat: ou categoria:
+  if (norm.startsWith("cat:") || norm.startsWith("categoria:")) {
+    const catRefNorm = norm.replace(/^(cat:|categoria:)\s*/, "").trim();
+    const cat = categorias.find(
+      (c) => c.id === clean.replace(/^(cat:|categoria:)\s*/i, "").trim() || normalizarNome(c.nome) === catRefNorm
+    );
     if (!cat) return 0;
     const catContasIds = new Set(contas.filter((c) => c.categoriaId === cat.id).map((c) => c.id));
-    const totalCentavos = projecoes
-      .filter((p) => catContasIds.has(p.contaId) && p.mes === mes)
-      .reduce((s, p) => s + p.valor, 0);
+    const valMap = new Map<string, number>();
+    for (const p of projecoes) {
+      if (catContasIds.has(p.contaId) && Number(p.mes) === Number(mes)) {
+        valMap.set(p.contaId, p.valor || 0);
+      }
+    }
+    let totalCentavos = 0;
+    for (const v of valMap.values()) totalCentavos += v;
     return totalCentavos / 100;
   }
 
-  // Verifica prefixo conta:
-  let contaRef = clean;
-  if (lower.startsWith("conta:") || lower.startsWith("c:")) {
-    contaRef = clean.replace(/^(conta:|c:)\s*/i, "").trim();
+  // 2. Verifica prefixo conta: ou c:
+  let contaRefNorm = norm;
+  let contaRefClean = clean;
+  if (norm.startsWith("conta:") || norm.startsWith("c:")) {
+    contaRefNorm = norm.replace(/^(conta:|c:)\s*/, "").trim();
+    contaRefClean = clean.replace(/^(conta:|c:)\s*/i, "").trim();
   }
 
-  // Busca conta por ID ou por Nome
-  const conta = contas.find((c) => c.id === contaRef || c.nome.toLowerCase() === contaRef.toLowerCase());
+  // 3. Busca conta por ID ou por Nome normalizado
+  let conta = contas.find((c) => c.id === contaRefClean || normalizarNome(c.nome) === contaRefNorm);
+  if (!conta) {
+    const candidatas = contas.filter((c) => normalizarNome(c.nome).includes(contaRefNorm));
+    if (candidatas.length === 1) {
+      conta = candidatas[0];
+    }
+  }
+
   if (conta) {
-    const p = projecoes.find((p) => p.contaId === conta.id && p.mes === mes);
-    return p ? p.valor / 100 : 0;
+    let ultimoCentavos = 0;
+    for (const p of projecoes) {
+      if (p.contaId === conta.id && Number(p.mes) === Number(mes)) {
+        ultimoCentavos = p.valor || 0;
+      }
+    }
+    return ultimoCentavos / 100;
   }
 
-  // Se não achou como conta, verifica se é uma categoria pelo nome
-  const cat = categorias.find((c) => c.nome.toLowerCase() === clean.toLowerCase());
+  // 4. Se não achou como conta, verifica se é uma categoria pelo nome
+  let cat = categorias.find((c) => normalizarNome(c.nome) === norm);
+  if (!cat) {
+    const candidatas = categorias.filter((c) => normalizarNome(c.nome).includes(norm));
+    if (candidatas.length === 1) cat = candidatas[0];
+  }
   if (cat) {
     const catContasIds = new Set(contas.filter((c) => c.categoriaId === cat.id).map((c) => c.id));
-    const totalCentavos = projecoes
-      .filter((p) => catContasIds.has(p.contaId) && p.mes === mes)
-      .reduce((s, p) => s + p.valor, 0);
+    const valMap = new Map<string, number>();
+    for (const p of projecoes) {
+      if (catContasIds.has(p.contaId) && Number(p.mes) === Number(mes)) {
+        valMap.set(p.contaId, p.valor || 0);
+      }
+    }
+    let totalCentavos = 0;
+    for (const v of valMap.values()) totalCentavos += v;
     return totalCentavos / 100;
   }
 
@@ -313,42 +391,57 @@ export function resolverValorVariavelLancamentos(
   categorias: Categoria[],
 ): number {
   const clean = varName.trim();
-  const lower = clean.toLowerCase();
+  const norm = normalizarNome(clean);
 
-  // Verifica prefixo cat: ou categoria:
-  if (lower.startsWith("cat:") || lower.startsWith("categoria:")) {
-    const catRef = clean.replace(/^(cat:|categoria:)\s*/i, "").trim().toLowerCase();
-    const cat = categorias.find((c) => c.id === catRef || c.nome.toLowerCase() === catRef);
+  // 1. Verifica prefixo cat: ou categoria:
+  if (norm.startsWith("cat:") || norm.startsWith("categoria:")) {
+    const catRefNorm = norm.replace(/^(cat:|categoria:)\s*/, "").trim();
+    const cat = categorias.find(
+      (c) => c.id === clean.replace(/^(cat:|categoria:)\s*/i, "").trim() || normalizarNome(c.nome) === catRefNorm
+    );
     if (!cat) return 0;
     const catContasIds = new Set(contas.filter((c) => c.categoriaId === cat.id).map((c) => c.id));
     const totalCentavos = lancamentos
-      .filter((l) => catContasIds.has(l.contaId) && l.mes === mes)
-      .reduce((s, l) => s + l.valor, 0);
+      .filter((l) => catContasIds.has(l.contaId) && Number(l.mes) === Number(mes))
+      .reduce((s, l) => s + (l.valor || 0), 0);
     return totalCentavos / 100;
   }
 
-  // Verifica prefixo conta:
-  let contaRef = clean;
-  if (lower.startsWith("conta:") || lower.startsWith("c:")) {
-    contaRef = clean.replace(/^(conta:|c:)\s*/i, "").trim();
+  // 2. Verifica prefixo conta: ou c:
+  let contaRefNorm = norm;
+  let contaRefClean = clean;
+  if (norm.startsWith("conta:") || norm.startsWith("c:")) {
+    contaRefNorm = norm.replace(/^(conta:|c:)\s*/, "").trim();
+    contaRefClean = clean.replace(/^(conta:|c:)\s*/i, "").trim();
   }
 
-  // Busca conta por ID ou por Nome
-  const conta = contas.find((c) => c.id === contaRef || c.nome.toLowerCase() === contaRef.toLowerCase());
+  // 3. Busca conta por ID ou por Nome normalizado
+  let conta = contas.find((c) => c.id === contaRefClean || normalizarNome(c.nome) === contaRefNorm);
+  if (!conta) {
+    const candidatas = contas.filter((c) => normalizarNome(c.nome).includes(contaRefNorm));
+    if (candidatas.length === 1) {
+      conta = candidatas[0];
+    }
+  }
+
   if (conta) {
     const totalCentavos = lancamentos
-      .filter((l) => l.contaId === conta.id && l.mes === mes)
-      .reduce((s, l) => s + l.valor, 0);
+      .filter((l) => l.contaId === conta.id && Number(l.mes) === Number(mes))
+      .reduce((s, l) => s + (l.valor || 0), 0);
     return totalCentavos / 100;
   }
 
-  // Se não achou como conta, verifica se é categoria
-  const cat = categorias.find((c) => c.nome.toLowerCase() === clean.toLowerCase());
+  // 4. Se não achou como conta, verifica se é categoria
+  let cat = categorias.find((c) => normalizarNome(c.nome) === norm);
+  if (!cat) {
+    const candidatas = categorias.filter((c) => normalizarNome(c.nome).includes(norm));
+    if (candidatas.length === 1) cat = candidatas[0];
+  }
   if (cat) {
     const catContasIds = new Set(contas.filter((c) => c.categoriaId === cat.id).map((c) => c.id));
     const totalCentavos = lancamentos
-      .filter((l) => catContasIds.has(l.contaId) && l.mes === mes)
-      .reduce((s, l) => s + l.valor, 0);
+      .filter((l) => catContasIds.has(l.contaId) && Number(l.mes) === Number(mes))
+      .reduce((s, l) => s + (l.valor || 0), 0);
     return totalCentavos / 100;
   }
 
