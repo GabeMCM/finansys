@@ -3,6 +3,8 @@ import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
 import { ModalConfirm, confirmarAcao } from "../components/ModalConfirm.tsx";
 import { toast } from "../components/Toast.tsx";
+import { CardPendencias } from "../components/lancamento/CardPendencias.tsx";
+import { ModalIgnorarProjecao } from "../components/lancamento/ModalIgnorarProjecao.tsx";
 import { ContaPicker } from "../components/lancamento/ContaPicker.tsx";
 import { FormSection, FormBlock, Disclosure } from "../components/lancamento/FormSection.tsx";
 import { MoneyInput } from "../components/lancamento/MoneyInput.tsx";
@@ -10,7 +12,7 @@ import { NaturezaSegmented } from "../components/lancamento/NaturezaSegmented.ts
 import { RepeticaoSelector, type TipoRepeticaoReal } from "../components/lancamento/RepeticaoSelector.tsx";
 import { ResumoPainel } from "../components/lancamento/ResumoPainel.tsx";
 import { ValorCalculadoEditor } from "../components/lancamento/ValorCalculadoEditor.tsx";
-import { calcularBaseLancamentos, calcularValorVinculado } from "../data/calc.ts";
+import { calcularBaseLancamentos, calcularPendencias, calcularValorVinculado, type ProjecaoPendente } from "../data/calc.ts";
 import { anos, categorias, contas, lancamentos, projecoes } from "../data/repo.ts";
 import { type Conta, type Lancamento, type Natureza, NATUREZAS, type RegraVinculo, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
@@ -26,6 +28,14 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   const [mesFiltro, setMesFiltro] = useState<number | "todos">(new Date().getMonth());
   const [natFiltro, setNatFiltro] = useState<Natureza | "todas">("todas");
   const [busca, setBusca] = useState<string>("");
+
+  // Modo de visualização: Extrato diário agrupado ou Tabela tabular
+  const [modoVisao, setModoVisao] = useState<"extrato" | "tabela">(() => {
+    return (localStorage.getItem("finansys_lancamentos_visao") as "extrato" | "tabela") || "extrato";
+  });
+
+  // Modal para ignorar projeção não realizada
+  const [modalIgnorarItem, setModalIgnorarItem] = useState<ProjecaoPendente | null>(null);
 
   // Modal de lançamento
   const [modalLanc, setModalLanc] = useState<
@@ -455,97 +465,345 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     };
   })() : null;
 
+  // Pendências de projeções para o período filtrado
+  const pendenciasPeriodo = calcularPendencias(ps, ls, anoNum, mesFiltro, new Date());
+  // Pendências do ano para os marcadores dos meses
+  const pendenciasAno = calcularPendencias(ps, ls, anoNum, "todos", new Date());
+  const statusMeses = new Map<number, "vencida" | "a_vencer">();
+  for (const p of pendenciasAno) {
+    const atual = statusMeses.get(p.mes);
+    if (p.status === "vencida") {
+      statusMeses.set(p.mes, "vencida");
+    } else if (!atual) {
+      statusMeses.set(p.mes, "a_vencer");
+    }
+  }
+
+  // Totais projetados para o período
+  const projFiltradas = ps.filter((p) => mesFiltro === "todos" || p.mes === mesFiltro);
+  const projPorNat = { pagar: 0, receber: 0, aporte: 0, saida: 0 };
+  for (const p of projFiltradas) {
+    const c = contaMap.get(p.contaId);
+    if (c) projPorNat[c.natureza] += p.valor;
+  }
+  const totEntradasReal = totaisPorNat.receber + totaisPorNat.aporte;
+  const totEntradasProj = projPorNat.receber + projPorNat.aporte;
+  const totSaidasReal = totaisPorNat.pagar + totaisPorNat.saida;
+  const totSaidasProj = projPorNat.pagar + projPorNat.saida;
+  const resultadoProjLiquido = totEntradasProj - totSaidasProj;
+
+  // Conciliação de contas projetadas
+  const contasComProjecao = new Set(projFiltradas.filter((p) => p.valor > 0).map((p) => p.contaId));
+  const totalContasProjetadas = contasComProjecao.size;
+  const contasComLancamento = new Set(filtrados.map((l) => l.contaId));
+  let contasConciliadasCount = 0;
+  for (const cId of contasComProjecao) {
+    if (contasComLancamento.has(cId)) contasConciliadasCount++;
+  }
+  const pctConciliacao = totalContasProjetadas > 0
+    ? Math.round((contasConciliadasCount / totalContasProjetadas) * 100)
+    : 100;
+
+  // Ações de pendências
+  const lancarDePendencia = (pend: ProjecaoPendente) => {
+    const c = contaMap.get(pend.contaId);
+    const nat = c?.natureza || "pagar";
+    setCatSelecionadaModal(c?.categoriaId || "");
+    setOrigemValorReal("manual");
+    setModalLanc({
+      anoId: ano.id,
+      contaId: pend.contaId,
+      data: pend.dataSugerida,
+      mes: pend.mes,
+      valorCentavos: pend.valorPendente,
+      descricao: "",
+      obs: "",
+      natureza: nat,
+    });
+  };
+
+  const abrirIgnorarProjecao = (pend: ProjecaoPendente) => {
+    setModalIgnorarItem(pend);
+  };
+
+  const confirmarIgnorarProjecao = async (modo: "somar_proximo" | "apenas_ignorar") => {
+    if (!modalIgnorarItem || !ano) return;
+    const { contaId, mes, valorPendente } = modalIgnorarItem;
+    if (modo === "somar_proximo" && mes < 11) {
+      const mesProx = mes + 1;
+      const projProx = ps.find((p) => p.contaId === contaId && p.mes === mesProx);
+      const valAtualProx = projProx?.valor || 0;
+      await projecoes.set(ano.id, contaId, mesProx, valAtualProx + valorPendente);
+      await projecoes.set(ano.id, contaId, mes, 0);
+      toast.success(`R$ ${money(valorPendente)} transferidos para a projeção de ${MONTHS[mesProx]}!`);
+    } else {
+      await projecoes.set(ano.id, contaId, mes, 0);
+      toast.success(`Projeção de ${MONTHS[mes]} ignorada.`);
+    }
+    setModalIgnorarItem(null);
+  };
+
+  const trocarModoVisao = (novoModo: "extrato" | "tabela") => {
+    setModoVisao(novoModo);
+    localStorage.setItem("finansys_lancamentos_visao", novoModo);
+  };
+
+  const formatarDataExtrato = (dataStr: string): string => {
+    if (!dataStr) return "";
+    const hoje = new Date();
+    const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+
+    const ontem = new Date();
+    ontem.setDate(ontem.getDate() - 1);
+    const ontemStr = `${ontem.getFullYear()}-${String(ontem.getMonth() + 1).padStart(2, "0")}-${String(ontem.getDate()).padStart(2, "0")}`;
+
+    const [a, m, d] = dataStr.split("-");
+    const dataObj = new Date(parseInt(a, 10), parseInt(m, 10) - 1, parseInt(d, 10));
+    const diaSemana = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"][dataObj.getDay()];
+    const mesExtenso = MONTHS[parseInt(m, 10) - 1];
+
+    if (dataStr === hojeStr) {
+      return `Hoje · ${d} de ${mesExtenso} de ${a}`;
+    }
+    if (dataStr === ontemStr) {
+      return `Ontem · ${d} de ${mesExtenso} de ${a}`;
+    }
+    return `${d} de ${mesExtenso} de ${a} · ${diaSemana}`;
+  };
+
+  const gruposPorData = new Map<string, Lancamento[]>();
+  for (const l of filtrados) {
+    const d = l.data;
+    if (!gruposPorData.has(d)) gruposPorData.set(d, []);
+    gruposPorData.get(d)!.push(l);
+  }
+  const datasOrdenadas = Array.from(gruposPorData.keys()).sort((a, b) => b.localeCompare(a));
+
+  const excluirLancamento = async (l: Lancamento) => {
+    if (l.recorrenciaId) {
+      const serie = await lancamentos.byRecorrencia(l.recorrenciaId);
+      if (serie.length > 1) {
+        const excluirTodas = await confirmarAcao({
+          titulo: "Excluir Série Recorrente / Parcelada",
+          mensagem: `Este lançamento faz parte de uma série com ${serie.length} parcelas registradas (${l.parcela || 1}/${l.totalParcelas || serie.length}). Deseja excluir TODAS as ${serie.length} parcelas da série? (Clique em Cancelar para excluir apenas esta parcela).`,
+          rotuloConfirmar: `Excluir Todas (${serie.length})`,
+          rotuloCancelar: "Excluir Apenas Esta",
+          tipo: "danger",
+        });
+        if (excluirTodas) {
+          for (const item of serie) {
+            await lancamentos.remove(item.id);
+          }
+          toast.success(`${serie.length} parcelas da série excluídas com sucesso.`);
+          return;
+        }
+      }
+    }
+    const ok = await confirmarAcao({
+      titulo: "Excluir Lançamento",
+      mensagem: "Deseja excluir este lançamento real? Esta ação é irreversível.",
+      rotuloConfirmar: "Excluir Lançamento",
+      tipo: "danger",
+    });
+    if (ok) {
+      await lancamentos.remove(l.id);
+      toast.success("Lançamento excluído com sucesso.");
+    }
+  };
+
   return (
     <>
-      <div class="page-head">
+      <div class="page-head" style="flex-wrap:wrap;gap:12px;">
         <div>
-          <h1>Lançamentos Reais</h1>
-          <p>Valores efetivamente realizados no ano de {anoNum}</p>
+          <h1 style="display:flex;align-items:center;gap:8px;">Lançamentos Reais {anoNum}</h1>
+          <p>Valores efetivamente realizados e conciliação com o planejamento financeiro</p>
         </div>
-        <button type="button" class="btn btn--primary" onClick={() => abrirNovo()}>
-          <Icon name="plus" /> Novo Lançamento
-        </button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button type="button" class="btn btn--primary" onClick={() => abrirNovo()}>
+            <Icon name="plus" /> Novo Lançamento
+          </button>
+        </div>
       </div>
 
-      {/* Seletor de meses compacto (mobile-friendly) */}
+      {/* Seletor de meses compacto com marcadores de pendências */}
       <div class="hscroll" style="margin-bottom:var(--sp-3);">
         <button
           type="button"
           class={`chip ${mesFiltro === "todos" ? "is-active" : ""}`}
           onClick={() => setMesFiltro("todos")}
+          style="display:inline-flex;align-items:center;gap:6px;"
         >
-          Ano Todo
+          <span>Ano Todo</span>
+          {pendenciasAno.length > 0 && (
+            <span
+              style={`width:6px;height:6px;border-radius:50%;background:${
+                pendenciasAno.some((p) => p.status === "vencida") ? "var(--out)" : "#f59e0b"
+              };flex-shrink:0;`}
+              title={`${pendenciasAno.length} conta(s) pendente(s)`}
+            />
+          )}
         </button>
-        {MONTHS.map((m, idx) => (
-          <button
-            type="button"
-            key={m}
-            class={`chip ${mesFiltro === idx ? "is-active" : ""}`}
-            onClick={() => setMesFiltro(idx)}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-
-      {/* Tabs de Filtro de Natureza */}
-      <div class="tabs" style="margin-bottom: var(--sp-4);">
-        <button
-          type="button"
-          class={`tab ${natFiltro === "todas" ? "is-active" : ""}`}
-          onClick={() => setNatFiltro("todas")}
-        >
-          Todas as Naturezas
-        </button>
-        {NATUREZAS.map((n) => {
-          const meta = NATURE_META[n];
+        {MONTHS.map((m, idx) => {
+          const statusMes = statusMeses.get(idx);
           return (
             <button
               type="button"
-              key={n}
-              class={`tab ${natFiltro === n ? "is-active" : ""}`}
-              onClick={() => setNatFiltro(n)}
+              key={m}
+              class={`chip ${mesFiltro === idx ? "is-active" : ""}`}
+              onClick={() => setMesFiltro(idx)}
+              style="display:inline-flex;align-items:center;gap:6px;"
             >
-              <Icon name={meta.icon} /> {meta.label}
+              <span>{m}</span>
+              {statusMes && (
+                <span
+                  style={`width:6px;height:6px;border-radius:50%;background:${
+                    statusMes === "vencida" ? "var(--out)" : "#f59e0b"
+                  };flex-shrink:0;`}
+                  title={statusMes === "vencida" ? "Possui contas vencidas" : "Possui contas a vencer"}
+                />
+              )}
             </button>
           );
         })}
       </div>
 
-      {/* Resumo do período filtrado */}
-      <div class="grid grid--stats" style="margin-bottom:var(--sp-4);">
-        {NATUREZAS.map((n) => {
-          const meta = NATURE_META[n];
-          return (
-            <div class="stat" key={n}>
-              <div class="stat__label">
-                <i class="dot" style={`background:var(--${meta.tone})`} />
-                {meta.label}
-              </div>
-              <div class="stat__value num">{money(totaisPorNat[n])}</div>
-            </div>
-          );
-        })}
+      {/* Cockpit Resumo do Período */}
+      <div class="cockpit-grid">
+        <div class="cockpit-card">
+          <div class="cockpit-card__label">
+            <i class="dot" style="background:var(--in);" />
+            <span>Entradas Realizadas</span>
+          </div>
+          <div class="cockpit-card__val num tone-in">
+            {money(totEntradasReal)}
+          </div>
+          <div class="cockpit-card__sub num">
+            Meta: {money(totEntradasProj)} ({totEntradasProj > 0 ? Math.round((totEntradasReal / totEntradasProj) * 100) : 0}%)
+          </div>
+        </div>
+
+        <div class="cockpit-card">
+          <div class="cockpit-card__label">
+            <i class="dot" style="background:var(--out);" />
+            <span>Saídas Realizadas</span>
+          </div>
+          <div class="cockpit-card__val num tone-out">
+            {money(totSaidasReal)}
+          </div>
+          <div class="cockpit-card__sub num">
+            Teto: {money(totSaidasProj)} ({totSaidasProj > 0 ? Math.round((totSaidasReal / totSaidasProj) * 100) : 0}%)
+          </div>
+        </div>
+
+        <div class="cockpit-card">
+          <div class="cockpit-card__label">
+            <Icon name="check" style="width:13px;height:13px;color:var(--primary);" />
+            <span>Resultado Líquido</span>
+          </div>
+          <div class={`cockpit-card__val num ${resultadoRealLiquido >= 0 ? "tone-in" : "tone-out"}`}>
+            {signed(resultadoRealLiquido)}
+          </div>
+          <div class="cockpit-card__sub num">
+            Projetado: {signed(resultadoProjLiquido)}
+          </div>
+        </div>
+
+        <div class="cockpit-card">
+          <div class="cockpit-card__label">
+            <Icon name="calendar" style="width:13px;height:13px;color:var(--text-muted);" />
+            <span>Conciliação de Contas</span>
+          </div>
+          <div class="cockpit-card__val num" style="color:var(--text);">
+            {contasConciliadasCount} / {totalContasProjetadas}
+          </div>
+          <div class="cockpit-card__sub">
+            {pctConciliacao}% das previsões realizadas
+          </div>
+        </div>
       </div>
 
-      {/* Campo de busca e lista */}
+      {/* Central de Pendências e Contas Vencidas / Não Lançadas */}
+      <CardPendencias
+        pendencias={pendenciasPeriodo}
+        contas={cs}
+        categorias={cats}
+        mesFiltro={mesFiltro}
+        onLancar={lancarDePendencia}
+        onIgnorar={abrirIgnorarProjecao}
+      />
+
+      {/* Barra de Ferramentas e Extrato / Tabela */}
       <section class="card">
-        <div class="card__head">
-          <div style="flex:1;max-width:320px;">
+        <div class="card__head" style="flex-wrap:wrap;gap:12px;">
+          <div style="flex:1;min-width:240px;max-width:360px;">
             <input
               type="search"
               class="input"
-              placeholder="Buscar lançamento ou conta..."
+              placeholder="Buscar lançamento, conta ou observação..."
               value={busca}
-              onInput={(e) => setBusca(e.currentTarget.value)}
+              onInput={(e) => setBusca((e.currentTarget as HTMLInputElement).value)}
               style="min-height:36px;font-size:var(--fs-xs);"
             />
           </div>
-          <div class="muted" style="font-size:var(--fs-xs);">
-            {filtrados.length} lançamento{filtrados.length === 1 ? "" : "s"} · Resultado:{" "}
-            <b class={`num ${resultadoRealLiquido >= 0 ? "tone-in" : "tone-out"}`}>
-              {signed(resultadoRealLiquido)}
-            </b>
+
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;">
+            {/* Seletor de Natureza com badges de contagem */}
+            <div class="tabs tabs--sm" style="margin:0;">
+              <button
+                type="button"
+                class={`tab ${natFiltro === "todas" ? "is-active" : ""}`}
+                style="padding:4px 8px;font-size:var(--fs-xs);"
+                onClick={() => setNatFiltro("todas")}
+              >
+                Todas ({filtrados.length})
+              </button>
+              {NATUREZAS.map((n) => {
+                const meta = NATURE_META[n];
+                const countNat = ls.filter((l) => {
+                  const c = contaMap.get(l.contaId);
+                  if (!c || c.natureza !== n) return false;
+                  if (mesFiltro !== "todos" && l.mes !== mesFiltro) return false;
+                  return true;
+                }).length;
+                return (
+                  <button
+                    type="button"
+                    key={n}
+                    class={`tab ${natFiltro === n ? "is-active" : ""}`}
+                    style="padding:4px 8px;font-size:var(--fs-xs);"
+                    onClick={() => setNatFiltro(n)}
+                  >
+                    <i class="dot" style={`background:var(--${meta.tone});`} />
+                    <span>{meta.label}</span>
+                    <span class="muted" style="font-size:10px;">({countNat})</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Alternância Extrato / Tabela */}
+            <div class="tabs tabs--sm" style="margin:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:2px;">
+              <button
+                type="button"
+                class={`tab ${modoVisao === "extrato" ? "is-active" : ""}`}
+                style="padding:3px 8px;font-size:var(--fs-xs);min-height:26px;"
+                onClick={() => trocarModoVisao("extrato")}
+                title="Visualização em Extrato Diário"
+              >
+                <Icon name="list" style="width:12px;height:12px;" />
+                <span>Extrato</span>
+              </button>
+              <button
+                type="button"
+                class={`tab ${modoVisao === "tabela" ? "is-active" : ""}`}
+                style="padding:3px 8px;font-size:var(--fs-xs);min-height:26px;"
+                onClick={() => trocarModoVisao("tabela")}
+                title="Visualização em Tabela Tabular"
+              >
+                <Icon name="matrix" style="width:12px;height:12px;" />
+                <span>Tabela</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -553,124 +811,243 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           <div class="empty" style="padding:var(--sp-6) var(--sp-4);">
             <Icon name="list" />
             <h2>Nenhum lançamento encontrado</h2>
-            <p>Clique em "Novo Lançamento" para registrar uma despesa, receita ou aporte.</p>
+            <p>
+              {pendenciasPeriodo.length > 0
+                ? "Existem contas projetadas aguardando realização no card de pendências acima."
+                : "Clique em 'Novo Lançamento' para registrar uma receita, despesa ou aporte."}
+            </p>
           </div>
-        ) : (
-          <div class="list">
-            {filtrados.map((l) => {
-              const c = contaMap.get(l.contaId);
-              if (!c) return null;
-              const meta = NATURE_META[c.natureza];
-              const [, mm, dd] = l.data.split("-");
-              const sinal = SINAL[c.natureza];
+        ) : modoVisao === "extrato" ? (
+          /* Modo Extrato Agrupado por Data */
+          <div style="padding:0 var(--sp-2) var(--sp-2) var(--sp-2);">
+            {datasOrdenadas.map((dataStr) => {
+              const itensDoDia = gruposPorData.get(dataStr) || [];
+              const saldoDoDia = itensDoDia.reduce((acc, l) => {
+                const c = contaMap.get(l.contaId);
+                return acc + (c ? SINAL[c.natureza] * l.valor : 0);
+              }, 0);
+
               return (
-                <div class="list__item" key={l.id}>
-                  <div class={`list__icon bg-${meta.tone}`}>
-                    <Icon name={meta.icon} />
-                  </div>
-                  <div class="list__body">
-                    <div class="list__title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                      {l.descricao || c.nome}
-                      {l.descricao && <span class="muted" style="font-size:var(--fs-xs);font-weight:normal;">({c.nome})</span>}
-                      {l.vinculoDescricao && (
-                        <span
-                          class="badge"
-                          style="font-size:0.7rem;padding:1px 6px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
-                          title={l.vinculoDescricao}
-                        >
-                          {l.vinculoDescricao.toLowerCase().includes("fórmula") || l.vinculoDescricao.toLowerCase().includes("formula") ? (
-                            <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span>
-                          ) : (
-                            <Icon name="link" style="width:11px;height:11px;" />
-                          )}
-                          <span>{l.vinculoDescricao}</span>
-                        </span>
-                      )}
-                      {l.parcela && l.totalParcelas ? (
-                        <span
-                          class="badge badge--neutral"
-                          style="font-size:0.7rem;padding:1px 6px;"
-                          title={`Parcela ${l.parcela} de ${l.totalParcelas}`}
-                        >
-                          <Icon name="calendar" style="width:12px;height:12px;" /> {l.parcela}/{l.totalParcelas}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div class="list__sub">
-                      {dd}/{mm}/{l.data.split("-")[0]} · {meta.label} · <b style="color:var(--text);">{catMap.get(c.categoriaId) || "Geral"}</b>
-                      {l.obs && <span style="color:var(--text);font-style:italic;"> · Obs: {l.obs}</span>}
-                    </div>
+                <div key={dataStr} class="extrato-grupo">
+                  <div class="extrato-grupo__header">
+                    <span>{formatarDataExtrato(dataStr)}</span>
+                    <span class={`num ${saldoDoDia >= 0 ? "tone-in" : "tone-out"}`}>
+                      {signed(saldoDoDia)}
+                    </span>
                   </div>
 
-                  <div style="display:flex;align-items:center;gap:12px;">
-                    <div class={`list__value num tone-${meta.tone}`}>
-                      {signed(sinal * l.valor)}
-                    </div>
-                    <div style="display:flex;gap:4px;">
-                      <button
-                        type="button"
-                        class="btn btn--ghost btn--icon"
-                        style="min-height:28px;width:28px;"
-                        onClick={() => {
-                          setCatSelecionadaModal(c.categoriaId);
-                          setOrigemValorReal("manual");
-                          setModalLanc({
-                            ...l,
-                            valorCentavos: l.valor,
-                            natureza: c.natureza,
-                          });
-                        }}
-                        title="Editar lançamento"
-                      >
-                        <Icon name="pencil" />
-                      </button>
-                      <button
-                        type="button"
-                        class="btn btn--ghost btn--icon"
-                        style="min-height:28px;width:28px;color:var(--out);"
-                        onClick={async () => {
-                          if (l.recorrenciaId) {
-                            const serie = await lancamentos.byRecorrencia(l.recorrenciaId);
-                            if (serie.length > 1) {
-                              const excluirTodas = await confirmarAcao({
-                                titulo: "Excluir Série Recorrente / Parcelada",
-                                mensagem: `Este lançamento faz parte de uma série com ${serie.length} parcelas registradas (${l.parcela || 1}/${l.totalParcelas || serie.length}). Deseja excluir TODAS as ${serie.length} parcelas da série? (Clique em Cancelar para excluir apenas esta parcela).`,
-                                rotuloConfirmar: `Excluir Todas (${serie.length})`,
-                                rotuloCancelar: "Excluir Apenas Esta",
-                                tipo: "danger",
-                              });
-                              if (excluirTodas) {
-                                for (const item of serie) {
-                                  await lancamentos.remove(item.id);
-                                }
-                                toast.success(`${serie.length} parcelas da série excluídas com sucesso.`);
-                                return;
-                              }
-                            }
-                          }
-                          const ok = await confirmarAcao({
-                            titulo: "Excluir Lançamento",
-                            mensagem: "Deseja excluir este lançamento real? Esta ação é irreversível.",
-                            rotuloConfirmar: "Excluir Lançamento",
-                            tipo: "danger",
-                          });
-                          if (ok) {
-                            await lancamentos.remove(l.id);
-                            toast.success("Lançamento excluído com sucesso.");
-                          }
-                        }}
-                        title="Excluir lançamento"
-                      >
-                        <Icon name="trash" />
-                      </button>
-                    </div>
-                  </div>
+                  {itensDoDia.map((l) => {
+                    const c = contaMap.get(l.contaId);
+                    if (!c) return null;
+                    const meta = NATURE_META[c.natureza];
+                    const sinal = SINAL[c.natureza];
+
+                    return (
+                      <div class="extrato-item" key={l.id}>
+                        <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+                          <div class={`list__icon bg-${meta.tone}`} style="flex-shrink:0;">
+                            <Icon name={meta.icon} />
+                          </div>
+                          <div style="min-width:0;">
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                              <strong style="font-size:var(--fs-sm);color:var(--text);">
+                                {l.descricao || c.nome}
+                              </strong>
+                              {l.descricao && (
+                                <span class="muted" style="font-size:var(--fs-xs);">
+                                  ({c.nome})
+                                </span>
+                              )}
+                              <span class={`badge badge--${meta.tone}`} style="font-size:0.65rem;padding:0 5px;">
+                                {meta.label}
+                              </span>
+                              {l.vinculoDescricao && (
+                                <span
+                                  class="badge"
+                                  style="font-size:0.68rem;padding:0 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
+                                  title={l.vinculoDescricao}
+                                >
+                                  {l.vinculoDescricao.toLowerCase().includes("fórmula") || l.vinculoDescricao.toLowerCase().includes("formula") ? (
+                                    <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span>
+                                  ) : (
+                                    <Icon name="link" style="width:10px;height:10px;" />
+                                  )}
+                                  <span>{l.vinculoDescricao}</span>
+                                </span>
+                              )}
+                              {l.parcela && l.totalParcelas ? (
+                                <span
+                                  class="badge badge--neutral"
+                                  style="font-size:0.68rem;padding:0 5px;"
+                                  title={`Parcela ${l.parcela} de ${l.totalParcelas}`}
+                                >
+                                  <Icon name="calendar" style="width:11px;height:11px;" /> {l.parcela}/{l.totalParcelas}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:2px;">
+                              <span>Categoria: <b>{catMap.get(c.categoriaId) || "Geral"}</b></span>
+                              {l.obs && (
+                                <span style="font-style:italic;color:var(--text);margin-left:6px;">
+                                  · Obs: {l.obs}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style="display:flex;align-items:center;gap:12px;margin-left:auto;">
+                          <div class={`num tone-${meta.tone}`} style="font-weight:800;font-size:var(--fs-md);white-space:nowrap;">
+                            {signed(sinal * l.valor)}
+                          </div>
+
+                          <div style="display:flex;align-items:center;gap:4px;">
+                            <button
+                              type="button"
+                              class="btn btn--ghost btn--icon"
+                              style="min-height:28px;width:28px;"
+                              onClick={() => {
+                                setCatSelecionadaModal(c.categoriaId);
+                                setOrigemValorReal("manual");
+                                setModalLanc({
+                                  ...l,
+                                  valorCentavos: l.valor,
+                                  natureza: c.natureza,
+                                });
+                              }}
+                              title="Editar lançamento"
+                            >
+                              <Icon name="pencil" />
+                            </button>
+                            <button
+                              type="button"
+                              class="btn btn--ghost btn--icon"
+                              style="min-height:28px;width:28px;color:var(--out);"
+                              onClick={() => excluirLancamento(l)}
+                              title="Excluir lançamento"
+                            >
+                              <Icon name="trash" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
           </div>
+        ) : (
+          /* Modo Tabela Tabular */
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="min-width:90px;text-align:left;">Data</th>
+                  <th style="min-width:180px;text-align:left;">Conta / Categoria</th>
+                  <th style="text-align:center;">Natureza</th>
+                  <th style="text-align:left;min-width:200px;">Descrição / Observação</th>
+                  <th style="text-align:right;">Valor</th>
+                  <th style="text-align:center;min-width:80px;">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtrados.map((l) => {
+                  const c = contaMap.get(l.contaId);
+                  if (!c) return null;
+                  const meta = NATURE_META[c.natureza];
+                  const [a, m, d] = l.data.split("-");
+                  const sinal = SINAL[c.natureza];
+
+                  return (
+                    <tr key={l.id}>
+                      <td style="text-align:left;font-variant-numeric:tabular-nums;font-weight:600;">
+                        {d}/{m}/{a}
+                      </td>
+                      <td style="text-align:left;">
+                        <strong>{c.nome}</strong>
+                        <span class="muted" style="display:block;font-size:0.7rem;">
+                          {catMap.get(c.categoriaId) || "Geral"}
+                        </span>
+                      </td>
+                      <td style="text-align:center;">
+                        <span class={`badge badge--${meta.tone}`}>{meta.label}</span>
+                      </td>
+                      <td style="text-align:left;">
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                          <span>{l.descricao || "—"}</span>
+                          {l.vinculoDescricao && (
+                            <span class="badge" style="font-size:0.65rem;padding:0 4px;background:var(--primary-soft);color:var(--primary);">
+                              {l.vinculoDescricao}
+                            </span>
+                          )}
+                          {l.parcela && l.totalParcelas ? (
+                            <span class="badge badge--neutral" style="font-size:0.65rem;padding:0 4px;">
+                              {l.parcela}/{l.totalParcelas}
+                            </span>
+                          ) : null}
+                        </div>
+                        {l.obs && (
+                          <div class="muted" style="font-size:0.7rem;font-style:italic;">
+                            Obs: {l.obs}
+                          </div>
+                        )}
+                      </td>
+                      <td class={`num tone-${meta.tone}`} style="font-weight:700;text-align:right;">
+                        {signed(sinal * l.valor)}
+                      </td>
+                      <td style="text-align:center;">
+                        <div style="display:inline-flex;gap:4px;">
+                          <button
+                            type="button"
+                            class="btn btn--ghost btn--icon"
+                            style="min-height:26px;width:26px;"
+                            onClick={() => {
+                              setCatSelecionadaModal(c.categoriaId);
+                              setOrigemValorReal("manual");
+                              setModalLanc({
+                                ...l,
+                                valorCentavos: l.valor,
+                                natureza: c.natureza,
+                              });
+                            }}
+                            title="Editar lançamento"
+                          >
+                            <Icon name="pencil" style="width:13px;height:13px;" />
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn--ghost btn--icon"
+                            style="min-height:26px;width:26px;color:var(--out);"
+                            onClick={() => excluirLancamento(l)}
+                            title="Excluir lançamento"
+                          >
+                            <Icon name="trash" style="width:13px;height:13px;" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
+
+      {/* Modal para Ignorar Projeção com Opção de Somar ao Próximo Mês */}
+      {modalIgnorarItem && (
+        <ModalIgnorarProjecao
+          isOpen={modalIgnorarItem !== null}
+          onClose={() => setModalIgnorarItem(null)}
+          contaNome={contaMap.get(modalIgnorarItem.contaId)?.nome || "Conta"}
+          mesNome={MONTHS[modalIgnorarItem.mes]}
+          valorCentavos={modalIgnorarItem.valorPendente}
+          mesProximoNome={modalIgnorarItem.mes < 11 ? MONTHS[modalIgnorarItem.mes + 1] : undefined}
+          onConfirmar={confirmarIgnorarProjecao}
+        />
+      )}
 
       {/* Modal / Subtela de Criação e Edição de Lançamento */}
       <Modal
@@ -863,15 +1240,15 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                   </div>
                 )}
 
-                {/* Sugestão de Vínculo/Fórmula se a conta tiver regra cadastrada */}
-                {sugestaoVinculo && sugestaoVinculo.valorCentavos > 0 && (
+                {/* Sugestão de Vínculo/Fórmula somente se a base real for maior que zero e diferente do valor atual */}
+                {sugestaoVinculo && sugestaoVinculo.valorCentavos > 0 && sugestaoVinculo.valorCentavos !== modalLanc?.valorCentavos && (
                   <div
                     style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding:6px 10px;background:var(--primary-soft);border-radius:var(--r-sm);border:1px solid color-mix(in srgb, var(--primary) 25%, transparent);font-size:var(--fs-xs);"
                   >
                     <div style="display:flex;align-items:center;gap:6px;color:var(--primary);font-weight:600;">
                       <Icon name="link" style="width:13px;height:13px;" />
-                      <span>Sugestão da regra: {money(sugestaoVinculo.valorCentavos)}</span>
-                      <span class="muted" style="font-size:11px;">({sugestaoVinculo.detalhe})</span>
+                      <span>Recalcular pelo Real: {money(sugestaoVinculo.valorCentavos)}</span>
+                      <span class="muted" style="font-size:11px;">({sugestaoVinculo.detalhe} já lançados no mês)</span>
                     </div>
                     <button
                       type="button"
@@ -879,7 +1256,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                       style="padding:2px 8px;min-height:24px;font-size:11px;"
                       onClick={() => setModalLanc({ ...modalLanc, valorCentavos: sugestaoVinculo.valorCentavos })}
                     >
-                      Aplicar
+                      Aplicar Real
                     </button>
                   </div>
                 )}

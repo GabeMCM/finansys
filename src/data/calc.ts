@@ -141,3 +141,117 @@ export function calcularBaseLancamentos(
     .filter((l) => contasIds.has(l.contaId) && l.mes === mes)
     .reduce((sum, l) => sum + l.valor, 0);
 }
+
+export interface ProjecaoPendente {
+  contaId: string;
+  mes: number; // 0 a 11
+  valorProjetado: number;
+  valorRealizado: number;
+  valorPendente: number;
+  status: "vencida" | "a_vencer";
+  diasAtraso?: number;
+  diaEstimado: number;
+  dataSugerida: string;
+}
+
+/**
+ * Calcula quais contas projetadas ainda não foram lançadas no real,
+ * identificando as que já estão vencidas/atrasadas vs. a vencer.
+ */
+export function calcularPendencias(
+  projecoes: Projecao[],
+  lancamentos: Lancamento[],
+  anoNum: number,
+  mesFiltro: number | "todos" = "todos",
+  dataReferencia: Date = new Date(),
+): ProjecaoPendente[] {
+  const anoAtual = dataReferencia.getFullYear();
+  const mesAtual = dataReferencia.getMonth();
+  const diaAtual = dataReferencia.getDate();
+
+  // Histórico de dias de lançamento por conta para inferir o vencimento estimado
+  const diasPorConta = new Map<string, number>();
+  for (const l of lancamentos) {
+    if (l.data && !diasPorConta.has(l.contaId)) {
+      const d = parseInt(l.data.split("-")[2], 10);
+      if (!isNaN(d) && d >= 1 && d <= 31) {
+        diasPorConta.set(l.contaId, d);
+      }
+    }
+  }
+
+  // Agrupa lançamentos por [contaId_mes]
+  const realizadosMap = new Map<string, number>();
+  for (const l of lancamentos) {
+    const key = `${l.contaId}_${l.mes}`;
+    realizadosMap.set(key, (realizadosMap.get(key) || 0) + l.valor);
+  }
+
+  const pendencias: ProjecaoPendente[] = [];
+
+  for (const p of projecoes) {
+    if (p.valor <= 0) continue;
+    if (mesFiltro !== "todos" && p.mes !== mesFiltro) continue;
+
+    const key = `${p.contaId}_${p.mes}`;
+    const realizado = realizadosMap.get(key) || 0;
+    if (realizado >= p.valor) continue; // Já 100% quitada/lançada
+
+    const valorPendente = p.valor - realizado;
+    const diaEstimado = diasPorConta.get(p.contaId) || 10;
+    const maxDiasNoMes = new Date(anoNum, p.mes + 1, 0).getDate();
+    const diaValido = Math.min(diaEstimado, maxDiasNoMes);
+    const dataSugerida = `${anoNum}-${String(p.mes + 1).padStart(2, "0")}-${String(diaValido).padStart(2, "0")}`;
+
+    let status: "vencida" | "a_vencer" = "a_vencer";
+    let diasAtraso: number | undefined;
+
+    if (anoNum < anoAtual) {
+      status = "vencida";
+      diasAtraso = 30;
+    } else if (anoNum > anoAtual) {
+      status = "a_vencer";
+    } else {
+      // Mesmo ano
+      if (p.mes < mesAtual) {
+        status = "vencida";
+        const dataFimMes = new Date(anoNum, p.mes + 1, 0);
+        const diffMs = dataReferencia.getTime() - dataFimMes.getTime();
+        diasAtraso = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+      } else if (p.mes > mesAtual) {
+        status = "a_vencer";
+      } else {
+        // Mês atual
+        if (diaAtual > diaValido) {
+          status = "vencida";
+          diasAtraso = diaAtual - diaValido;
+        } else {
+          status = "a_vencer";
+        }
+      }
+    }
+
+    pendencias.push({
+      contaId: p.contaId,
+      mes: p.mes,
+      valorProjetado: p.valor,
+      valorRealizado: realizado,
+      valorPendente,
+      status,
+      diasAtraso,
+      diaEstimado: diaValido,
+      dataSugerida,
+    });
+  }
+
+  // Ordena: vencidas primeiro (com mais dias de atraso), depois a vencer por mês
+  return pendencias.sort((a, b) => {
+    if (a.status === "vencida" && b.status !== "vencida") return -1;
+    if (a.status !== "vencida" && b.status === "vencida") return 1;
+    if (a.status === "vencida" && b.status === "vencida") {
+      return (b.diasAtraso || 0) - (a.diasAtraso || 0);
+    }
+    return a.mes - b.mes;
+  });
+}
+

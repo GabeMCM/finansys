@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { calcular, calcularBaseLancamentos, calcularBaseProjecoes, calcularValorVinculado } from "./calc.ts";
+import { calcular, calcularBaseLancamentos, calcularBaseProjecoes, calcularPendencias, calcularValorVinculado } from "./calc.ts";
 import type { Conta, Lancamento, Projecao } from "./types.ts";
 
 const base = { createdAt: 0, updatedAt: 0 };
@@ -69,3 +69,48 @@ Deno.test("calcularBaseProjecoes e calcularBaseLancamentos por conta e por categ
   // Base de lançamentos por categoria
   assertEquals(calcularBaseLancamentos({ tipo: "categoria", origemId: "cat_vendas" }, 3, [l1, l2], contasVendas), 3000_00);
 });
+
+Deno.test("calcularPendencias identifica vencidas e a vencer com precisao", () => {
+  // Projeções:
+  // p1: aluguel mês 8 (setembro) R$ 2.000,00
+  // p2: luz mês 9 (outubro) R$ 300,00 (dia 10)
+  // p3: internet mês 9 (outubro) R$ 200,00 (dia 25)
+  // p4: agua mês 9 (outubro) R$ 100,00 (já lançado 100,00)
+  const ps = [
+    proj("aluguel", 8, 2000_00),
+    proj("luz", 9, 300_00),
+    proj("internet", 9, 200_00),
+    proj("agua", 9, 100_00),
+  ];
+
+  // Lançamentos já existentes (histórico de dias e lançamentos quitados)
+  const ls = [
+    { ...base, id: "l1", anoId: "a", contaId: "luz", mes: 8, valor: 280_00, data: "2026-09-10" },
+    { ...base, id: "l2", anoId: "a", contaId: "internet", mes: 8, valor: 200_00, data: "2026-09-25" },
+    { ...base, id: "l3", anoId: "a", contaId: "agua", mes: 9, valor: 100_00, data: "2026-10-05" }, // agua quitada
+  ];
+
+  // Data de referência: 16 de Outubro de 2026 (mes 9, dia 16)
+  const ref = new Date(2026, 9, 16);
+
+  const pendencias = calcularPendencias(ps, ls, 2026, "todos", ref);
+
+  // Agua não deve constar (já quitada)
+  assertEquals(pendencias.length, 3);
+
+  // Aluguel (mês 8): vencida (mês anterior)
+  const pendAluguel = pendencias.find((p) => p.contaId === "aluguel")!;
+  assertEquals(pendAluguel.status, "vencida");
+  assertEquals(pendAluguel.valorPendente, 2000_00);
+
+  // Luz (mês 9, dia 10): vencida pois dia 16 > 10
+  const pendLuz = pendencias.find((p) => p.contaId === "luz")!;
+  assertEquals(pendLuz.status, "vencida");
+  assertEquals(pendLuz.diasAtraso, 6); // 16 - 10 = 6 dias de atraso
+
+  // Internet (mês 9, dia 25): a vencer pois dia 16 <= 25
+  const pendNet = pendencias.find((p) => p.contaId === "internet")!;
+  assertEquals(pendNet.status, "a_vencer");
+  assertEquals(pendNet.valorPendente, 200_00);
+});
+
