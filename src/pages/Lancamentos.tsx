@@ -4,7 +4,7 @@ import { Modal } from "../components/Modal.tsx";
 import { ModalConfirm, confirmarAcao } from "../components/ModalConfirm.tsx";
 import { toast } from "../components/Toast.tsx";
 import { ContaPicker } from "../components/lancamento/ContaPicker.tsx";
-import { FormSection, Disclosure } from "../components/lancamento/FormSection.tsx";
+import { FormSection, FormBlock, Disclosure } from "../components/lancamento/FormSection.tsx";
 import { MoneyInput } from "../components/lancamento/MoneyInput.tsx";
 import { NaturezaSegmented } from "../components/lancamento/NaturezaSegmented.tsx";
 import { RepeticaoSelector, type TipoRepeticaoReal } from "../components/lancamento/RepeticaoSelector.tsx";
@@ -695,7 +695,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
       >
         <form id="form-lancamento" onSubmit={(e) => { e.preventDefault(); salvarLancamentoInternal(false); }}>
           {/* Seletor de Natureza */}
-          <div style="margin-bottom:var(--sp-2);">
+          <div style="margin-bottom:var(--sp-3);">
             <NaturezaSegmented
               value={natAtualModal}
               readonly={Boolean(modalLanc?.id)}
@@ -713,8 +713,9 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             />
           </div>
 
-          {/* Seção 1: O Quê? (Conta) */}
-          <FormSection num={1} title="O quê? (Conta)">
+          <FormBlock>
+            {/* Seção 1: O Quê? (Conta) */}
+            <FormSection num={1} title="O quê? (Conta)">
             <ContaPicker
               id="lanc-conta"
               natureza={natAtualModal}
@@ -898,8 +899,9 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
               />
             </div>
           </Disclosure>
-        </form>
-      </Modal>
+        </FormBlock>
+      </form>
+    </Modal>
     </>
   );
 }

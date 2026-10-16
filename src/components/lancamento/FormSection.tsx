@@ -24,6 +24,15 @@ export function FormSection({ num, title, action, children, class: extraClass }:
   );
 }
 
+export interface FormBlockProps {
+  children: ComponentChildren;
+  class?: string;
+}
+
+export function FormBlock({ children, class: extraClass }: FormBlockProps) {
+  return <div class={`form-block ${extraClass || ""}`}>{children}</div>;
+}
+
 export interface DisclosureProps {
   title: string;
   open?: boolean;

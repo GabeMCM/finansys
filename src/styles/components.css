@@ -1006,6 +1006,71 @@
   gap: var(--sp-3);
 }
 
+/* ---------- Form Block (Bloco Unificado com Divisórias Sutis) ---------- */
+.form-block {
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+}
+
+.form-block > * {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.form-block > *:first-child,
+.form-block > *:first-child.form-section {
+  border-top-left-radius: calc(var(--r-md) - 1px);
+  border-top-right-radius: calc(var(--r-md) - 1px);
+}
+
+.form-block > *:last-child,
+.form-block > *:last-child.disclosure,
+.form-block > *:last-child.form-section {
+  border-bottom-left-radius: calc(var(--r-md) - 1px);
+  border-bottom-right-radius: calc(var(--r-md) - 1px);
+}
+
+.form-block > * + * {
+  border-top: 1px solid var(--border);
+}
+
+.form-block > .form-section {
+  padding: 14px 16px;
+  gap: var(--sp-3);
+}
+
+.form-block > .disclosure {
+  border: none;
+  border-radius: 0;
+}
+
+.form-block > .disclosure[open] {
+  border-color: transparent;
+}
+
+.form-block > .disclosure .disclosure__summary {
+  padding: 12px 16px;
+  transition: background var(--t-fast);
+}
+
+.form-block > .disclosure .disclosure__summary:hover {
+  background: var(--surface-hover);
+}
+
+.form-block > .disclosure:last-child:not([open]) .disclosure__summary,
+.form-block > .disclosure:last-child[open] .disclosure__body {
+  border-bottom-left-radius: calc(var(--r-md) - 1px);
+  border-bottom-right-radius: calc(var(--r-md) - 1px);
+}
+
+.form-block > .disclosure .disclosure__body {
+  padding: 0 16px 14px 16px;
+}
+
 /* ---------- Segmented Control (Naturezas & Modos) ---------- */
 .segmented {
   display: flex;

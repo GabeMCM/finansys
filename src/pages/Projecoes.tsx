@@ -6,7 +6,7 @@ import { Modal } from "../components/Modal.tsx";
 import { confirmarAcao } from "../components/ModalConfirm.tsx";
 import { toast } from "../components/Toast.tsx";
 import { ContaPicker } from "../components/lancamento/ContaPicker.tsx";
-import { FormSection, Disclosure } from "../components/lancamento/FormSection.tsx";
+import { FormSection, FormBlock, Disclosure } from "../components/lancamento/FormSection.tsx";
 import { MoneyInput } from "../components/lancamento/MoneyInput.tsx";
 import { NaturezaSegmented } from "../components/lancamento/NaturezaSegmented.tsx";
 import { RepeticaoSelector, type ModoDistribuicaoProjecao } from "../components/lancamento/RepeticaoSelector.tsx";
@@ -1344,7 +1344,7 @@ export function Projecoes() {
         >
           <form id="form-nova-projecao" onSubmit={salvarNovaProjecao}>
             {/* Seletor de Natureza */}
-            <div style="margin-bottom:var(--sp-2);">
+            <div style="margin-bottom:var(--sp-3);">
               <NaturezaSegmented
                 value={modalNovaProjecao.natureza}
                 onChange={(novaNat) => {
@@ -1361,8 +1361,9 @@ export function Projecoes() {
               />
             </div>
 
-            {/* Seção 1: O Quê? (Conta) */}
-            <FormSection num={1} title="O quê? (Conta)">
+            <FormBlock>
+              {/* Seção 1: O Quê? (Conta) */}
+              <FormSection num={1} title="O quê? (Conta)">
               <ContaPicker
                 natureza={modalNovaProjecao.natureza}
                 categorias={todasCats}
@@ -1557,8 +1558,9 @@ export function Projecoes() {
                 />
               </div>
             </Disclosure>
-          </form>
-        </Modal>
+          </FormBlock>
+        </form>
+      </Modal>
       )}
 
       {/* Modal Observação Rápida */}
