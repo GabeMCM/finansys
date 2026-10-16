@@ -1327,15 +1327,17 @@ export function Projecoes() {
             />
           }
           footer={
-            <div style="display:flex;align-items:center;justify-content:space-between;width:100%;flex-wrap:gap;gap:8px;">
+            <div class="modal-footer-actions">
               <span class="muted only-desktop" style="font-size:11px;">
                 Pressione <kbd style="padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:3px;font-family:inherit;">Ctrl</kbd> + <kbd style="padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:3px;font-family:inherit;">Enter</kbd> para salvar
               </span>
-              <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-                <button type="button" class="btn btn--ghost" onClick={() => setModalNovaProjecao(null)}>
-                  Cancelar
-                </button>
-                <button type="submit" form="form-nova-projecao" class="btn btn--primary">
+              <div class="modal-footer-actions__right">
+                <div class="modal-footer-actions__secondary-row">
+                  <button type="button" class="btn btn--ghost" onClick={() => setModalNovaProjecao(null)}>
+                    Cancelar
+                  </button>
+                </div>
+                <button type="submit" form="form-nova-projecao" class="btn btn--primary" style="font-weight:700;">
                   Salvar Projeção
                 </button>
               </div>

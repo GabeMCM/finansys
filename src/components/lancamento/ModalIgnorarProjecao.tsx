@@ -44,18 +44,23 @@ export function ModalIgnorarProjecao({
       onClose={onClose}
       size="md"
       footer={
-        <div style="display:flex;justify-content:flex-end;gap:8px;width:100%;">
-          <button type="button" class="btn btn--ghost" onClick={onClose} disabled={salvando}>
-            Cancelar
-          </button>
-          <button
-            type="button"
-            class="btn btn--primary"
-            onClick={handleConfirmar}
-            disabled={salvando}
-          >
-            {salvando ? "Salvando..." : "Confirmar Decisão"}
-          </button>
+        <div class="modal-footer-actions">
+          <div class="modal-footer-actions__right" style="width:100%;">
+            <div class="modal-footer-actions__secondary-row" style="grid-template-columns:1fr 1fr;width:100%;">
+              <button type="button" class="btn btn--ghost" onClick={onClose} disabled={salvando}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                class="btn btn--primary"
+                onClick={handleConfirmar}
+                disabled={salvando}
+                style="font-weight:700;"
+              >
+                {salvando ? "Salvando..." : "Confirmar Decisão"}
+              </button>
+            </div>
+          </div>
         </div>
       }
     >

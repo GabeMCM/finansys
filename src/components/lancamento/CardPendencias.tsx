@@ -41,7 +41,7 @@ export function CardPendencias({
       style="margin-bottom:var(--sp-4);border:1px solid rgba(245, 158, 11, 0.35);background:color-mix(in srgb, #f59e0b 4%, var(--surface));overflow:hidden;"
     >
       <div
-        style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:var(--sp-3) var(--sp-4);cursor:pointer;user-select:none;"
+        class="card-pendencias-header"
         onClick={() => setAberto(!aberto)}
       >
         <div style="display:flex;align-items:center;gap:10px;min-width:0;">
@@ -53,10 +53,10 @@ export function CardPendencias({
             <Icon name={totalVencidas > 0 ? "alertTriangle" : "calendar"} style="width:18px;height:18px;" />
           </div>
 
-          <div>
+          <div style="min-width:0;">
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
               <h2 style="font-size:var(--fs-sm);font-weight:700;margin:0;color:var(--text);">
-                Contas Projetadas Pendentes de Realização ({pendencias.length})
+                Contas Projetadas Pendentes ({pendencias.length})
               </h2>
               {totalVencidas > 0 && (
                 <span
@@ -77,7 +77,7 @@ export function CardPendencias({
         <button
           type="button"
           class="btn btn--ghost btn--icon"
-          style="min-height:28px;width:28px;"
+          style="min-height:28px;width:28px;flex-shrink:0;"
           onClick={(e) => {
             e.stopPropagation();
             setAberto(!aberto);
@@ -93,7 +93,7 @@ export function CardPendencias({
       </div>
 
       {aberto && (
-        <div style="border-top:1px solid rgba(245, 158, 11, 0.2);padding:var(--sp-2) var(--sp-4) var(--sp-3) var(--sp-4);display:flex;flex-direction:column;gap:8px;">
+        <div style="border-top:1px solid rgba(245, 158, 11, 0.2);padding:var(--sp-2) var(--sp-3) var(--sp-3) var(--sp-3);display:flex;flex-direction:column;gap:8px;">
           {pendencias.map((item) => {
             const conta = contaMap.get(item.contaId);
             if (!conta) return null;
@@ -102,53 +102,54 @@ export function CardPendencias({
             const isVencida = item.status === "vencida";
 
             return (
-              <div
-                key={`${item.contaId}_${item.mes}`}
-                style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);flex-wrap:wrap;"
-              >
-                <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                  <i class="dot" style={`background:var(--${meta.tone});flex-shrink:0;`} />
-                  <div style="min-width:0;">
-                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <div key={`${item.contaId}_${item.mes}`} class="card-pendencia-item">
+                <div class="card-pendencia-item__main">
+                  <div class="card-pendencia-item__top-mobile">
+                    <div style="display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;">
+                      <i class="dot" style={`background:var(--${meta.tone});flex-shrink:0;`} />
                       <strong style="font-size:var(--fs-sm);color:var(--text);">{conta.nome}</strong>
-                      <span class="muted" style="font-size:var(--fs-xs);">({catNome})</span>
+                      <span class="muted hide-mobile" style="font-size:var(--fs-xs);">({catNome})</span>
                       <span class={`badge badge--${meta.tone}`} style="font-size:0.65rem;padding:0 5px;">
                         {meta.label}
                       </span>
                     </div>
-
-                    <div style="display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);margin-top:2px;flex-wrap:wrap;">
-                      <span class="muted">Previsto para {MONTHS[item.mes]}:</span>
-                      {isVencida ? (
-                        <span class="badge badge--danger" style="font-size:0.68rem;padding:0 5px;">
-                          {item.diasAtraso ? `Vencida há ${item.diasAtraso} dia${item.diasAtraso > 1 ? "s" : ""}` : "Atrasada"}
-                        </span>
-                      ) : (
-                        <span class="badge badge--warning" style="font-size:0.68rem;padding:0 5px;">
-                          A vencer dia {item.diaEstimado}
-                        </span>
-                      )}
-                      {item.valorRealizado > 0 && (
-                        <span class="muted" style="font-size:0.7rem;">
-                          (Já realizado: {money(item.valorRealizado)})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div style="display:flex;align-items:center;gap:12px;margin-left:auto;">
-                  <div style="text-align:right;">
-                    <div class="num" style="font-weight:800;font-size:var(--fs-md);color:var(--text);">
+                    <div class="num only-mobile" style="font-weight:800;font-size:var(--fs-sm);color:var(--text);white-space:nowrap;">
                       {money(item.valorPendente)}
                     </div>
                   </div>
 
-                  <div style="display:flex;align-items:center;gap:6px;">
+                  <div style="display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);margin-top:2px;flex-wrap:wrap;">
+                    <span class="only-mobile muted" style="font-size:11px;">{catNome} ·</span>
+                    <span class="muted">Previsto {MONTHS[item.mes]}:</span>
+                    {isVencida ? (
+                      <span class="badge badge--danger" style="font-size:0.68rem;padding:0 5px;">
+                        {item.diasAtraso ? `Vencida há ${item.diasAtraso}d` : "Atrasada"}
+                      </span>
+                    ) : (
+                      <span class="badge badge--warning" style="font-size:0.68rem;padding:0 5px;">
+                        A vencer dia {item.diaEstimado}
+                      </span>
+                    )}
+                    {item.valorRealizado > 0 && (
+                      <span class="muted" style="font-size:0.7rem;">
+                        (Pago: {money(item.valorRealizado)})
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div class="card-pendencia-item__aside">
+                  <div class="hide-mobile" style="text-align:right;">
+                    <div class="num" style="font-weight:800;font-size:var(--fs-md);color:var(--text);white-space:nowrap;">
+                      {money(item.valorPendente)}
+                    </div>
+                  </div>
+
+                  <div class="card-pendencia-item__actions">
                     <button
                       type="button"
                       class="btn btn--secondary btn--sm"
-                      style="padding:4px 10px;min-height:28px;height:28px;font-size:var(--fs-xs);color:var(--text-muted);"
+                      style="color:var(--text-muted);"
                       onClick={() => onIgnorar(item)}
                       title="Ignorar esta projeção ou somar ao próximo mês"
                     >
@@ -157,7 +158,6 @@ export function CardPendencias({
                     <button
                       type="button"
                       class="btn btn--primary btn--sm"
-                      style="padding:4px 12px;min-height:28px;height:28px;font-size:var(--fs-xs);"
                       onClick={() => onLancar(item)}
                       title="Lançar agora com valor pré-preenchido"
                     >

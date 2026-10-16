@@ -39,7 +39,7 @@ export function RepeticaoSelector(props: RepeticaoSelectorProps) {
 
     return (
       <div style="display:flex;flex-direction:column;gap:10px;">
-        <div class="segmented">
+        <div class="segmented segmented--3">
           <button
             type="button"
             class={`segmented__item ${tipo === "unico" ? "segmented__item--active" : ""}`}
@@ -269,7 +269,7 @@ export function RepeticaoSelector(props: RepeticaoSelectorProps) {
       {distribuicao === "mensal" && (
         <div>
           <div class="form-label" style="margin-bottom:6px;">Valores Previstos Mês a Mês:</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(110px, 1fr));gap:6px;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(90px, 1fr));gap:6px;">
             {MONTHS.map((m, idx) => (
               <div key={m} style="display:flex;flex-direction:column;gap:2px;">
                 <span style="font-size:0.68rem;font-weight:700;color:var(--text-muted);">{m}</span>

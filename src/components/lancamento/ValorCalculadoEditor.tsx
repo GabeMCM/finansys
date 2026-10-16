@@ -126,7 +126,7 @@ export function ValorCalculadoEditor({
 
       {modoGeral === "simples" ? (
         <div style="display:flex;flex-direction:column;gap:8px;">
-          <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;">
+          <div class="grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:8px;">
             <div>
               <label class="form-label" style="font-size:0.7rem;margin-bottom:2px;">Basear em:</label>
               <div class="tabs tabs--sm" style="margin:0;">
@@ -327,9 +327,9 @@ export function ValorCalculadoEditor({
 
       {/* Rodapé com Resultado e Ação Aplicar se disponível */}
       <div
-        style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:var(--surface-soft);border-radius:var(--r-sm);border:1px solid var(--border);"
+        style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 12px;background:var(--surface-soft);border-radius:var(--r-sm);border:1px solid var(--border);"
       >
-        <div style="font-size:var(--fs-xs);color:var(--text-muted);">
+        <div style="font-size:var(--fs-xs);color:var(--text-muted);min-width:0;">
           Prévia em <b>{MONTHS[mesAtivo]}</b>:{" "}
           <strong style="color:var(--primary);font-size:var(--fs-sm);">
             {money(resultadoMesAtivo.valorCentavos)}
@@ -343,7 +343,7 @@ export function ValorCalculadoEditor({
           <button
             type="button"
             class="btn btn--primary btn--sm"
-            style="font-size:var(--fs-xs);min-height:28px;padding:3px 12px;"
+            style="font-size:var(--fs-xs);min-height:32px;padding:3px 12px;margin-left:auto;"
             disabled={resultadoMesAtivo.valorCentavos <= 0}
             onClick={() => onAplicar(resultadoMesAtivo.valorCentavos)}
           >

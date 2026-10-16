@@ -734,8 +734,8 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
 
       {/* Barra de Ferramentas e Extrato / Tabela */}
       <section class="card">
-        <div class="card__head" style="flex-wrap:wrap;gap:12px;">
-          <div style="flex:1;min-width:240px;max-width:360px;">
+        <div class="card__head lancamentos-toolbar">
+          <div class="lancamentos-toolbar__search">
             <input
               type="search"
               class="input"
@@ -746,9 +746,9 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             />
           </div>
 
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto;">
+          <div class="lancamentos-toolbar__filters">
             {/* Seletor de Natureza com badges de contagem */}
-            <div class="tabs tabs--sm" style="margin:0;">
+            <div class="tabs tabs--sm lancamentos-toolbar__nat-tabs" style="margin:0;">
               <button
                 type="button"
                 class={`tab ${natFiltro === "todas" ? "is-active" : ""}`}
@@ -782,7 +782,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             </div>
 
             {/* Alternância Extrato / Tabela */}
-            <div class="tabs tabs--sm" style="margin:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:2px;">
+            <div class="tabs tabs--sm lancamentos-toolbar__view-switch" style="margin:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:2px;">
               <button
                 type="button"
                 class={`tab ${modoVisao === "extrato" ? "is-active" : ""}`}
@@ -844,92 +844,95 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
 
                     return (
                       <div class="extrato-item" key={l.id}>
-                        <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+                        <div class="extrato-item__icon">
                           <div class={`list__icon bg-${meta.tone}`} style="flex-shrink:0;">
                             <Icon name={meta.icon} />
                           </div>
-                          <div style="min-width:0;">
-                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                              <strong style="font-size:var(--fs-sm);color:var(--text);">
-                                {l.descricao || c.nome}
-                              </strong>
-                              {l.descricao && (
-                                <span class="muted" style="font-size:var(--fs-xs);">
-                                  ({c.nome})
-                                </span>
-                              )}
-                              <span class={`badge badge--${meta.tone}`} style="font-size:0.65rem;padding:0 5px;">
-                                {meta.label}
-                              </span>
-                              {l.vinculoDescricao && (
-                                <span
-                                  class="badge"
-                                  style="font-size:0.68rem;padding:0 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
-                                  title={l.vinculoDescricao}
-                                >
-                                  {l.vinculoDescricao.toLowerCase().includes("fórmula") || l.vinculoDescricao.toLowerCase().includes("formula") ? (
-                                    <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span>
-                                  ) : (
-                                    <Icon name="link" style="width:10px;height:10px;" />
-                                  )}
-                                  <span>{l.vinculoDescricao}</span>
-                                </span>
-                              )}
-                              {l.parcela && l.totalParcelas ? (
-                                <span
-                                  class="badge badge--neutral"
-                                  style="font-size:0.68rem;padding:0 5px;"
-                                  title={`Parcela ${l.parcela} de ${l.totalParcelas}`}
-                                >
-                                  <Icon name="calendar" style="width:11px;height:11px;" /> {l.parcela}/{l.totalParcelas}
-                                </span>
-                              ) : null}
-                            </div>
+                        </div>
 
-                            <div style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:2px;">
-                              <span>Categoria: <b>{catMap.get(c.categoriaId) || "Geral"}</b></span>
-                              {l.obs && (
-                                <span style="font-style:italic;color:var(--text);margin-left:6px;">
-                                  · Obs: {l.obs}
-                                </span>
-                              )}
-                            </div>
+                        <div class="extrato-item__info">
+                          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <strong style="font-size:var(--fs-sm);color:var(--text);">
+                              {l.descricao || c.nome}
+                            </strong>
+                            {l.descricao && (
+                              <span class="muted" style="font-size:var(--fs-xs);">
+                                ({c.nome})
+                              </span>
+                            )}
+                            <span class={`badge badge--${meta.tone}`} style="font-size:0.65rem;padding:0 5px;">
+                              {meta.label}
+                            </span>
+                            {l.vinculoDescricao && (
+                              <span
+                                class="badge"
+                                style="font-size:0.68rem;padding:0 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
+                                title={l.vinculoDescricao}
+                              >
+                                {l.vinculoDescricao.toLowerCase().includes("fórmula") || l.vinculoDescricao.toLowerCase().includes("formula") ? (
+                                  <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span>
+                                ) : (
+                                  <Icon name="link" style="width:10px;height:10px;" />
+                                )}
+                                <span>{l.vinculoDescricao}</span>
+                              </span>
+                            )}
+                            {l.parcela && l.totalParcelas ? (
+                              <span
+                                class="badge badge--neutral"
+                                style="font-size:0.68rem;padding:0 5px;"
+                                title={`Parcela ${l.parcela} de ${l.totalParcelas}`}
+                              >
+                                <Icon name="calendar" style="width:11px;height:11px;" /> {l.parcela}/{l.totalParcelas}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
 
-                        <div style="display:flex;align-items:center;gap:12px;margin-left:auto;">
+                        <div class="extrato-item__val">
                           <div class={`num tone-${meta.tone}`} style="font-weight:800;font-size:var(--fs-md);white-space:nowrap;">
                             {signed(sinal * l.valor)}
                           </div>
+                        </div>
 
-                          <div style="display:flex;align-items:center;gap:4px;">
-                            <button
-                              type="button"
-                              class="btn btn--ghost btn--icon"
-                              style="min-height:28px;width:28px;"
-                              onClick={() => {
-                                setCatSelecionadaModal(c.categoriaId);
-                                setOrigemValorReal("manual");
-                                setModalLanc({
-                                  ...l,
-                                  valorCentavos: l.valor,
-                                  natureza: c.natureza,
-                                });
-                              }}
-                              title="Editar lançamento"
-                            >
-                              <Icon name="pencil" />
-                            </button>
-                            <button
-                              type="button"
-                              class="btn btn--ghost btn--icon"
-                              style="min-height:28px;width:28px;color:var(--out);"
-                              onClick={() => excluirLancamento(l)}
-                              title="Excluir lançamento"
-                            >
-                              <Icon name="trash" />
-                            </button>
+                        <div class="extrato-item__meta">
+                          <div style="font-size:var(--fs-xs);color:var(--text-muted);margin-top:2px;">
+                            <span>Categoria: <b>{catMap.get(c.categoriaId) || "Geral"}</b></span>
+                            {l.obs && (
+                              <span style="font-style:italic;color:var(--text);margin-left:6px;">
+                                · Obs: {l.obs}
+                              </span>
+                            )}
                           </div>
+                        </div>
+
+                        <div class="extrato-item__actions">
+                          <button
+                            type="button"
+                            class="btn btn--ghost btn--icon"
+                            style="min-height:28px;width:28px;"
+                            onClick={() => {
+                              setCatSelecionadaModal(c.categoriaId);
+                              setOrigemValorReal("manual");
+                              setModalLanc({
+                                ...l,
+                                valorCentavos: l.valor,
+                                natureza: c.natureza,
+                              });
+                            }}
+                            title="Editar lançamento"
+                          >
+                            <Icon name="pencil" />
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn--ghost btn--icon"
+                            style="min-height:28px;width:28px;color:var(--out);"
+                            onClick={() => excluirLancamento(l)}
+                            title="Excluir lançamento"
+                          >
+                            <Icon name="trash" />
+                          </button>
                         </div>
                       </div>
                     );
@@ -1082,24 +1085,26 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           ) : undefined
         }
         footer={
-          <div style="display:flex;align-items:center;justify-content:space-between;width:100%;flex-wrap:wrap;gap:8px;">
+          <div class="modal-footer-actions">
             <span class="muted only-desktop" style="font-size:11px;">
               Pressione <kbd style="padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:3px;font-family:inherit;">Ctrl</kbd> + <kbd style="padding:1px 5px;background:var(--surface);border:1px solid var(--border);border-radius:3px;font-family:inherit;">Enter</kbd> para salvar
             </span>
-            <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-              <button type="button" class="btn btn--ghost" onClick={() => setModalLanc(null)}>
-                Cancelar
-              </button>
-              {!modalLanc?.id && (
-                <button
-                  type="button"
-                  class="btn btn--secondary"
-                  onClick={() => salvarLancamentoInternal(true)}
-                >
-                  Salvar e Criar Outro
+            <div class="modal-footer-actions__right">
+              <div class="modal-footer-actions__secondary-row">
+                <button type="button" class="btn btn--ghost" onClick={() => setModalLanc(null)}>
+                  Cancelar
                 </button>
-              )}
-              <button type="submit" form="form-lancamento" class="btn btn--primary">
+                {!modalLanc?.id && (
+                  <button
+                    type="button"
+                    class="btn btn--secondary"
+                    onClick={() => salvarLancamentoInternal(true)}
+                  >
+                    Salvar e Outro
+                  </button>
+                )}
+              </div>
+              <button type="submit" form="form-lancamento" class="btn btn--primary" style="font-weight:700;">
                 {modalLanc?.id ? "Salvar Alterações" : "Salvar Lançamento"}
               </button>
             </div>

@@ -278,7 +278,7 @@ export function Relatorios() {
           <p>Demonstrativo Projetado × Real por período personalizado</p>
         </div>
 
-        <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap;">
+        <div class="relatorios-header-actions" style="display:flex;gap:var(--sp-2);flex-wrap:wrap;">
           <button type="button" class="btn btn--secondary" onClick={exportarCSV} title="Exportar tabela para CSV/Excel">
             <Icon name="download" /> Exportar CSV
           </button>
