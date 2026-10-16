@@ -69,6 +69,8 @@ export interface Projecao extends Base {
   valor: number;
   obs?: string;
   vinculoOrigemId?: string;
+  parcela?: number;
+  totalParcelas?: number;
 }
 
 export interface Lancamento extends Base {

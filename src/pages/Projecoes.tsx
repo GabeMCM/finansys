@@ -22,8 +22,12 @@ interface ModalNovaProjecaoState {
   modoConta: "nova" | "existente";
   contaId: string;
   novaContaNome: string;
-  modoValor: "fixo" | "especifico" | "mensal" | "vinculado";
+  modoValor: "fixo" | "parcelado" | "especifico" | "mensal" | "vinculado";
   valorFixo: number | string;
+  parcelaMesInicio: number;
+  parcelaQtd: number;
+  parcelaValorTotalOuUnitario: number | string;
+  parcelaDividirValor: boolean;
   mesEspecifico: number;
   valorEspecifico: number | string;
   valoresMensais: (number | string)[];
@@ -108,13 +112,19 @@ export function Projecoes() {
   const cats = todasCats.filter((c) => c.natureza === nat);
 
   // Mapa de projeções: contaId + "_" + mes -> Projecao
-  const pMap = new Map<string, { id?: string; valor: number; obs?: string }>();
+  const pMap = new Map<string, { id?: string; valor: number; obs?: string; parcela?: number; totalParcelas?: number }>();
   for (const p of ps) {
-    pMap.set(`${p.contaId}_${p.mes}`, { id: p.id, valor: p.valor, obs: p.obs });
+    pMap.set(`${p.contaId}_${p.mes}`, {
+      id: p.id,
+      valor: p.valor,
+      obs: p.obs,
+      parcela: p.parcela,
+      totalParcelas: p.totalParcelas,
+    });
   }
 
   const getProj = (contaId: string, mes: number) => {
-    return pMap.get(`${contaId}_${mes}`) || { valor: 0 };
+    return pMap.get(`${contaId}_${mes}`) || { valor: 0, obs: "", parcela: undefined, totalParcelas: undefined };
   };
 
   const recalcularDependentes = async (meses: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) => {
@@ -282,7 +292,12 @@ export function Projecoes() {
   };
 
   // Abrir modal de inclusão de nova projeção
-  const abrirNovaProjecao = (categoriaIdPadrao?: string, naturezaPadrao?: Natureza) => {
+  const abrirNovaProjecao = (
+    categoriaIdPadrao?: string,
+    naturezaPadrao?: Natureza,
+    contaIdPadrao?: string,
+    modoValorPadrao?: "fixo" | "parcelado" | "especifico" | "mensal" | "vinculado"
+  ) => {
     const natEscolhida = naturezaPadrao || nat;
     const catsDestaNat = todasCats.filter((c) => c.natureza === natEscolhida);
     const catId = categoriaIdPadrao || catsDestaNat[0]?.id || "";
@@ -294,12 +309,16 @@ export function Projecoes() {
       categoriaId: catId,
       novaCategoriaNome: "",
       criandoNovaCat: catsDestaNat.length === 0,
-      modoConta: contasDestaCat.length > 0 ? "nova" : "nova",
-      contaId: contasDestaCat[0]?.id || "",
+      modoConta: contaIdPadrao ? "existente" : "nova",
+      contaId: contaIdPadrao || contasDestaCat[0]?.id || "",
       novaContaNome: "",
-      modoValor: "fixo",
+      modoValor: modoValorPadrao || "fixo",
       valorFixo: "",
-      mesEspecifico: new Date().getMonth(),
+      parcelaMesInicio: mesAtivo,
+      parcelaQtd: 12,
+      parcelaValorTotalOuUnitario: "",
+      parcelaDividirValor: true,
+      mesEspecifico: mesAtivo,
       valorEspecifico: "",
       valoresMensais: Array(12).fill(""),
       obs: "",
@@ -362,6 +381,56 @@ export function Projecoes() {
       for (let m = 0; m < 12; m++) {
         await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
       }
+    } else if (modalNovaProjecao.modoValor === "parcelado") {
+      const totalParcelas = Math.max(2, Math.min(60, Number(modalNovaProjecao.parcelaQtd) || 2));
+      const mesInicio = Math.max(0, Math.min(11, Number(modalNovaProjecao.parcelaMesInicio) || 0));
+      const centavosEntrada = Math.round(Number(modalNovaProjecao.parcelaValorTotalOuUnitario || 0) * 100);
+
+      if (centavosEntrada <= 0) {
+        toast.warn("Informe um valor válido para o parcelamento.");
+        return;
+      }
+
+      const dividir = modalNovaProjecao.parcelaDividirValor;
+      const valorPorParcela = dividir ? Math.floor(centavosEntrada / totalParcelas) : centavosEntrada;
+      const resto = dividir ? centavosEntrada - (valorPorParcela * totalParcelas) : 0;
+
+      // Se for nova conta, inicializa os 12 meses do ano atual com 0
+      if (modalNovaProjecao.modoConta === "nova") {
+        for (let m = 0; m < 12; m++) {
+          await projecoes.set(ano.id, targetContaId, m, 0);
+        }
+      }
+
+      for (let i = 1; i <= totalParcelas; i++) {
+        const valorParcela = i === 1 ? valorPorParcela + resto : valorPorParcela;
+        const mesTotal = mesInicio + (i - 1);
+        const targetYear = anoNum + Math.floor(mesTotal / 12);
+        const targetMonth = mesTotal % 12;
+
+        let anoAlvoId = ano.id;
+        if (targetYear !== anoNum) {
+          let anoTarget = await anos.find(empId, targetYear);
+          if (!anoTarget) {
+            anoTarget = await anos.create({ empresaId: empId, ano: targetYear, bancaInicial: 0 });
+          }
+          anoAlvoId = anoTarget.id;
+        }
+
+        const obsParcela = obsTexto
+          ? `Parcela ${i}/${totalParcelas} - ${obsTexto}`
+          : `Parcela ${i}/${totalParcelas}`;
+
+        await projecoes.set(
+          anoAlvoId,
+          targetContaId,
+          targetMonth,
+          valorParcela,
+          obsParcela,
+          undefined,
+          { parcela: i, totalParcelas }
+        );
+      }
     } else if (modalNovaProjecao.modoValor === "especifico") {
       const centavos = Math.round(Number(modalNovaProjecao.valorEspecifico || 0) * 100);
       for (let m = 0; m < 12; m++) {
@@ -421,7 +490,11 @@ export function Projecoes() {
       setNat(modalNovaProjecao.natureza);
     }
 
-    toast.success("Projeção e conta registradas com sucesso!");
+    if (modalNovaProjecao.modoValor === "parcelado") {
+      toast.success(`${modalNovaProjecao.parcelaQtd} parcelas projetadas com sucesso!`);
+    } else {
+      toast.success("Projeção e conta registradas com sucesso!");
+    }
     setModalNovaProjecao(null);
   };
 
@@ -868,25 +941,36 @@ export function Projecoes() {
                                   const p = getProj(c.id, m);
                                   const isMesAtual = m === new Date().getMonth();
                                   return (
-                                    <td key={m} class={isMesAtual ? "is-current-month" : ""}>
-                                      <input
-                                        type="number"
-                                        step="0.01"
-                                        inputMode="decimal"
-                                        class={`input-cell ${p.valor > 0 ? "has-val" : ""}`}
-                                        value={p.valor ? (p.valor / 100).toFixed(2) : ""}
-                                        placeholder="0,00"
-                                        onFocus={(e) => e.currentTarget.select()}
-                                        onBlur={(e) => {
-                                          const val = parseFloat(e.currentTarget.value) || 0;
-                                          if (val !== p.valor / 100) atualizarValor(c.id, m, val);
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            e.currentTarget.blur();
-                                          }
-                                        }}
-                                      />
+                                    <td key={m} class={isMesAtual ? "is-current-month" : ""} style="position:relative;">
+                                      <div style="position:relative;display:inline-block;">
+                                        <input
+                                          type="number"
+                                          step="0.01"
+                                          inputMode="decimal"
+                                          class={`input-cell ${p.valor > 0 ? "has-val" : ""}`}
+                                          value={p.valor ? (p.valor / 100).toFixed(2) : ""}
+                                          placeholder="0,00"
+                                          title={p.obs || (p.parcela && p.totalParcelas ? `Parcela ${p.parcela} de ${p.totalParcelas}` : undefined)}
+                                          onFocus={(e) => e.currentTarget.select()}
+                                          onBlur={(e) => {
+                                            const val = parseFloat(e.currentTarget.value) || 0;
+                                            if (val !== p.valor / 100) atualizarValor(c.id, m, val);
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.currentTarget.blur();
+                                            }
+                                          }}
+                                        />
+                                        {p.parcela && p.totalParcelas && (
+                                          <span
+                                            style="position:absolute;top:-4px;right:-2px;font-size:9px;line-height:1;padding:1px 3px;border-radius:3px;background:var(--primary);color:#fff;pointer-events:none;font-weight:700;"
+                                            title={`Parcela ${p.parcela} de ${p.totalParcelas}`}
+                                          >
+                                            {p.parcela}/{p.totalParcelas}
+                                          </span>
+                                        )}
+                                      </div>
                                     </td>
                                   );
                                 })}
@@ -908,6 +992,15 @@ export function Projecoes() {
                                         <Icon name="refresh" style="width:12px;height:12px;" />
                                       </button>
                                     )}
+                                    <button
+                                      type="button"
+                                      class="btn btn--ghost btn--icon"
+                                      style="min-height:24px;width:24px;"
+                                      onClick={() => abrirNovaProjecao(c.categoriaId, c.natureza, c.id, "parcelado")}
+                                      title="Lançar projeção de parcelamento nesta conta"
+                                    >
+                                      <Icon name="calendar" style="width:12px;height:12px;" />
+                                    </button>
                                     <button
                                       type="button"
                                       class="btn btn--ghost btn--icon"
@@ -1079,8 +1172,17 @@ export function Projecoes() {
                               style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);"
                             >
                               <div style="flex:1;min-width:0;">
-                                <div style="font-weight:600;font-size:var(--fs-sm);display:flex;align-items:center;gap:6px;">
+                                <div style="font-weight:600;font-size:var(--fs-sm);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                                   <span>{c.nome}</span>
+                                  {p.parcela && p.totalParcelas && (
+                                    <span
+                                      class="badge"
+                                      style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
+                                      title={`Parcela ${p.parcela} de ${p.totalParcelas}`}
+                                    >
+                                      <Icon name="calendar" style="width:10px;height:10px;" /> {p.parcela}/{p.totalParcelas}
+                                    </span>
+                                  )}
                                   {c.vinculo && (
                                     <span
                                       class="badge"
@@ -1144,6 +1246,16 @@ export function Projecoes() {
                                     <Icon name="refresh" />
                                   </button>
                                 )}
+
+                                <button
+                                  type="button"
+                                  class="btn btn--ghost btn--icon"
+                                  style="min-height:36px;width:36px;"
+                                  onClick={() => abrirNovaProjecao(c.categoriaId, c.natureza, c.id, "parcelado")}
+                                  title="Lançar projeção de parcelamento nesta conta"
+                                >
+                                  <Icon name="calendar" />
+                                </button>
 
                                 <button
                                   type="button"
@@ -1375,6 +1487,13 @@ export function Projecoes() {
                 </button>
                 <button
                   type="button"
+                  class={`tab ${modalNovaProjecao.modoValor === "parcelado" ? "is-active" : ""}`}
+                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "parcelado" })}
+                >
+                  <Icon name="calendar" style="width:13px;height:13px;" /> Parcelado
+                </button>
+                <button
+                  type="button"
                   class={`tab ${modalNovaProjecao.modoValor === "especifico" ? "is-active" : ""}`}
                   onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "especifico" })}
                 >
@@ -1418,6 +1537,112 @@ export function Projecoes() {
                     <b>{money(Math.round(Number(modalNovaProjecao.valorFixo || 0) * 100))}</b> em cada um dos 12 meses (Total anual:{" "}
                     <b>{money(Math.round(Number(modalNovaProjecao.valorFixo || 0) * 100) * 12)}</b>).
                   </div>
+                </div>
+              )}
+
+              {modalNovaProjecao.modoValor === "parcelado" && (
+                <div>
+                  <div class="form-row form-row--2" style="margin-bottom:8px;">
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label">Mês Inicial da 1ª Parcela *</label>
+                      <CustomSelect
+                        value={modalNovaProjecao.parcelaMesInicio}
+                        options={MONTHS.map((m, idx) => ({ value: idx, label: `${m} de ${anoNum}` }))}
+                        onChange={(val) =>
+                          setModalNovaProjecao({ ...modalNovaProjecao, parcelaMesInicio: parseInt(val, 10) })
+                        }
+                      />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label">Nº de Parcelas *</label>
+                      <input
+                        type="number"
+                        min="2"
+                        max="60"
+                        required
+                        class="input"
+                        value={modalNovaProjecao.parcelaQtd}
+                        onInput={(e) =>
+                          setModalNovaProjecao({
+                            ...modalNovaProjecao,
+                            parcelaQtd: Math.max(2, Math.min(60, parseInt(e.currentTarget.value, 10) || 2)),
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div class="form-row form-row--2" style="margin-bottom:8px;align-items:flex-end;">
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label">
+                        {modalNovaProjecao.parcelaDividirValor ? "Valor Total da Compra/Venda (R$) *" : "Valor por Parcela (R$) *"}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        required
+                        class="input"
+                        placeholder="0,00"
+                        value={modalNovaProjecao.parcelaValorTotalOuUnitario}
+                        onInput={(e) =>
+                          setModalNovaProjecao({
+                            ...modalNovaProjecao,
+                            parcelaValorTotalOuUnitario: e.currentTarget.value,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:center;gap:6px;">
+                      <label class="form-label">Distribuição do Valor</label>
+                      <div style="display:flex;gap:12px;align-items:center;font-size:var(--fs-xs);flex-wrap:wrap;min-height:36px;">
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+                          <input
+                            type="radio"
+                            name="proj-dividir-valor"
+                            checked={modalNovaProjecao.parcelaDividirValor}
+                            onChange={() => setModalNovaProjecao({ ...modalNovaProjecao, parcelaDividirValor: true })}
+                          />
+                          Dividir total
+                        </label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+                          <input
+                            type="radio"
+                            name="proj-dividir-valor"
+                            checked={!modalNovaProjecao.parcelaDividirValor}
+                            onChange={() => setModalNovaProjecao({ ...modalNovaProjecao, parcelaDividirValor: false })}
+                          />
+                          Valor por parcela
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Prévia dinâmica das parcelas */}
+                  {(() => {
+                    const centavosEntrada = Math.round(Number(modalNovaProjecao.parcelaValorTotalOuUnitario || 0) * 100);
+                    const qtd = Number(modalNovaProjecao.parcelaQtd) || 2;
+                    const dividir = modalNovaProjecao.parcelaDividirValor;
+                    const valorParcela = dividir ? Math.round(centavosEntrada / qtd) : centavosEntrada;
+                    const totalFinal = dividir ? centavosEntrada : centavosEntrada * qtd;
+                    const mesInicio = Number(modalNovaProjecao.parcelaMesInicio) || 0;
+                    const mesFimTotal = mesInicio + qtd - 1;
+                    const anoFim = anoNum + Math.floor(mesFimTotal / 12);
+                    const mesFim = mesFimTotal % 12;
+
+                    return (
+                      <div class="muted" style="font-size:var(--fs-xs);margin-top:6px;line-height:1.4;">
+                        💡 Serão geradas <b>{qtd} parcelas</b> de <b>~{money(valorParcela)}</b> cada, começando em{" "}
+                        <b>{MONTHS[mesInicio]}/{anoNum}</b> até <b>{MONTHS[mesFim]}/{anoFim}</b> (Total: <b>{money(totalFinal)}</b>).
+                        {anoFim > anoNum && (
+                          <div style="color:var(--primary);margin-top:4px;">
+                            ℹ️ As parcelas que ultrapassarem dezembro serão projetadas automaticamente nos exercícios seguintes ({anoFim}).
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
