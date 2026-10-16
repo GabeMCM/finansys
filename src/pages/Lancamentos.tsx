@@ -4,7 +4,7 @@ import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
 import { ModalConfirm, confirmarAcao } from "../components/ModalConfirm.tsx";
 import { toast } from "../components/Toast.tsx";
-import { anos, categorias, contas, lancamentos } from "../data/repo.ts";
+import { anos, categorias, contas, lancamentos, projecoes } from "../data/repo.ts";
 import { type Conta, type Lancamento, type Natureza, NATUREZAS, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { money, MONTHS, signed } from "../lib/format.ts";
@@ -22,6 +22,11 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   // Modal de lançamento
   const [modalLanc, setModalLanc] = useState<Partial<Lancamento> & { natureza?: Natureza } | null>(null);
 
+  // Estados de repetição e parcelamento
+  const [tipoRepeticao, setTipoRepeticao] = useState<"unico" | "parcelado" | "recorrente">("unico");
+  const [numRepeticoes, setNumRepeticoes] = useState<number>(2);
+  const [dividirValor, setDividirValor] = useState<boolean>(true);
+
   // Estados para criação rápida direta pelo select
   const [catSelecionadaModal, setCatSelecionadaModal] = useState<string>("");
   const [modalCriarCat, setModalCriarCat] = useState<{ nome: string } | null>(null);
@@ -31,12 +36,13 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     if (!empId) return null;
     const ano = await anos.find(empId, anoNum);
     if (!ano) return null;
-    const [cs, ls, cats] = await Promise.all([
+    const [cs, ls, cats, ps] = await Promise.all([
       contas.byEmpresa(empId),
       lancamentos.byAno(ano.id),
       categorias.byEmpresa(empId),
+      projecoes.byAno(ano.id),
     ]);
-    return { ano, cs, ls, cats };
+    return { ano, cs, ls, cats, ps };
   }, [empId, anoNum], null);
 
   useEffect(() => {
@@ -68,7 +74,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     );
   }
 
-  const { ano, cs, ls, cats } = dados;
+  const { ano, cs, ls, cats, ps } = dados;
   const contaMap = new Map<string, Conta>(cs.map((c) => [c.id, c]));
   const catMap = new Map<string, string>(cats.map((c) => [c.id, c.nome]));
 
@@ -80,6 +86,9 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     const primeiraCatId = catsDaNat[0]?.id || "";
     const contasDaCat = cs.filter((c) => c.natureza === nat && c.categoriaId === primeiraCatId && c.ativa);
 
+    setTipoRepeticao("unico");
+    setNumRepeticoes(2);
+    setDividirValor(true);
     setCatSelecionadaModal(primeiraCatId);
     setModalLanc({
       anoId: ano.id,
@@ -116,7 +125,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         obs: modalLanc.obs?.trim() || undefined,
       });
       toast.success("Lançamento atualizado com sucesso!");
-    } else {
+    } else if (tipoRepeticao === "unico") {
       await lancamentos.create({
         anoId: ano.id,
         contaId: modalLanc.contaId,
@@ -127,6 +136,59 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         obs: modalLanc.obs?.trim() || undefined,
       });
       toast.success("Lançamento registrado com sucesso!");
+    } else {
+      // Repetição parcelada ou recorrente
+      const totalRepeticoes = Math.max(2, Math.min(60, Number(numRepeticoes) || 2));
+      const recorrenciaId = crypto.randomUUID();
+      const [anoStr, mStr, diaStr] = modalLanc.data.split("-");
+      const anoBase = parseInt(anoStr, 10);
+      const mesBase = parseInt(mStr, 10) - 1;
+      const diaBase = parseInt(diaStr, 10);
+
+      const valorPorItem = (tipoRepeticao === "parcelado" && dividirValor)
+        ? Math.floor(centavos / totalRepeticoes)
+        : centavos;
+      const resto = (tipoRepeticao === "parcelado" && dividirValor)
+        ? centavos - (valorPorItem * totalRepeticoes)
+        : 0;
+
+      for (let i = 1; i <= totalRepeticoes; i++) {
+        const valorParcela = (i === 1) ? (valorPorItem + resto) : valorPorItem;
+        const mesTotal = mesBase + (i - 1);
+        const targetYear = anoBase + Math.floor(mesTotal / 12);
+        const targetMonth = mesTotal % 12;
+        const maxDias = new Date(targetYear, targetMonth + 1, 0).getDate();
+        const targetDay = Math.min(diaBase, maxDias);
+        const dataFormatada = `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
+
+        let anoAlvoId = ano.id;
+        if (targetYear !== ano.ano) {
+          let anoTarget = await anos.find(empId, targetYear);
+          if (!anoTarget) {
+            anoTarget = await anos.create({ empresaId: empId, ano: targetYear, bancaInicial: 0 });
+          }
+          anoAlvoId = anoTarget.id;
+        }
+
+        await lancamentos.create({
+          anoId: anoAlvoId,
+          contaId: modalLanc.contaId,
+          data: dataFormatada,
+          mes: targetMonth,
+          valor: valorParcela,
+          descricao: modalLanc.descricao?.trim() || "",
+          obs: modalLanc.obs?.trim() || undefined,
+          recorrenciaId,
+          parcela: i,
+          totalParcelas: totalRepeticoes,
+        });
+      }
+
+      if (tipoRepeticao === "parcelado") {
+        toast.success(`${totalRepeticoes} parcelas registradas com sucesso!`);
+      } else {
+        toast.success(`${totalRepeticoes} lançamentos recorrentes gerados!`);
+      }
     }
     setModalLanc(null);
   };
@@ -164,6 +226,28 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   const contaAtualObj = cs.find((c) => c.id === modalLanc?.contaId);
   const catAtualModal = catSelecionadaModal || contaAtualObj?.categoriaId || catsParaModal[0]?.id || "";
   const contasParaModal = cs.filter((c) => c.natureza === natAtualModal && c.categoriaId === catAtualModal && c.ativa);
+
+  // Verificação em tempo real do teto orçamentário da categoria no mês selecionado
+  const mesDataModal = modalLanc?.data
+    ? parseInt(modalLanc.data.split("-")[1], 10) - 1
+    : (mesFiltro !== "todos" ? mesFiltro : new Date().getMonth());
+  const contasDaCatModal = cs.filter((c) => c.categoriaId === catAtualModal);
+  const contaIdsDaCatModal = new Set(contasDaCatModal.map((c) => c.id));
+  const projCatModalMes = (ps || [])
+    .filter((p) => contaIdsDaCatModal.has(p.contaId) && p.mes === mesDataModal)
+    .reduce((acc, p) => acc + p.valor, 0);
+  const realCatModalMes = ls
+    .filter((l) => contaIdsDaCatModal.has(l.contaId) && l.mes === mesDataModal && l.id !== modalLanc?.id)
+    .reduce((acc, l) => acc + l.valor, 0);
+
+  const centavosInputModal = Math.round(Number(modalLanc?.valor || 0) * 100);
+  const valorEfetivoMesLanc = (!modalLanc?.id && tipoRepeticao === "parcelado" && dividirValor && numRepeticoes > 1)
+    ? Math.round(centavosInputModal / numRepeticoes)
+    : centavosInputModal;
+  const totalComLancModal = realCatModalMes + valorEfetivoMesLanc;
+  const pctTetoModal = projCatModalMes > 0 ? Math.round((totalComLancModal / projCatModalMes) * 100) : 0;
+  const excessoTetoModal = totalComLancModal - projCatModalMes;
+  const isNaturezaDespesaModal = natAtualModal === "pagar" || natAtualModal === "saida";
 
   return (
     <>
@@ -279,9 +363,18 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                     <Icon name={meta.icon} />
                   </div>
                   <div class="list__body">
-                    <div class="list__title" style="display:flex;align-items:center;gap:6px;">
+                    <div class="list__title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                       {l.descricao || c.nome}
                       {l.descricao && <span class="muted" style="font-size:var(--fs-xs);font-weight:normal;">({c.nome})</span>}
+                      {l.parcela && l.totalParcelas ? (
+                        <span
+                          class="badge badge--neutral"
+                          style="font-size:0.7rem;padding:1px 6px;"
+                          title={`Parcela ${l.parcela} de ${l.totalParcelas}`}
+                        >
+                          <Icon name="calendar" style="width:12px;height:12px;" /> {l.parcela}/{l.totalParcelas}
+                        </span>
+                      ) : null}
                     </div>
                     <div class="list__sub">
                       {dd}/{mm}/{l.data.split("-")[0]} · {meta.label} · <b style="color:var(--text);">{catMap.get(c.categoriaId) || "Geral"}</b>
@@ -315,6 +408,25 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                         class="btn btn--ghost btn--icon"
                         style="min-height:28px;width:28px;color:var(--out);"
                         onClick={async () => {
+                          if (l.recorrenciaId) {
+                            const serie = await lancamentos.byRecorrencia(l.recorrenciaId);
+                            if (serie.length > 1) {
+                              const excluirTodas = await confirmarAcao({
+                                titulo: "Excluir Série Recorrente / Parcelada",
+                                mensagem: `Este lançamento faz parte de uma série com ${serie.length} parcelas registradas (${l.parcela || 1}/${l.totalParcelas || serie.length}). Deseja excluir TODAS as ${serie.length} parcelas da série? (Clique em Cancelar para excluir apenas esta parcela).`,
+                                rotuloConfirmar: `Excluir Todas (${serie.length})`,
+                                rotuloCancelar: "Excluir Apenas Esta",
+                                tipo: "danger",
+                              });
+                              if (excluirTodas) {
+                                for (const item of serie) {
+                                  await lancamentos.remove(item.id);
+                                }
+                                toast.success(`${serie.length} parcelas da série excluídas com sucesso.`);
+                                return;
+                              }
+                            }
+                          }
                           const ok = await confirmarAcao({
                             titulo: "Excluir Lançamento",
                             mensagem: "Deseja excluir este lançamento real? Esta ação é irreversível.",
@@ -432,6 +544,42 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             </div>
           </div>
 
+          {/* Alerta de Teto Orçamentário em Tempo Real */}
+          {isNaturezaDespesaModal && catAtualModal && projCatModalMes > 0 && (
+            <div
+              style={`padding:10px 14px;border-radius:var(--r-md);margin-bottom:var(--sp-3);font-size:var(--fs-xs);display:flex;align-items:flex-start;gap:10px;${
+                totalComLancModal > projCatModalMes
+                  ? "background:var(--out-soft);color:var(--out);border:1px solid color-mix(in srgb, var(--out) 30%, transparent);"
+                  : pctTetoModal >= 80
+                  ? "background:color-mix(in srgb, var(--warn) 12%, transparent);color:var(--warn);border:1px solid color-mix(in srgb, var(--warn) 30%, transparent);"
+                  : "background:var(--surface-soft);color:var(--text-muted);border:1px solid var(--border);"
+              }`}
+            >
+              <Icon
+                name={totalComLancModal > projCatModalMes ? "alertTriangle" : pctTetoModal >= 80 ? "alertTriangle" : "info"}
+                style="flex:none;margin-top:2px;"
+              />
+              <div>
+                <b>
+                  {totalComLancModal > projCatModalMes
+                    ? `⚠️ Atenção: Teto orçamentário de ${MONTHS[mesDataModal]} excedido!`
+                    : pctTetoModal >= 80
+                    ? `⚡ Alerta de Teto: Limite de ${MONTHS[mesDataModal]} próximo!`
+                    : `Teto Orçamentário de ${MONTHS[mesDataModal]}:`}
+                </b>
+                <div style="margin-top:2px;">
+                  Projetado: <b>{money(projCatModalMes)}</b> · Realizado com este lançamento:{" "}
+                  <b>{money(totalComLancModal)}</b> ({pctTetoModal}% do teto)
+                  {totalComLancModal > projCatModalMes && (
+                    <span style="display:block;margin-top:2px;font-weight:600;">
+                      Ultrapassará em +{money(excessoTetoModal)}!
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div class="form-row form-row--2">
             <div class="form-group">
               <label class="form-label" for="lanc-data">Data de Pagamento/Recebimento *</label>
@@ -459,6 +607,112 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
               />
             </div>
           </div>
+
+          {/* Seletor de Repetição / Parcelamento para novos lançamentos */}
+          {!modalLanc?.id && (
+            <div style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);">
+              <label class="form-label" style="margin-bottom:var(--sp-2);display:flex;align-items:center;gap:6px;">
+                <Icon name="calendar" /> Repetição / Parcelamento
+              </label>
+              <div class="tabs" style="margin-bottom:var(--sp-2);">
+                <button
+                  type="button"
+                  class={`tab ${tipoRepeticao === "unico" ? "is-active" : ""}`}
+                  onClick={() => setTipoRepeticao("unico")}
+                >
+                  Único
+                </button>
+                <button
+                  type="button"
+                  class={`tab ${tipoRepeticao === "parcelado" ? "is-active" : ""}`}
+                  onClick={() => setTipoRepeticao("parcelado")}
+                >
+                  Parcelado
+                </button>
+                <button
+                  type="button"
+                  class={`tab ${tipoRepeticao === "recorrente" ? "is-active" : ""}`}
+                  onClick={() => setTipoRepeticao("recorrente")}
+                >
+                  Fixo Mensal (Recorrente)
+                </button>
+              </div>
+
+              {tipoRepeticao === "parcelado" && (
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+                  <div class="form-row form-row--2" style="align-items:flex-end;">
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label" for="lanc-num-parc">Nº de Parcelas</label>
+                      <input
+                        id="lanc-num-parc"
+                        type="number"
+                        min="2"
+                        max="60"
+                        class="input"
+                        value={numRepeticoes}
+                        onInput={(e) => setNumRepeticoes(Math.max(2, Math.min(60, parseInt(e.currentTarget.value, 10) || 2)))}
+                      />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:center;gap:6px;">
+                      <label class="form-label">Modo de Valor</label>
+                      <div style="display:flex;gap:12px;align-items:center;font-size:var(--fs-xs);flex-wrap:wrap;">
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+                          <input
+                            type="radio"
+                            name="dividir-valor"
+                            checked={dividirValor}
+                            onChange={() => setDividirValor(true)}
+                          />
+                          Dividir total
+                        </label>
+                        <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+                          <input
+                            type="radio"
+                            name="dividir-valor"
+                            checked={!dividirValor}
+                            onChange={() => setDividirValor(false)}
+                          />
+                          Valor por parcela
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="muted" style="font-size:var(--fs-xs);">
+                    💡 {dividirValor
+                      ? `Serão geradas ${numRepeticoes} parcelas de ~${money(Math.round(centavosInputModal / numRepeticoes))} cada (Total: ${money(centavosInputModal)}).`
+                      : `Serão geradas ${numRepeticoes} parcelas de ${money(centavosInputModal)} cada (Total: ${money(centavosInputModal * numRepeticoes)}).`}
+                  </div>
+                </div>
+              )}
+
+              {tipoRepeticao === "recorrente" && (
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px;">
+                  <div class="form-row form-row--2" style="align-items:flex-end;">
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label" for="lanc-num-rec">Repetir por quantos meses?</label>
+                      <input
+                        id="lanc-num-rec"
+                        type="number"
+                        min="2"
+                        max="60"
+                        class="input"
+                        value={numRepeticoes}
+                        onInput={(e) => setNumRepeticoes(Math.max(2, Math.min(60, parseInt(e.currentTarget.value, 10) || 2)))}
+                      />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;display:flex;flex-direction:column;justify-content:center;">
+                      <span class="muted" style="font-size:var(--fs-xs);">
+                        Cada mês terá um lançamento fixo de <b>{money(centavosInputModal)}</b>.
+                      </span>
+                    </div>
+                  </div>
+                  <div class="muted" style="font-size:var(--fs-xs);">
+                    💡 Ideal para assinaturas, aluguéis e custos fixos mensais com vencimento regular.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div class="form-group">
             <label class="form-label" for="lanc-desc">Descrição / Fornecedor / Favorecido</label>

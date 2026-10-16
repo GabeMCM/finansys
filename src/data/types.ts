@@ -66,6 +66,9 @@ export interface Lancamento extends Base {
   valor: number;
   descricao?: string;
   obs?: string;
+  recorrenciaId?: string;
+  parcela?: number;
+  totalParcelas?: number;
 }
 
 export interface Setting {

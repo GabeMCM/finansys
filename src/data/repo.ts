@@ -72,6 +72,8 @@ export const lancamentos = {
   byAno: (anoId: string) => db.lancamentos.where({ anoId }).filter(alive).toArray(),
   byMes: (anoId: string, mes: number) =>
     db.lancamentos.where({ anoId, mes }).filter(alive).reverse().sortBy("data"),
+  byRecorrencia: (recorrenciaId: string) =>
+    db.lancamentos.filter((l) => l.recorrenciaId === recorrenciaId && alive(l)).toArray(),
 };
 
 export const settings = {

@@ -64,6 +64,7 @@
 .badge--in { background: var(--in-soft); color: var(--in); }
 .badge--out { background: var(--out-soft); color: var(--out); }
 .badge--warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.badge--neutral { background: var(--surface-soft); color: var(--text-muted); border: 1px solid var(--border); }
 
 /* ---------- Gráfico de barras (projetado × real) ---------- */
 .bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 140px; }
