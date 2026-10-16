@@ -886,6 +886,7 @@
 /* ---------- Tabela / Grade de Projeções ---------- */
 .table-wrap {
   width: 100%;
+  min-width: 0;
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
@@ -924,10 +925,10 @@
   letter-spacing: 0.04em;
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 10;
 }
 .data-table th:first-child {
-  z-index: 3;
+  z-index: 11;
 }
 .data-table th.is-current-month {
   color: var(--primary);
@@ -953,6 +954,13 @@
 }
 .data-table tr.category-row td:first-child {
   background: var(--surface-soft);
+  position: sticky;
+  left: 0;
+  z-index: 2;
+}
+.data-table tr.category-row:hover td,
+.data-table tr.category-row:hover td:first-child {
+  background: var(--surface-hover);
 }
 .data-table tfoot td {
   font-weight: 700;
@@ -962,6 +970,9 @@
 }
 .data-table tfoot td:first-child {
   background: var(--surface-solid);
+  position: sticky;
+  left: 0;
+  z-index: 2;
 }
 
 .input-cell {

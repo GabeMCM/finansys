@@ -1,3 +1,4 @@
+import { Fragment } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { CustomSelect } from "../components/CustomSelect.tsx";
 import { Icon } from "../components/Icon.tsx";
@@ -758,24 +759,24 @@ export function Projecoes() {
                     const totCatAno = totalCatAno(cat.id);
 
                     return (
-                      <>
+                      <Fragment key={`cat-group-${cat.id}`}>
                         {/* Linha Cabeçalho da Categoria com Subtotais dos 12 Meses */}
                         <tr key={`cat-${cat.id}`} class="category-row">
                           <td>
-                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;">
                               <div
-                                style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"
+                                style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;min-width:0;"
                                 onClick={() => toggleCategoria(cat.id)}
                               >
                                 <Icon
                                   name="chevron"
-                                  style={`width:14px;height:14px;transition:transform 0.2s ease;${
+                                  style={`width:14px;height:14px;flex-shrink:0;transition:transform 0.2s ease;${
                                     isColapsada ? "transform:rotate(-90deg);" : ""
                                   }`}
                                 />
-                                <i class="dot" style={`background:var(--${NATURE_META[nat].tone})`} />
-                                <span>{cat.nome}</span>
-                                <span class="muted" style="font-size:var(--fs-xs);font-weight:normal;">
+                                <i class="dot" style={`background:var(--${NATURE_META[nat].tone});flex-shrink:0;`} />
+                                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{cat.nome}</span>
+                                <span class="muted" style="font-size:var(--fs-xs);font-weight:normal;flex-shrink:0;">
                                   ({contasDaCat.length})
                                 </span>
                               </div>
@@ -783,7 +784,7 @@ export function Projecoes() {
                               <button
                                 type="button"
                                 class="btn btn--ghost btn--icon"
-                                style="min-height:22px;width:22px;"
+                                style="min-height:22px;width:22px;flex-shrink:0;"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   abrirNovaProjecao(cat.id, nat);
@@ -946,7 +947,7 @@ export function Projecoes() {
                               </tr>
                             );
                           })}
-                      </>
+                      </Fragment>
                     );
                   })
                 )}
