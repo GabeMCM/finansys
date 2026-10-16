@@ -1,14 +1,31 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
+import { CustomSelect } from "../components/CustomSelect.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
-import { ModalConfirm, confirmarAcao } from "../components/ModalConfirm.tsx";
+import { confirmarAcao } from "../components/ModalConfirm.tsx";
 import { toast } from "../components/Toast.tsx";
 import { anos, categorias, contas, projecoes } from "../data/repo.ts";
-import { type Natureza, NATUREZAS } from "../data/types.ts";
+import { type Categoria, type Conta, type Natureza, NATUREZAS } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { money, MONTHS } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
+
+interface ModalNovaProjecaoState {
+  natureza: Natureza;
+  categoriaId: string;
+  novaCategoriaNome: string;
+  criandoNovaCat: boolean;
+  modoConta: "nova" | "existente";
+  contaId: string;
+  novaContaNome: string;
+  modoValor: "fixo" | "especifico" | "mensal";
+  valorFixo: number | string;
+  mesEspecifico: number;
+  valorEspecifico: number | string;
+  valoresMensais: (number | string)[];
+  obs: string;
+}
 
 export function Projecoes() {
   const empId = empresaAtiva.value;
@@ -16,20 +33,39 @@ export function Projecoes() {
 
   const [nat, setNat] = useState<Natureza>("pagar");
   const [mesAtivo, setMesAtivo] = useState<number>(new Date().getMonth());
-  const [modoGrade, setModoGrade] = useState<boolean>(false);
+  const [busca, setBusca] = useState<string>("");
+  const [modoVisao, setModoVisao] = useState<"grade" | "mensal">(() => {
+    return typeof window !== "undefined" && window.innerWidth >= 768 ? "grade" : "mensal";
+  });
+
+  // Categorias colapsadas na visualização de grade
+  const [categoriasColapsadas, setCategoriasColapsadas] = useState<Set<string>>(new Set());
+
+  // Modais
   const [modalObs, setModalObs] = useState<{ contaId: string; mes: number; obs: string; nome: string } | null>(null);
+  const [modalEditarConta, setModalEditarConta] = useState<{ id: string; nome: string; categoriaId: string } | null>(null);
+  const [modalNovaProjecao, setModalNovaProjecao] = useState<ModalNovaProjecaoState | null>(null);
 
   const dados = useLive(async () => {
     if (!empId) return null;
     const ano = await anos.find(empId, anoNum);
     if (!ano) return null;
-    const [cs, cats, ps] = await Promise.all([
-      contas.byEmpresa(empId, nat),
-      categorias.byEmpresa(empId, nat),
+    const [todasContas, todasCats, ps] = await Promise.all([
+      contas.byEmpresa(empId),
+      categorias.byEmpresa(empId),
       projecoes.byAno(ano.id),
     ]);
-    return { ano, cs, cats, ps };
-  }, [empId, anoNum, nat], null);
+    return { ano, todasContas, todasCats, ps };
+  }, [empId, anoNum], null);
+
+  // Ajusta automaticamente a visão recomendada no redimensionamento da janela se o usuário não mudou manualmente
+  useEffect(() => {
+    const handleResize = () => {
+      // Manter flexível
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   if (!empId) {
     return (
@@ -54,7 +90,11 @@ export function Projecoes() {
     );
   }
 
-  const { ano, cs, cats, ps } = dados;
+  const { ano, todasContas, todasCats, ps } = dados;
+
+  // Filtra por natureza ativa
+  const cs = todasContas.filter((c) => c.natureza === nat && c.ativa);
+  const cats = todasCats.filter((c) => c.natureza === nat);
 
   // Mapa de projeções: contaId + "_" + mes -> Projecao
   const pMap = new Map<string, { id?: string; valor: number; obs?: string }>();
@@ -74,9 +114,10 @@ export function Projecoes() {
 
   const replicarParaAno = async (contaId: string, mesOrigem: number) => {
     const origem = getProj(contaId, mesOrigem);
+    const conta = cs.find((c) => c.id === contaId);
     const ok = await confirmarAcao({
       titulo: "Replicar Projeção Mensal",
-      mensagem: `Deseja replicar o valor de ${money(origem.valor)} para todos os 12 meses desta conta?`,
+      mensagem: `Deseja replicar o valor de ${money(origem.valor)} (${conta?.nome || "esta conta"}) para todos os 12 meses de ${anoNum}?`,
       rotuloConfirmar: "Replicar para 12 meses",
       tipo: "primary",
     });
@@ -88,14 +129,160 @@ export function Projecoes() {
     }
   };
 
+  const zerarContaAno = async (contaId: string) => {
+    const conta = cs.find((c) => c.id === contaId);
+    const ok = await confirmarAcao({
+      titulo: "Zerar Projeções da Conta",
+      mensagem: `Deseja zerar os valores de todos os meses para "${conta?.nome || "esta conta"}" em ${anoNum}?`,
+      rotuloConfirmar: "Zerar Todos os Meses",
+      tipo: "warning",
+    });
+    if (ok) {
+      for (let m = 0; m < 12; m++) {
+        const atual = getProj(contaId, m);
+        await projecoes.set(ano.id, contaId, m, 0, atual.obs);
+      }
+      toast.success(`Projeções de "${conta?.nome}" zeradas.`);
+    }
+  };
+
   const salvarObs = async () => {
     if (!modalObs) return;
     const atual = getProj(modalObs.contaId, modalObs.mes);
     await projecoes.set(ano.id, modalObs.contaId, modalObs.mes, atual.valor, modalObs.obs.trim() || undefined);
+    toast.success("Observação salva!");
     setModalObs(null);
   };
 
-  // Totais mensais
+  const salvarEditarConta = async (e: Event) => {
+    e.preventDefault();
+    if (!modalEditarConta || !modalEditarConta.nome.trim()) return;
+    await contas.update(modalEditarConta.id, {
+      nome: modalEditarConta.nome.trim(),
+      categoriaId: modalEditarConta.categoriaId,
+    });
+    toast.success("Conta atualizada com sucesso!");
+    setModalEditarConta(null);
+  };
+
+  const excluirConta = async (conta: Conta) => {
+    const ok = await confirmarAcao({
+      titulo: "Excluir Conta",
+      mensagem: `Tem certeza que deseja excluir a conta "${conta.nome}" e todas as suas projeções? Esta ação não afetará os lançamentos já realizados.`,
+      rotuloConfirmar: "Excluir Conta",
+      tipo: "danger",
+    });
+    if (ok) {
+      await contas.remove(conta.id);
+      toast.success(`Conta "${conta.nome}" excluída.`);
+    }
+  };
+
+  // Abrir modal de inclusão de nova projeção
+  const abrirNovaProjecao = (categoriaIdPadrao?: string, naturezaPadrao?: Natureza) => {
+    const natEscolhida = naturezaPadrao || nat;
+    const catsDestaNat = todasCats.filter((c) => c.natureza === natEscolhida);
+    const catId = categoriaIdPadrao || catsDestaNat[0]?.id || "";
+    const contasDestaCat = todasContas.filter((c) => c.natureza === natEscolhida && c.categoriaId === catId && c.ativa);
+
+    setModalNovaProjecao({
+      natureza: natEscolhida,
+      categoriaId: catId,
+      novaCategoriaNome: "",
+      criandoNovaCat: catsDestaNat.length === 0,
+      modoConta: contasDestaCat.length > 0 ? "nova" : "nova",
+      contaId: contasDestaCat[0]?.id || "",
+      novaContaNome: "",
+      modoValor: "fixo",
+      valorFixo: "",
+      mesEspecifico: new Date().getMonth(),
+      valorEspecifico: "",
+      valoresMensais: Array(12).fill(""),
+      obs: "",
+    });
+  };
+
+  const salvarNovaProjecao = async (e: Event) => {
+    e.preventDefault();
+    if (!modalNovaProjecao) return;
+
+    let targetCatId = modalNovaProjecao.categoriaId;
+
+    // Se estiver criando uma nova categoria
+    if (modalNovaProjecao.criandoNovaCat || !targetCatId) {
+      const nomeCat = modalNovaProjecao.novaCategoriaNome.trim();
+      if (!nomeCat) {
+        toast.warn("Informe o nome da categoria.");
+        return;
+      }
+      const novaCat = await categorias.create({
+        empresaId: empId,
+        natureza: modalNovaProjecao.natureza,
+        nome: nomeCat,
+      });
+      targetCatId = novaCat.id;
+    }
+
+    let targetContaId = modalNovaProjecao.contaId;
+
+    // Se estiver cadastrando nova conta
+    if (modalNovaProjecao.modoConta === "nova" || !targetContaId) {
+      const nomeConta = modalNovaProjecao.novaContaNome.trim();
+      if (!nomeConta) {
+        toast.warn("Informe o nome da conta a ser projetada.");
+        return;
+      }
+      const novaC = await contas.create({
+        empresaId: empId,
+        categoriaId: targetCatId,
+        natureza: modalNovaProjecao.natureza,
+        nome: nomeConta,
+        ativa: true,
+      });
+      targetContaId = novaC.id;
+    }
+
+    // Grava as projeções de acordo com o modo escolhido
+    const obsTexto = modalNovaProjecao.obs.trim() || undefined;
+
+    if (modalNovaProjecao.modoValor === "fixo") {
+      const centavos = Math.round(Number(modalNovaProjecao.valorFixo || 0) * 100);
+      for (let m = 0; m < 12; m++) {
+        await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
+      }
+    } else if (modalNovaProjecao.modoValor === "especifico") {
+      const centavos = Math.round(Number(modalNovaProjecao.valorEspecifico || 0) * 100);
+      for (let m = 0; m < 12; m++) {
+        const val = m === modalNovaProjecao.mesEspecifico ? centavos : 0;
+        await projecoes.set(ano.id, targetContaId, m, val, m === modalNovaProjecao.mesEspecifico ? obsTexto : undefined);
+      }
+    } else {
+      // Modo mensal individual
+      for (let m = 0; m < 12; m++) {
+        const centavos = Math.round(Number(modalNovaProjecao.valoresMensais[m] || 0) * 100);
+        await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
+      }
+    }
+
+    // Se a natureza da nova projeção for diferente da aba atual, comuta para ela
+    if (modalNovaProjecao.natureza !== nat) {
+      setNat(modalNovaProjecao.natureza);
+    }
+
+    toast.success("Projeção e conta registradas com sucesso!");
+    setModalNovaProjecao(null);
+  };
+
+  const toggleCategoria = (catId: string) => {
+    setCategoriasColapsadas((prev) => {
+      const next = new Set(prev);
+      if (next.has(catId)) next.delete(catId);
+      else next.add(catId);
+      return next;
+    });
+  };
+
+  // Cálculos de totais
   const totalMes = (m: number) => {
     return cs.reduce((sum, c) => sum + (getProj(c.id, m).valor || 0), 0);
   };
@@ -106,33 +293,94 @@ export function Projecoes() {
     return s;
   };
 
+  const totalCatMes = (catId: string, m: number) => {
+    const contasDaCat = cs.filter((c) => c.categoriaId === catId);
+    return contasDaCat.reduce((sum, c) => sum + (getProj(c.id, m).valor || 0), 0);
+  };
+
+  const totalCatAno = (catId: string) => {
+    const contasDaCat = cs.filter((c) => c.categoriaId === catId);
+    return contasDaCat.reduce((sum, c) => sum + totalContaAno(c.id), 0);
+  };
+
   const totalGeralAno = () => {
     let s = 0;
     for (let m = 0; m < 12; m++) s += totalMes(m);
     return s;
   };
 
+  // Estatísticas de topo
+  const mediaMensal = Math.round(totalGeralAno() / 12);
+  let mesPicoIdx = 0;
+  let valorPico = 0;
+  for (let m = 0; m < 12; m++) {
+    const tm = totalMes(m);
+    if (tm > valorPico) {
+      valorPico = tm;
+      mesPicoIdx = m;
+    }
+  }
+
+  // Filtragem com busca
+  const termo = busca.trim().toLowerCase();
+  const catsFiltradas = cats.filter((cat) => {
+    if (!termo) return true;
+    if (cat.nome.toLowerCase().includes(termo)) return true;
+    const contasDaCat = cs.filter((c) => c.categoriaId === cat.id);
+    return contasDaCat.some((c) => c.nome.toLowerCase().includes(termo));
+  });
+
   return (
     <>
-      <div class="page-head">
+      {/* Cabeçalho da Página */}
+      <div class="page-head" style="flex-wrap:wrap;gap:12px;">
         <div>
-          <h1>Projeções {anoNum}</h1>
-          <p>Previsões financeiras mês a mês para {NATURE_META[nat].label.toLowerCase()}</p>
+          <h1 style="display:flex;align-items:center;gap:8px;">
+            Projeções {anoNum}
+          </h1>
+          <p>Planejamento e metas financeiras mês a mês para {NATURE_META[nat].label.toLowerCase()}</p>
         </div>
-        <button
-          type="button"
-          class={`btn ${modoGrade ? "btn--primary" : "btn--secondary"}`}
-          onClick={() => setModoGrade(!modoGrade)}
-          title="Alternar entre visualização de mês único e grade anual completa"
-        >
-          <Icon name="grid" /> {modoGrade ? "Visão Mensal" : "Grade 12 Meses"}
-        </button>
+
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          {/* Seletor de visualização Matriz / Mensal */}
+          <div class="tabs" style="margin-bottom:0;background:var(--surface);padding:3px;border-radius:var(--r-md);border:1px solid var(--border);">
+            <button
+              type="button"
+              class={`tab ${modoVisao === "grade" ? "is-active" : ""}`}
+              style="padding:6px 12px;font-size:var(--fs-xs);min-height:30px;"
+              onClick={() => setModoVisao("grade")}
+              title="Visualizar a grade completa de 12 meses (Ideal para Desktop)"
+            >
+              <Icon name="grid" style="width:14px;height:14px;" /> Matriz 12 Meses
+            </button>
+            <button
+              type="button"
+              class={`tab ${modoVisao === "mensal" ? "is-active" : ""}`}
+              style="padding:6px 12px;font-size:var(--fs-xs);min-height:30px;"
+              onClick={() => setModoVisao("mensal")}
+              title="Visualizar o detalhamento mês a mês (Ideal para Mobile)"
+            >
+              <Icon name="calendar" style="width:14px;height:14px;" /> Visão Mensal
+            </button>
+          </div>
+
+          {/* Botão de Incluir Projeção / Nova Conta diretamente */}
+          <button
+            type="button"
+            class="btn btn--primary"
+            onClick={() => abrirNovaProjecao()}
+            style="display:inline-flex;align-items:center;gap:6px;"
+          >
+            <Icon name="plus" /> Nova Projeção
+          </button>
+        </div>
       </div>
 
-      {/* Tabs das naturezas */}
-      <div class="tabs" style="margin-bottom: var(--sp-4);">
+      {/* Tabs das Naturezas */}
+      <div class="tabs" style="margin-bottom:var(--sp-4);">
         {NATUREZAS.map((n) => {
           const meta = NATURE_META[n];
+          const countContas = todasContas.filter((c) => c.natureza === n && c.ativa).length;
           return (
             <button
               type="button"
@@ -141,96 +389,386 @@ export function Projecoes() {
               onClick={() => setNat(n)}
             >
               <Icon name={meta.icon} /> {meta.label}
+              <span
+                class="badge badge--neutral"
+                style="font-size:0.68rem;padding:0 5px;margin-left:4px;"
+              >
+                {countContas}
+              </span>
             </button>
           );
         })}
       </div>
 
-      {cs.length === 0 ? (
-        <section class="card empty">
+      {/* Cards de Resumo da Natureza Ativa */}
+      <div class="grid grid--stats" style="margin-bottom:var(--sp-4);">
+        <div class="stat">
+          <div class="stat__label">
+            <i class="dot" style={`background:var(--${NATURE_META[nat].tone})`} />
+            Total Anual Projetado
+          </div>
+          <div class={`stat__value num tone-${NATURE_META[nat].tone}`}>{money(totalGeralAno())}</div>
+          <div class="stat__sub">Previsto para todo o ano de {anoNum}</div>
+        </div>
+
+        <div class="stat">
+          <div class="stat__label">
+            <Icon name="chart" style="width:14px;height:14px;color:var(--text-muted);" />
+            Média Mensal
+          </div>
+          <div class="stat__value num">{money(mediaMensal)}</div>
+          <div class="stat__sub">Valor médio por mês</div>
+        </div>
+
+        <div class="stat">
+          <div class="stat__label">
+            <Icon name="calendar" style="width:14px;height:14px;color:var(--text-muted);" />
+            Mês de Pico
+          </div>
+          <div class="stat__value num" style="font-size:1.15rem;">
+            {valorPico > 0 ? `${MONTHS[mesPicoIdx]}` : "—"}
+          </div>
+          <div class="stat__sub">
+            {valorPico > 0 ? `Maior volume previsto: ${money(valorPico)}` : "Sem valores projetados"}
+          </div>
+        </div>
+
+        <div class="stat">
+          <div class="stat__label">
+            <Icon name="list" style="width:14px;height:14px;color:var(--text-muted);" />
+            Estrutura de Contas
+          </div>
+          <div class="stat__value num" style="font-size:1.15rem;">
+            {cs.length} conta{cs.length === 1 ? "" : "s"}
+          </div>
+          <div class="stat__sub">Distribuídas em {cats.length} categorias</div>
+        </div>
+      </div>
+
+      {/* Barra de Busca e Ações Rápidas */}
+      <div
+        style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:var(--sp-3);flex-wrap:wrap;"
+      >
+        <div style="flex:1;min-width:240px;max-width:400px;position:relative;">
+          <input
+            type="search"
+            class="input"
+            placeholder={`Buscar em ${NATURE_META[nat].label}...`}
+            value={busca}
+            onInput={(e) => setBusca(e.currentTarget.value)}
+            style="min-height:36px;font-size:var(--fs-xs);padding-left:32px;"
+          />
+          <Icon
+            name="list"
+            style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text-muted);pointer-events:none;"
+          />
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;">
+          {modoVisao === "grade" && cats.length > 0 && (
+            <button
+              type="button"
+              class="btn btn--ghost"
+              style="font-size:var(--fs-xs);min-height:32px;"
+              onClick={() => {
+                if (categoriasColapsadas.size === cats.length) {
+                  setCategoriasColapsadas(new Set());
+                } else {
+                  setCategoriasColapsadas(new Set(cats.map((c) => c.id)));
+                }
+              }}
+            >
+              {categoriasColapsadas.size === cats.length ? "Expandir Todas" : "Recolher Todas"}
+            </button>
+          )}
+
+          <button
+            type="button"
+            class="btn btn--secondary"
+            style="font-size:var(--fs-xs);min-height:32px;"
+            onClick={() => abrirNovaProjecao(undefined, nat)}
+          >
+            <Icon name="plus" /> Adicionar Conta / Projeção
+          </button>
+        </div>
+      </div>
+
+      {/* Estado Vazio caso não haja contas ou categorias */}
+      {cs.length === 0 && cats.length === 0 ? (
+        <section class="card empty" style="padding:var(--sp-8) var(--sp-4);">
           <Icon name="grid" />
-          <h2>Nenhuma conta cadastrada</h2>
-          <p>Cadastre contas e categorias para {NATURE_META[nat].label} em Ajustes.</p>
-          <a href="#/ajustes" class="btn btn--primary" style="margin-top:16px;">
-            Ir para Ajustes
-          </a>
+          <h2>Nenhuma conta ou projeção cadastrada em {NATURE_META[nat].label}</h2>
+          <p>
+            Você pode começar agora incluindo a sua primeira projeção diretamente aqui, sem precisar ir em configurações!
+          </p>
+          <button
+            type="button"
+            class="btn btn--primary"
+            style="margin-top:16px;"
+            onClick={() => abrirNovaProjecao(undefined, nat)}
+          >
+            <Icon name="plus" /> Criar Primeira Projeção
+          </button>
         </section>
-      ) : modoGrade ? (
-        /* ================= VISÃO GRADE ANUAL (TABELA COM SCROLL) ================= */
+      ) : modoVisao === "grade" ? (
+        /* ================= VISÃO MATRIZ ANUAL 12 MESES (DESKTOP-FIRST) ================= */
         <div class="stack">
           <div class="table-wrap">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Conta / Categoria</th>
-                  {MONTHS.map((m) => (
-                    <th key={m}>{m}</th>
-                  ))}
-                  <th style="background:var(--surface-solid);">Total Anual</th>
+                  <th style="min-width:230px;">Conta / Categoria</th>
+                  {MONTHS.map((m, idx) => {
+                    const isMesAtual = idx === new Date().getMonth();
+                    return (
+                      <th
+                        key={m}
+                        class={isMesAtual ? "is-current-month" : ""}
+                        title={isMesAtual ? "Mês Atual" : undefined}
+                      >
+                        {m.toUpperCase()}
+                        {isMesAtual && <span style="display:block;font-size:0.55rem;opacity:0.8;">ATUAL</span>}
+                      </th>
+                    );
+                  })}
+                  <th style="background:var(--surface-solid);min-width:110px;font-weight:700;">Total Anual</th>
+                  <th style="background:var(--surface-solid);min-width:80px;text-align:center;">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {cats.map((cat) => {
-                  const contasDaCat = cs.filter((c) => c.categoriaId === cat.id);
-                  if (contasDaCat.length === 0) return null;
-                  return (
-                    <>
-                      <tr key={`cat-${cat.id}`} style="background:var(--surface);">
-                        <td colSpan={14} style="font-weight:700;color:var(--text);text-align:left;font-size:0.75rem;padding:6px 10px;">
-                          {cat.nome}
-                        </td>
-                      </tr>
-                      {contasDaCat.map((c) => {
-                        const totAno = totalContaAno(c.id);
-                        return (
-                          <tr key={c.id}>
-                            <td style="padding-left:20px;">
-                              <div style="font-weight:500;">{c.nome}</div>
-                            </td>
-                            {MONTHS.map((_, m) => {
-                              const p = getProj(c.id, m);
-                              return (
-                                <td key={m}>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    class="input-cell"
-                                    value={p.valor ? (p.valor / 100).toFixed(2) : ""}
-                                    placeholder="0,00"
-                                    onBlur={(e) => {
-                                      const val = parseFloat(e.currentTarget.value) || 0;
-                                      if (val !== p.valor / 100) atualizarValor(c.id, m, val);
-                                    }}
-                                  />
+                {catsFiltradas.length === 0 ? (
+                  <tr>
+                    <td colSpan={15} style="text-align:center;padding:var(--sp-6);color:var(--text-muted);">
+                      Nenhuma conta ou categoria corresponde à busca "{busca}".
+                    </td>
+                  </tr>
+                ) : (
+                  catsFiltradas.map((cat) => {
+                    const contasDaCat = cs.filter((c) => {
+                      if (c.categoriaId !== cat.id) return false;
+                      if (!termo) return true;
+                      return c.nome.toLowerCase().includes(termo) || cat.nome.toLowerCase().includes(termo);
+                    });
+                    const isColapsada = categoriasColapsadas.has(cat.id);
+                    const totCatAno = totalCatAno(cat.id);
+
+                    return (
+                      <>
+                        {/* Linha Cabeçalho da Categoria com Subtotais dos 12 Meses */}
+                        <tr key={`cat-${cat.id}`} class="category-row">
+                          <td>
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                              <div
+                                style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"
+                                onClick={() => toggleCategoria(cat.id)}
+                              >
+                                <Icon
+                                  name="chevron"
+                                  style={`width:14px;height:14px;transition:transform 0.2s ease;${
+                                    isColapsada ? "transform:rotate(-90deg);" : ""
+                                  }`}
+                                />
+                                <i class="dot" style={`background:var(--${NATURE_META[nat].tone})`} />
+                                <span>{cat.nome}</span>
+                                <span class="muted" style="font-size:var(--fs-xs);font-weight:normal;">
+                                  ({contasDaCat.length})
+                                </span>
+                              </div>
+
+                              <button
+                                type="button"
+                                class="btn btn--ghost btn--icon"
+                                style="min-height:22px;width:22px;"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  abrirNovaProjecao(cat.id, nat);
+                                }}
+                                title={`Adicionar nova conta em "${cat.nome}"`}
+                              >
+                                <Icon name="plus" style="width:12px;height:12px;" />
+                              </button>
+                            </div>
+                          </td>
+
+                          {/* Subtotais mensais da categoria */}
+                          {MONTHS.map((_, m) => {
+                            const subMes = totalCatMes(cat.id, m);
+                            const isMesAtual = m === new Date().getMonth();
+                            return (
+                              <td
+                                key={m}
+                                class={isMesAtual ? "is-current-month" : ""}
+                                style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;font-size:var(--fs-xs);"
+                              >
+                                {subMes > 0 ? money(subMes) : <span class="muted" style="font-weight:normal;">—</span>}
+                              </td>
+                            );
+                          })}
+
+                          {/* Subtotal Anual da Categoria */}
+                          <td style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;background:var(--surface-soft);">
+                            {money(totCatAno)}
+                          </td>
+                          <td style="background:var(--surface-soft);text-align:center;">—</td>
+                        </tr>
+
+                        {/* Linhas das Contas pertencentes à Categoria */}
+                        {!isColapsada &&
+                          contasDaCat.map((c) => {
+                            const totAno = totalContaAno(c.id);
+                            return (
+                              <tr key={c.id}>
+                                <td style="padding-left:28px;">
+                                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                                    <span style="font-weight:500;color:var(--text);">{c.nome}</span>
+                                    {getProj(c.id, mesAtivo).obs && (
+                                      <span
+                                        title={`Observação: ${getProj(c.id, mesAtivo).obs}`}
+                                        style="cursor:help;color:var(--primary);"
+                                      >
+                                        <Icon name="info" style="width:12px;height:12px;" />
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
-                              );
-                            })}
-                            <td style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;">
-                              {money(totAno)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </>
-                  );
-                })}
+
+                                {MONTHS.map((_, m) => {
+                                  const p = getProj(c.id, m);
+                                  const isMesAtual = m === new Date().getMonth();
+                                  return (
+                                    <td key={m} class={isMesAtual ? "is-current-month" : ""}>
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        inputMode="decimal"
+                                        class={`input-cell ${p.valor > 0 ? "has-val" : ""}`}
+                                        value={p.valor ? (p.valor / 100).toFixed(2) : ""}
+                                        placeholder="0,00"
+                                        onFocus={(e) => e.currentTarget.select()}
+                                        onBlur={(e) => {
+                                          const val = parseFloat(e.currentTarget.value) || 0;
+                                          if (val !== p.valor / 100) atualizarValor(c.id, m, val);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.currentTarget.blur();
+                                          }
+                                        }}
+                                      />
+                                    </td>
+                                  );
+                                })}
+
+                                <td style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;">
+                                  {money(totAno)}
+                                </td>
+
+                                <td style="text-align:center;padding:4px 6px;">
+                                  <div style="display:inline-flex;align-items:center;gap:2px;">
+                                    <button
+                                      type="button"
+                                      class="btn btn--ghost btn--icon"
+                                      style="min-height:24px;width:24px;"
+                                      onClick={() => replicarParaAno(c.id, new Date().getMonth())}
+                                      title="Replicar valor para todos os 12 meses"
+                                    >
+                                      <Icon name="copy" style="width:12px;height:12px;" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      class="btn btn--ghost btn--icon"
+                                      style="min-height:24px;width:24px;"
+                                      onClick={() =>
+                                        setModalObs({
+                                          contaId: c.id,
+                                          mes: new Date().getMonth(),
+                                          obs: getProj(c.id, new Date().getMonth()).obs || "",
+                                          nome: c.nome,
+                                        })
+                                      }
+                                      title="Adicionar ou ver observação"
+                                    >
+                                      <Icon name="pencil" style="width:12px;height:12px;" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      class="btn btn--ghost btn--icon"
+                                      style="min-height:24px;width:24px;color:var(--out);"
+                                      onClick={() => excluirConta(c)}
+                                      title="Excluir conta"
+                                    >
+                                      <Icon name="trash" style="width:12px;height:12px;" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </>
+                    );
+                  })
+                )}
               </tbody>
               <tfoot>
                 <tr>
-                  <td>Total Projetado</td>
-                  {MONTHS.map((_, m) => (
-                    <td key={m}>{money(totalMes(m))}</td>
-                  ))}
-                  <td style="color:var(--primary);">{money(totalGeralAno())}</td>
+                  <td>TOTAL GERAL ({NATURE_META[nat].label.toUpperCase()})</td>
+                  {MONTHS.map((_, m) => {
+                    const isMesAtual = m === new Date().getMonth();
+                    return (
+                      <td key={m} class={isMesAtual ? "is-current-month" : ""}>
+                        {money(totalMes(m))}
+                      </td>
+                    );
+                  })}
+                  <td style={`color:var(--${NATURE_META[nat].tone});font-size:var(--fs-sm);`}>
+                    {money(totalGeralAno())}
+                  </td>
+                  <td>—</td>
                 </tr>
               </tfoot>
             </table>
           </div>
         </div>
       ) : (
-        /* ================= VISÃO MOBILE / MÊS A MÊS ================= */
+        /* ================= VISÃO MÊS A MÊS (MOBILE-FRIENDLY & FOCADA) ================= */
         <div class="stack">
-          {/* Seletor de mês horizontal com snap */}
+          {/* Navegador de Mês Superior */}
+          <div
+            style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:8px 12px;margin-bottom:var(--sp-2);"
+          >
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon"
+              style="min-height:32px;width:32px;"
+              disabled={mesAtivo === 0}
+              onClick={() => setMesAtivo((prev) => Math.max(0, prev - 1))}
+              title="Mês anterior"
+            >
+              <Icon name="arrowLeft" style="width:16px;height:16px;" />
+            </button>
+
+            <div style="text-align:center;">
+              <h2 style="font-size:var(--fs-md);margin:0;font-weight:700;">
+                {MONTHS[mesAtivo]} de {anoNum}
+              </h2>
+              <span class="muted" style="font-size:var(--fs-xs);">
+                Total projetado: <b class="num" style="color:var(--text);">{money(totalMes(mesAtivo))}</b>
+              </span>
+            </div>
+
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon"
+              style="min-height:32px;width:32px;"
+              disabled={mesAtivo === 11}
+              onClick={() => setMesAtivo((prev) => Math.min(11, prev + 1))}
+              title="Próximo mês"
+            >
+              <Icon name="chevron" style="width:16px;height:16px;transform:rotate(-90deg);" />
+            </button>
+          </div>
+
+          {/* Chips horizontais de meses */}
           <div class="hscroll" style="margin-bottom:var(--sp-3);">
             {MONTHS.map((m, idx) => (
               <button
@@ -244,95 +782,442 @@ export function Projecoes() {
             ))}
           </div>
 
-          <section class="card">
-            <div class="card__head">
-              <div>
-                <h2 class="card__title">{MONTHS[mesAtivo]} de {anoNum}</h2>
-                <p class="muted" style="font-size:var(--fs-xs);">
-                  Total projetado no mês: <b class="num" style="color:var(--text);">{money(totalMes(mesAtivo))}</b>
-                </p>
-              </div>
-            </div>
+          {/* Lista de Categorias e Contas do Mês Ativo */}
+          <div class="stack" style="gap:var(--sp-4);">
+            {catsFiltradas.length === 0 ? (
+              <section class="card empty" style="padding:var(--sp-6);">
+                <p class="muted">Nenhuma conta encontrada para o filtro informado.</p>
+              </section>
+            ) : (
+              catsFiltradas.map((cat) => {
+                const contasDaCat = cs.filter((c) => {
+                  if (c.categoriaId !== cat.id) return false;
+                  if (!termo) return true;
+                  return c.nome.toLowerCase().includes(termo) || cat.nome.toLowerCase().includes(termo);
+                });
+                const subMes = totalCatMes(cat.id, mesAtivo);
 
-            <div class="stack" style="gap:var(--sp-4);">
-              {cats.map((cat) => {
-                const contasDaCat = cs.filter((c) => c.categoriaId === cat.id);
-                if (contasDaCat.length === 0) return null;
                 return (
-                  <div key={cat.id} class="stack" style="gap:var(--sp-2);">
-                    <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;">
-                      {cat.nome}
+                  <section class="card" key={cat.id} style="padding:var(--sp-3);">
+                    <div
+                      style="display:flex;align-items:center;justify-content:space-between;padding-bottom:var(--sp-2);border-bottom:1px solid var(--border);margin-bottom:var(--sp-2);"
+                    >
+                      <div style="font-weight:700;font-size:var(--fs-sm);display:flex;align-items:center;gap:6px;">
+                        <i class="dot" style={`background:var(--${NATURE_META[nat].tone})`} />
+                        {cat.nome}
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="muted" style="font-size:var(--fs-xs);">
+                          Total: <b class="num" style="color:var(--text);">{money(subMes)}</b>
+                        </span>
+                        <button
+                          type="button"
+                          class="btn btn--ghost btn--icon"
+                          style="min-height:26px;width:26px;"
+                          onClick={() => abrirNovaProjecao(cat.id, nat)}
+                          title="Adicionar conta nesta categoria"
+                        >
+                          <Icon name="plus" style="width:14px;height:14px;" />
+                        </button>
+                      </div>
                     </div>
 
-                    <div class="stack" style="gap:var(--sp-2);">
-                      {contasDaCat.map((c) => {
-                        const p = getProj(c.id, mesAtivo);
-                        const isLivre = nat === "aporte" || nat === "saida";
-                        return (
-                          <div
-                            key={c.id}
-                            style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);"
-                          >
-                            <div style="flex:1;min-width:0;">
-                              <div style="font-weight:600;font-size:var(--fs-sm);">{c.nome}</div>
-                              {p.obs && (
-                                <div class="muted" style="font-size:var(--fs-xs);margin-top:2px;display:flex;align-items:center;gap:4px;">
-                                  <span>Obs: {p.obs}</span>
-                                </div>
-                              )}
-                            </div>
-
-                            <div style="display:flex;align-items:center;gap:6px;">
-                              <div style="display:flex;align-items:center;background:var(--surface-solid);border:1px solid var(--border-strong);border-radius:var(--r-md);padding:0 8px;">
-                                <span class="muted" style="font-size:var(--fs-xs);">R$</span>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  style="width:90px;min-height:36px;border:0;background:transparent;text-align:right;font-weight:600;font-size:var(--fs-sm);outline:none;color:var(--text);"
-                                  value={p.valor ? (p.valor / 100).toFixed(2) : ""}
-                                  placeholder="0,00"
-                                  onBlur={(e) => {
-                                    const val = parseFloat(e.currentTarget.value) || 0;
-                                    if (val !== p.valor / 100) atualizarValor(c.id, mesAtivo, val);
-                                  }}
-                                />
+                    {contasDaCat.length === 0 ? (
+                      <p class="muted" style="font-size:var(--fs-xs);padding:var(--sp-2) 0;">
+                        Nenhuma conta nesta categoria. Clique no "+" para adicionar.
+                      </p>
+                    ) : (
+                      <div class="stack" style="gap:var(--sp-2);">
+                        {contasDaCat.map((c) => {
+                          const p = getProj(c.id, mesAtivo);
+                          return (
+                            <div
+                              key={c.id}
+                              style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);"
+                            >
+                              <div style="flex:1;min-width:0;">
+                                <div style="font-weight:600;font-size:var(--fs-sm);">{c.nome}</div>
+                                {p.obs && (
+                                  <div class="muted" style="font-size:var(--fs-xs);margin-top:2px;">
+                                    Obs: {p.obs}
+                                  </div>
+                                )}
                               </div>
 
-                              <button
-                                type="button"
-                                class="btn btn--ghost btn--icon"
-                                style="min-height:36px;width:36px;"
-                                onClick={() => replicarParaAno(c.id, mesAtivo)}
-                                title="Copiar este valor para todos os 12 meses"
-                              >
-                                <Icon name="copy" />
-                              </button>
+                              <div style="display:flex;align-items:center;gap:6px;">
+                                <div
+                                  style="display:flex;align-items:center;background:var(--surface-solid);border:1px solid var(--border-strong);border-radius:var(--r-md);padding:0 8px;"
+                                >
+                                  <span class="muted" style="font-size:var(--fs-xs);">R$</span>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    inputMode="decimal"
+                                    style="width:95px;min-height:36px;border:0;background:transparent;text-align:right;font-weight:600;font-size:var(--fs-sm);outline:none;color:var(--text);"
+                                    value={p.valor ? (p.valor / 100).toFixed(2) : ""}
+                                    placeholder="0,00"
+                                    onFocus={(e) => e.currentTarget.select()}
+                                    onBlur={(e) => {
+                                      const val = parseFloat(e.currentTarget.value) || 0;
+                                      if (val !== p.valor / 100) atualizarValor(c.id, mesAtivo, val);
+                                    }}
+                                  />
+                                </div>
 
-                              {isLivre && (
+                                <button
+                                  type="button"
+                                  class="btn btn--ghost btn--icon"
+                                  style="min-height:36px;width:36px;"
+                                  onClick={() => replicarParaAno(c.id, mesAtivo)}
+                                  title="Replicar este valor para todos os 12 meses"
+                                >
+                                  <Icon name="copy" />
+                                </button>
+
                                 <button
                                   type="button"
                                   class="btn btn--ghost btn--icon"
                                   style={`min-height:36px;width:36px;${p.obs ? "color:var(--primary);" : ""}`}
-                                  onClick={() => setModalObs({ contaId: c.id, mes: mesAtivo, obs: p.obs || "", nome: c.nome })}
-                                  title="Adicionar ou editar observação"
+                                  onClick={() =>
+                                    setModalObs({ contaId: c.id, mes: mesAtivo, obs: p.obs || "", nome: c.nome })
+                                  }
+                                  title="Observação desta projeção"
                                 >
                                   <Icon name="pencil" />
                                 </button>
-                              )}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
                 );
-              })}
-            </div>
-          </section>
+              })
+            )}
+          </div>
         </div>
       )}
 
-      {/* Modal Observação para Projeções Livres */}
+      {/* ================= MODAL INCLUIR PROJEÇÃO DIRETAMENTE ================= */}
+      {modalNovaProjecao && (
+        <Modal
+          title={`Nova Projeção Financeira (${NATURE_META[modalNovaProjecao.natureza].label})`}
+          isOpen={true}
+          subtela={true}
+          onClose={() => setModalNovaProjecao(null)}
+          footer={
+            <>
+              <button type="button" class="btn btn--ghost" onClick={() => setModalNovaProjecao(null)}>
+                Cancelar
+              </button>
+              <button type="submit" form="form-nova-projecao" class="btn btn--primary">
+                Salvar Projeção
+              </button>
+            </>
+          }
+        >
+          <form id="form-nova-projecao" onSubmit={salvarNovaProjecao}>
+            {/* Seletor de Natureza */}
+            <div class="tabs" style="margin-bottom:var(--sp-3);">
+              {NATUREZAS.map((n) => {
+                const meta = NATURE_META[n];
+                return (
+                  <button
+                    type="button"
+                    key={n}
+                    class={`tab ${modalNovaProjecao.natureza === n ? "is-active" : ""}`}
+                    onClick={() => {
+                      const catsDestaNat = todasCats.filter((c) => c.natureza === n);
+                      const primCat = catsDestaNat[0]?.id || "";
+                      const contasDestaCat = todasContas.filter((c) => c.natureza === n && c.categoriaId === primCat && c.ativa);
+                      setModalNovaProjecao({
+                        ...modalNovaProjecao,
+                        natureza: n,
+                        categoriaId: primCat,
+                        criandoNovaCat: catsDestaNat.length === 0,
+                        contaId: contasDestaCat[0]?.id || "",
+                        modoConta: "nova",
+                      });
+                    }}
+                  >
+                    <Icon name={meta.icon} /> {meta.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Categoria: Escolha existente ou crie uma nova */}
+            <div class="form-group">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <label class="form-label" style="margin-bottom:0;">
+                  Categoria *
+                </label>
+                <button
+                  type="button"
+                  class="btn btn--ghost"
+                  style="font-size:var(--fs-xs);padding:2px 6px;min-height:24px;"
+                  onClick={() =>
+                    setModalNovaProjecao({
+                      ...modalNovaProjecao,
+                      criandoNovaCat: !modalNovaProjecao.criandoNovaCat,
+                      novaCategoriaNome: "",
+                    })
+                  }
+                >
+                  {modalNovaProjecao.criandoNovaCat ? "Selecionar existente" : "+ Nova Categoria"}
+                </button>
+              </div>
+
+              {modalNovaProjecao.criandoNovaCat ? (
+                <input
+                  class="input"
+                  required
+                  autoFocus
+                  placeholder="Ex: Assinaturas de Software, Pessoal, Marketing..."
+                  value={modalNovaProjecao.novaCategoriaNome}
+                  onInput={(e) =>
+                    setModalNovaProjecao({ ...modalNovaProjecao, novaCategoriaNome: e.currentTarget.value })
+                  }
+                />
+              ) : (
+                <CustomSelect
+                  value={modalNovaProjecao.categoriaId}
+                  placeholder="Selecione uma Categoria"
+                  options={todasCats
+                    .filter((c) => c.natureza === modalNovaProjecao.natureza)
+                    .map((c) => ({ value: c.id, label: c.nome }))}
+                  onChange={(novaCatId) => {
+                    const contasDestaCat = todasContas.filter(
+                      (c) => c.natureza === modalNovaProjecao.natureza && c.categoriaId === novaCatId && c.ativa
+                    );
+                    setModalNovaProjecao({
+                      ...modalNovaProjecao,
+                      categoriaId: novaCatId,
+                      contaId: contasDestaCat[0]?.id || "",
+                    });
+                  }}
+                  action={{
+                    label: "Nova Categoria...",
+                    icon: "plus",
+                    onClick: () =>
+                      setModalNovaProjecao({
+                        ...modalNovaProjecao,
+                        criandoNovaCat: true,
+                        novaCategoriaNome: "",
+                      }),
+                  }}
+                />
+              )}
+            </div>
+
+            {/* Conta / Item a projetar */}
+            <div class="form-group">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                <label class="form-label" style="margin-bottom:0;">
+                  Nome da Conta / Item de Projeção *
+                </label>
+                {!modalNovaProjecao.criandoNovaCat &&
+                  todasContas.filter(
+                    (c) =>
+                      c.natureza === modalNovaProjecao.natureza &&
+                      c.categoriaId === modalNovaProjecao.categoriaId &&
+                      c.ativa
+                  ).length > 0 && (
+                    <div style="display:flex;gap:4px;">
+                      <button
+                        type="button"
+                        class={`btn btn--ghost ${modalNovaProjecao.modoConta === "nova" ? "is-active" : ""}`}
+                        style="font-size:var(--fs-xs);padding:2px 6px;min-height:24px;"
+                        onClick={() =>
+                          setModalNovaProjecao({ ...modalNovaProjecao, modoConta: "nova", novaContaNome: "" })
+                        }
+                      >
+                        Nova Conta
+                      </button>
+                      <button
+                        type="button"
+                        class={`btn btn--ghost ${modalNovaProjecao.modoConta === "existente" ? "is-active" : ""}`}
+                        style="font-size:var(--fs-xs);padding:2px 6px;min-height:24px;"
+                        onClick={() =>
+                          setModalNovaProjecao({ ...modalNovaProjecao, modoConta: "existente" })
+                        }
+                      >
+                        Existente
+                      </button>
+                    </div>
+                  )}
+              </div>
+
+              {modalNovaProjecao.modoConta === "existente" ? (
+                <CustomSelect
+                  value={modalNovaProjecao.contaId}
+                  placeholder="Selecione uma conta existente"
+                  options={todasContas
+                    .filter(
+                      (c) =>
+                        c.natureza === modalNovaProjecao.natureza &&
+                        c.categoriaId === modalNovaProjecao.categoriaId &&
+                        c.ativa
+                    )
+                    .map((c) => ({ value: c.id, label: c.nome }))}
+                  onChange={(cId) => setModalNovaProjecao({ ...modalNovaProjecao, contaId: cId })}
+                />
+              ) : (
+                <input
+                  class="input"
+                  required
+                  placeholder="Ex: Google Ads, Aluguel Matriz, Mensalidade Fibra..."
+                  value={modalNovaProjecao.novaContaNome}
+                  onInput={(e) =>
+                    setModalNovaProjecao({ ...modalNovaProjecao, novaContaNome: e.currentTarget.value })
+                  }
+                />
+              )}
+            </div>
+
+            {/* Modo de Definição de Valor */}
+            <div
+              style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);"
+            >
+              <label class="form-label" style="margin-bottom:var(--sp-2);">
+                Como deseja definir os valores para {anoNum}?
+              </label>
+
+              <div class="tabs" style="margin-bottom:var(--sp-3);">
+                <button
+                  type="button"
+                  class={`tab ${modalNovaProjecao.modoValor === "fixo" ? "is-active" : ""}`}
+                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "fixo" })}
+                >
+                  Fixo Mensal (12x)
+                </button>
+                <button
+                  type="button"
+                  class={`tab ${modalNovaProjecao.modoValor === "especifico" ? "is-active" : ""}`}
+                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "especifico" })}
+                >
+                  Mês Pontual
+                </button>
+                <button
+                  type="button"
+                  class={`tab ${modalNovaProjecao.modoValor === "mensal" ? "is-active" : ""}`}
+                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "mensal" })}
+                >
+                  Grade Mês a Mês
+                </button>
+              </div>
+
+              {modalNovaProjecao.modoValor === "fixo" && (
+                <div>
+                  <div class="form-group" style="margin-bottom:6px;">
+                    <label class="form-label">Valor Mensal Previsto (R$) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      class="input"
+                      placeholder="0,00"
+                      value={modalNovaProjecao.valorFixo}
+                      onInput={(e) =>
+                        setModalNovaProjecao({ ...modalNovaProjecao, valorFixo: e.currentTarget.value })
+                      }
+                    />
+                  </div>
+                  <div class="muted" style="font-size:var(--fs-xs);">
+                    💡 Será projetado{" "}
+                    <b>{money(Math.round(Number(modalNovaProjecao.valorFixo || 0) * 100))}</b> em cada um dos 12 meses (Total anual:{" "}
+                    <b>{money(Math.round(Number(modalNovaProjecao.valorFixo || 0) * 100) * 12)}</b>).
+                  </div>
+                </div>
+              )}
+
+              {modalNovaProjecao.modoValor === "especifico" && (
+                <div>
+                  <div class="form-row form-row--2" style="margin-bottom:6px;">
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label">Mês Previsto *</label>
+                      <CustomSelect
+                        value={modalNovaProjecao.mesEspecifico}
+                        options={MONTHS.map((m, idx) => ({ value: idx, label: m }))}
+                        onChange={(val) =>
+                          setModalNovaProjecao({ ...modalNovaProjecao, mesEspecifico: parseInt(val, 10) })
+                        }
+                      />
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label">Valor Previsto (R$) *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        required
+                        class="input"
+                        placeholder="0,00"
+                        value={modalNovaProjecao.valorEspecifico}
+                        onInput={(e) =>
+                          setModalNovaProjecao({ ...modalNovaProjecao, valorEspecifico: e.currentTarget.value })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div class="muted" style="font-size:var(--fs-xs);">
+                    💡 Ideal para receitas ou despesas que ocorrem apenas em um mês específico (ex: 13º, IPVA, seguros anuais). Os outros meses ficarão R$ 0,00.
+                  </div>
+                </div>
+              )}
+
+              {modalNovaProjecao.modoValor === "mensal" && (
+                <div>
+                  <div class="muted" style="font-size:var(--fs-xs);margin-bottom:8px;">
+                    Preencha o valor previsto para cada mês:
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));gap:8px;">
+                    {MONTHS.map((m, idx) => (
+                      <div key={m} style="display:flex;flex-direction:column;gap:2px;">
+                        <span style="font-size:0.7rem;font-weight:600;color:var(--text-muted);">{m}</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          class="input"
+                          style="min-height:30px;padding:2px 6px;font-size:var(--fs-xs);text-align:right;"
+                          placeholder="0,00"
+                          value={modalNovaProjecao.valoresMensais[idx]}
+                          onInput={(e) => {
+                            const novos = [...modalNovaProjecao.valoresMensais];
+                            novos[idx] = e.currentTarget.value;
+                            setModalNovaProjecao({ ...modalNovaProjecao, valoresMensais: novos });
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Observação / Detalhes */}
+            <div class="form-group">
+              <label class="form-label" for="nova-proj-obs">
+                Observação / Justificativa (Opcional)
+              </label>
+              <textarea
+                id="nova-proj-obs"
+                class="textarea"
+                rows={2}
+                placeholder="Ex: Contrato de 12 meses com reajuste anual pelo IPCA em Junho..."
+                value={modalNovaProjecao.obs}
+                onInput={(e) =>
+                  setModalNovaProjecao({ ...modalNovaProjecao, obs: e.currentTarget.value })
+                }
+              />
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Modal Observação Rápida */}
       <Modal
         title={`Observação: ${modalObs?.nome || ""}`}
         isOpen={modalObs !== null}
@@ -349,7 +1234,9 @@ export function Projecoes() {
         }
       >
         <div class="form-group">
-          <label class="form-label" for="proj-obs">Detalhes / Justificativa da Projeção</label>
+          <label class="form-label" for="proj-obs">
+            Detalhes / Justificativa da Projeção ({modalObs ? MONTHS[modalObs.mes] : ""})
+          </label>
           <textarea
             id="proj-obs"
             class="textarea"
@@ -360,6 +1247,50 @@ export function Projecoes() {
           />
         </div>
       </Modal>
+
+      {/* Modal Edição de Conta */}
+      {modalEditarConta && (
+        <Modal
+          title="Editar Conta"
+          isOpen={true}
+          onClose={() => setModalEditarConta(null)}
+          footer={
+            <>
+              <button type="button" class="btn btn--ghost" onClick={() => setModalEditarConta(null)}>
+                Cancelar
+              </button>
+              <button type="submit" form="form-editar-conta" class="btn btn--primary">
+                Salvar Alterações
+              </button>
+            </>
+          }
+        >
+          <form id="form-editar-conta" onSubmit={salvarEditarConta}>
+            <div class="form-group">
+              <label class="form-label" for="edit-conta-nome">Nome da Conta *</label>
+              <input
+                id="edit-conta-nome"
+                class="input"
+                required
+                value={modalEditarConta.nome}
+                onInput={(e) =>
+                  setModalEditarConta({ ...modalEditarConta, nome: e.currentTarget.value })
+                }
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="edit-conta-cat">Categoria *</label>
+              <CustomSelect
+                id="edit-conta-cat"
+                value={modalEditarConta.categoriaId}
+                options={cats.map((c) => ({ value: c.id, label: c.nome }))}
+                onChange={(catId) => setModalEditarConta({ ...modalEditarConta, categoriaId: catId })}
+              />
+            </div>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }
