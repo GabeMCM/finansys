@@ -42,11 +42,15 @@ export interface Categoria extends Base {
   nome: string;
 }
 
+export type ModoVinculo = "simples" | "formula";
+
 export interface RegraVinculo {
-  tipo: "conta" | "categoria";
-  origemId: string;
+  modo?: ModoVinculo;
+  tipo?: "conta" | "categoria";
+  origemId?: string;
   percentual?: number; // ex: 30 para 30%
   valorFixo?: number; // em centavos
+  formula?: string; // ex: "([Salário Bruto] - [INSS]) * 30%"
 }
 
 export interface Conta extends Base {

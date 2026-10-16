@@ -11,9 +11,10 @@ import { atualizarNomePerfil, cloudSyncStatus, cloudUltimoBackup, cloudUser, des
 import { conectarGoogleDrive, desconectarGoogleDrive, googleUser, realizarBackupDrive, restaurarDoDrive, syncStatus, ultimoBackup } from "../data/driveSync.ts";
 import { anos, categorias, contas, empresas } from "../data/repo.ts";
 import { seedExemplo } from "../data/seed.ts";
-import { type Ano, type Categoria, type Conta, type Empresa, type Natureza, NATUREZAS, type RegraVinculo } from "../data/types.ts";
+import { type Ano, type Categoria, type Conta, type Empresa, type Natureza, NATUREZAS, type RegraVinculo, type ModoVinculo } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { formatCpfCnpj, labelCpfCnpj, money } from "../lib/format.ts";
+import { avaliarFormula, extrairVariaveis } from "../lib/formula.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
 
@@ -54,6 +55,34 @@ export function Ajustes() {
     }
     const cat = todasCategoriasEmpresa.find((x) => x.id === v.origemId);
     return cat ? cat.nome : "Categoria";
+  };
+
+  const getBadgeVinculo = (v?: RegraVinculo) => {
+    if (!v) return null;
+    if (v.modo === "formula" && v.formula) {
+      return (
+        <span
+          class="badge"
+          style="font-size:11px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:4px;"
+          title={`Fórmula: ${v.formula}`}
+        >
+          <span style="font-weight:700;font-size:10px;">fx</span>
+          {v.formula.length > 25 ? `${v.formula.slice(0, 25)}...` : v.formula}
+        </span>
+      );
+    }
+    const nome = getNomeOrigemVinculo(v);
+    const label = v.percentual !== undefined ? `${v.percentual}% de ${nome}` : `${money(v.valorFixo || 0)} de ${nome}`;
+    return (
+      <span
+        class="badge"
+        style="font-size:11px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:4px;"
+        title={`Vinculado a ${v.tipo === "conta" ? "conta" : "categoria"}: ${nome}`}
+      >
+        <Icon name="link" style="width:12px;height:12px;" />
+        {label}
+      </span>
+    );
   };
 
   // Salvar Empresa
@@ -123,14 +152,25 @@ export function Ajustes() {
     e.preventDefault();
     if (!empId || !modalConta || !modalConta.nome?.trim() || !modalConta.categoriaId) return;
 
-    const vinculoPayload = modalConta.vinculo?.origemId
-      ? {
-          tipo: modalConta.vinculo.tipo,
+    let vinculoPayload: RegraVinculo | undefined = undefined;
+    if (modalConta.vinculo) {
+      if (modalConta.vinculo.modo === "formula") {
+        if (modalConta.vinculo.formula?.trim()) {
+          vinculoPayload = {
+            modo: "formula",
+            formula: modalConta.vinculo.formula.trim(),
+          };
+        }
+      } else if (modalConta.vinculo.origemId) {
+        vinculoPayload = {
+          modo: "simples",
+          tipo: modalConta.vinculo.tipo || "conta",
           origemId: modalConta.vinculo.origemId,
           percentual: modalConta.vinculo.percentual !== undefined ? Number(modalConta.vinculo.percentual) : undefined,
           valorFixo: modalConta.vinculo.valorFixo !== undefined ? Math.round(Number(modalConta.vinculo.valorFixo)) : undefined,
-        }
-      : undefined;
+        };
+      }
+    }
 
     if (modalConta.id) {
       await contas.update(modalConta.id, {
@@ -489,18 +529,7 @@ export function Ajustes() {
                                 <div class="list__title" style="font-size:var(--fs-sm);opacity:!c.ativa ? 0.5 : 1;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
                                   <span>{c.nome}</span>
                                   {!c.ativa && <span class="badge badge--warn">Inativa</span>}
-                                  {c.vinculo && (
-                                    <span
-                                      class="badge"
-                                      style="font-size:11px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:4px;"
-                                      title={`Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${getNomeOrigemVinculo(c.vinculo)}`}
-                                    >
-                                      <Icon name="link" style="width:12px;height:12px;" />
-                                      {c.vinculo.percentual !== undefined
-                                        ? `${c.vinculo.percentual}% de ${getNomeOrigemVinculo(c.vinculo)}`
-                                        : `${money(c.vinculo.valorFixo || 0)} de ${getNomeOrigemVinculo(c.vinculo)}`}
-                                    </span>
-                                  )}
+                                  {getBadgeVinculo(c.vinculo)}
                                 </div>
                               </div>
                               <div style="display:flex;gap:4px;">
@@ -1078,49 +1107,59 @@ export function Ajustes() {
           </>
         }
       >
-        <form id="form-conta" onSubmit={salvarConta}>
-          <div class="form-group">
-            <label class="form-label" for="conta-nome">Nome da Conta *</label>
-            <input
-              id="conta-nome"
-              class="input"
-              required
-              value={modalConta?.nome || ""}
-              onInput={(e) => setModalConta({ ...modalConta, nome: e.currentTarget.value })}
-              placeholder="Ex: Aluguel, Energia, Salários, Cliente X..."
-            />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="conta-cat">Categoria Pertencente *</label>
-            <CustomSelect
-              id="conta-cat"
-              value={modalConta?.categoriaId || ""}
-              placeholder={listaCats.length === 0 ? "Nenhuma categoria cadastrada" : "Selecione Categoria"}
-              disabled={listaCats.length === 0}
-              options={listaCats.map((c) => ({ value: c.id, label: c.nome }))}
-              onChange={(categoriaId) => setModalConta({ ...modalConta, categoriaId })}
-            />
-          </div>
-          {modalConta?.id && (
-            <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;">
-              <input
-                id="conta-ativa"
-                type="checkbox"
-                checked={modalConta?.ativa !== false}
-                onChange={(e) => setModalConta({ ...modalConta, ativa: e.currentTarget.checked })}
-              />
-              <label for="conta-ativa" style="font-size:var(--fs-sm);cursor:pointer;">
-                Conta ativa (disponível para lançamentos)
-              </label>
+        <form id="form-conta" onSubmit={salvarConta} class="stack" style="gap:16px;">
+          {/* Bloco 1: Identificação da Conta */}
+          <div class="card" style="padding:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);">
+            <div style="font-weight:600;font-size:var(--fs-sm);margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+              <Icon name="pencil" style="width:14px;height:14px;color:var(--primary);" />
+              <span>Identificação da Conta</span>
             </div>
-          )}
 
-          {/* Seção Vínculo Automático (Opcional) */}
-          <div class="card" style="margin-top:16px;background:var(--bg-app);border:1px dashed var(--border);padding:12px;border-radius:var(--radius-md);">
+            <div class="form-group" style="margin-bottom:10px;">
+              <label class="form-label" for="conta-nome">Nome da Conta *</label>
+              <input
+                id="conta-nome"
+                class="input"
+                required
+                value={modalConta?.nome || ""}
+                onInput={(e) => setModalConta({ ...modalConta, nome: e.currentTarget.value })}
+                placeholder="Ex: Aluguel, Salários, Pensão Alimentícia, Impostos..."
+              />
+            </div>
+
+            <div class="form-group" style="margin-bottom:modalConta?.id ? '10px' : '0';">
+              <label class="form-label" for="conta-cat">Categoria Pertencente *</label>
+              <CustomSelect
+                id="conta-cat"
+                value={modalConta?.categoriaId || ""}
+                placeholder={listaCats.length === 0 ? "Nenhuma categoria cadastrada" : "Selecione Categoria"}
+                disabled={listaCats.length === 0}
+                options={listaCats.map((c) => ({ value: c.id, label: c.nome }))}
+                onChange={(categoriaId) => setModalConta({ ...modalConta, categoriaId })}
+              />
+            </div>
+
+            {modalConta?.id && (
+              <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;margin-bottom:0;padding-top:4px;">
+                <input
+                  id="conta-ativa"
+                  type="checkbox"
+                  checked={modalConta?.ativa !== false}
+                  onChange={(e) => setModalConta({ ...modalConta, ativa: e.currentTarget.checked })}
+                />
+                <label for="conta-ativa" style="font-size:var(--fs-sm);cursor:pointer;">
+                  Conta ativa (disponível para lançamentos e projeções)
+                </label>
+              </div>
+            )}
+          </div>
+
+          {/* Bloco 2: Automação, Vínculos & Fórmulas */}
+          <div class="card" style="padding:14px;background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--r-md);">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
               <label for="conta-tem-vinculo" style="font-weight:600;font-size:var(--fs-sm);display:flex;align-items:center;gap:6px;cursor:pointer;">
-                <Icon name="link" style="color:var(--primary);" />
-                <span>Vínculo Automático (Opcional)</span>
+                <Icon name="link" style="color:var(--primary);width:15px;height:15px;" />
+                <span>Automação: Vínculos & Fórmulas (Opcional)</span>
               </label>
               <input
                 id="conta-tem-vinculo"
@@ -1132,6 +1171,7 @@ export function Ajustes() {
                     setModalConta({
                       ...modalConta,
                       vinculo: {
+                        modo: "simples",
                         tipo: "conta",
                         origemId: defaultOrigem,
                         percentual: 30,
@@ -1146,178 +1186,331 @@ export function Ajustes() {
                 }}
               />
             </div>
-            <p class="text-muted" style="font-size:var(--fs-xs);margin-bottom:10px;">
-              Vincule esta conta a uma entrada ou outra conta/categoria para calcular valores automáticos (% ou fixo), sugerir lançamentos e sincronizar projeções.
+
+            <p class="text-muted" style="font-size:var(--fs-xs);margin-bottom:12px;">
+              Calcule valores automaticamente (% de outra conta ou fórmula com múltiplas variáveis como <code>([Salário] - [INSS]) * 30%</code>).
             </p>
 
-            {modalConta?.vinculo && (
-              <div class="stack" style="gap:10px;padding-top:6px;border-top:1px solid var(--border);">
-                <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;">
-                  <div>
-                    <label class="form-label" style="font-size:var(--fs-xs);">Vincular a:</label>
-                    <div class="tabs tabs--sm" style="margin:0;">
-                      <button
-                        type="button"
-                        class={`tab ${modalConta.vinculo.tipo === "conta" ? "is-active" : ""}`}
-                        style="font-size:var(--fs-xs);padding:4px 8px;"
-                        onClick={() => {
-                          const def = todasContasEmpresa.find((c) => c.id !== modalConta?.id)?.id || "";
-                          setModalConta({
-                            ...modalConta,
-                            vinculo: { ...modalConta.vinculo!, tipo: "conta", origemId: def },
-                          });
-                        }}
-                      >
-                        Conta
-                      </button>
-                      <button
-                        type="button"
-                        class={`tab ${modalConta.vinculo.tipo === "categoria" ? "is-active" : ""}`}
-                        style="font-size:var(--fs-xs);padding:4px 8px;"
-                        onClick={() => {
-                          const def = todasCategoriasEmpresa[0]?.id || "";
-                          setModalConta({
-                            ...modalConta,
-                            vinculo: { ...modalConta.vinculo!, tipo: "categoria", origemId: def },
-                          });
-                        }}
-                      >
-                        Categoria
-                      </button>
-                    </div>
-                  </div>
+            {modalConta?.vinculo && (() => {
+              const v = modalConta.vinculo;
+              const modoAtual: ModoVinculo = v.modo || (v.formula ? "formula" : "simples");
 
-                  <div>
-                    <label class="form-label" style="font-size:var(--fs-xs);">Forma de Cálculo:</label>
-                    <div class="tabs tabs--sm" style="margin:0;">
-                      <button
-                        type="button"
-                        class={`tab ${modalConta.vinculo.percentual !== undefined ? "is-active" : ""}`}
-                        style="font-size:var(--fs-xs);padding:4px 8px;"
-                        onClick={() => {
-                          setModalConta({
-                            ...modalConta,
-                            vinculo: {
-                              tipo: modalConta.vinculo!.tipo,
-                              origemId: modalConta.vinculo!.origemId,
-                              percentual: 30,
-                              valorFixo: undefined,
-                            },
-                          });
-                        }}
-                      >
-                        % Percentual
-                      </button>
-                      <button
-                        type="button"
-                        class={`tab ${modalConta.vinculo.valorFixo !== undefined ? "is-active" : ""}`}
-                        style="font-size:var(--fs-xs);padding:4px 8px;"
-                        onClick={() => {
-                          setModalConta({
-                            ...modalConta,
-                            vinculo: {
-                              tipo: modalConta.vinculo!.tipo,
-                              origemId: modalConta.vinculo!.origemId,
-                              percentual: undefined,
-                              valorFixo: 0,
-                            },
-                          });
-                        }}
-                      >
-                        Valor Fixo
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label" style="font-size:var(--fs-xs);">
-                    Origem ({modalConta.vinculo.tipo === "conta" ? "Conta" : "Categoria"} base) *
-                  </label>
-                  {modalConta.vinculo.tipo === "conta" ? (
-                    <CustomSelect
-                      value={modalConta.vinculo.origemId}
-                      placeholder="Selecione a conta de origem"
-                      options={todasContasEmpresa
-                        .filter((c) => c.id !== modalConta?.id)
-                        .map((c) => ({
-                          value: c.id,
-                          label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
-                        }))}
-                      onChange={(origemId) =>
-                        setModalConta({
-                          ...modalConta,
-                          vinculo: { ...modalConta.vinculo!, origemId },
-                        })
-                      }
-                    />
-                  ) : (
-                    <CustomSelect
-                      value={modalConta.vinculo.origemId}
-                      placeholder="Selecione a categoria de origem"
-                      options={todasCategoriasEmpresa.map((cat) => ({
-                        value: cat.id,
-                        label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
-                      }))}
-                      onChange={(origemId) =>
-                        setModalConta({
-                          ...modalConta,
-                          vinculo: { ...modalConta.vinculo!, origemId },
-                        })
-                      }
-                    />
-                  )}
-                </div>
-
-                {modalConta.vinculo.percentual !== undefined ? (
-                  <div class="form-group">
-                    <label class="form-label" style="font-size:var(--fs-xs);">Percentual da Origem (%) *</label>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="1000"
-                        class="input"
-                        placeholder="Ex: 30 para 30%"
-                        value={modalConta.vinculo.percentual || ""}
-                        onInput={(e) =>
-                          setModalConta({
-                            ...modalConta,
-                            vinculo: {
-                              ...modalConta.vinculo!,
-                              percentual: parseFloat(e.currentTarget.value) || 0,
-                            },
-                          })
-                        }
-                      />
-                      <span style="font-weight:600;font-size:var(--fs-md);">%</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div class="form-group">
-                    <label class="form-label" style="font-size:var(--fs-xs);">Valor Fixo (R$) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      class="input"
-                      placeholder="Ex: 1500.00"
-                      value={modalConta.vinculo.valorFixo !== undefined ? (modalConta.vinculo.valorFixo / 100).toString() : ""}
-                      onInput={(e) =>
+              return (
+                <div class="stack" style="gap:12px;padding-top:10px;border-top:1px solid var(--border);">
+                  {/* Seletor de Modo: Simples vs Fórmula */}
+                  <div class="tabs tabs--sm" style="margin:0;">
+                    <button
+                      type="button"
+                      class={`tab ${modoAtual === "simples" ? "is-active" : ""}`}
+                      onClick={() =>
                         setModalConta({
                           ...modalConta,
                           vinculo: {
-                            ...modalConta.vinculo!,
-                            valorFixo: Math.round(Number(e.currentTarget.value || 0) * 100),
+                            ...v,
+                            modo: "simples",
+                            origemId: v.origemId || todasContasEmpresa.find((c) => c.id !== modalConta?.id)?.id || "",
+                            percentual: v.percentual ?? 30,
                           },
                         })
                       }
-                    />
+                    >
+                      <Icon name="link" style="width:13px;height:13px;" /> Vínculo Direto (% ou Fixo)
+                    </button>
+                    <button
+                      type="button"
+                      class={`tab ${modoAtual === "formula" ? "is-active" : ""}`}
+                      onClick={() =>
+                        setModalConta({
+                          ...modalConta,
+                          vinculo: {
+                            ...v,
+                            modo: "formula",
+                            formula: v.formula || "",
+                          },
+                        })
+                      }
+                    >
+                      <span style="font-weight:700;font-size:11px;">fx</span> Fórmula com Variáveis
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
+
+                  {/* Modo Simples */}
+                  {modoAtual === "simples" && (
+                    <div class="stack" style="gap:10px;">
+                      <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;">
+                        <div>
+                          <label class="form-label" style="font-size:var(--fs-xs);">Vincular a:</label>
+                          <div class="tabs tabs--sm" style="margin:0;">
+                            <button
+                              type="button"
+                              class={`tab ${v.tipo !== "categoria" ? "is-active" : ""}`}
+                              style="font-size:var(--fs-xs);padding:3px 8px;"
+                              onClick={() => {
+                                const def = todasContasEmpresa.find((c) => c.id !== modalConta?.id)?.id || "";
+                                setModalConta({
+                                  ...modalConta,
+                                  vinculo: { ...v, tipo: "conta", origemId: def },
+                                });
+                              }}
+                            >
+                              Conta
+                            </button>
+                            <button
+                              type="button"
+                              class={`tab ${v.tipo === "categoria" ? "is-active" : ""}`}
+                              style="font-size:var(--fs-xs);padding:3px 8px;"
+                              onClick={() => {
+                                const def = todasCategoriasEmpresa[0]?.id || "";
+                                setModalConta({
+                                  ...modalConta,
+                                  vinculo: { ...v, tipo: "categoria", origemId: def },
+                                });
+                              }}
+                            >
+                              Categoria
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label class="form-label" style="font-size:var(--fs-xs);">Forma de Cálculo:</label>
+                          <div class="tabs tabs--sm" style="margin:0;">
+                            <button
+                              type="button"
+                              class={`tab ${v.percentual !== undefined ? "is-active" : ""}`}
+                              style="font-size:var(--fs-xs);padding:3px 8px;"
+                              onClick={() =>
+                                setModalConta({
+                                  ...modalConta,
+                                  vinculo: { ...v, percentual: 30, valorFixo: undefined },
+                                })
+                              }
+                            >
+                              % Percentual
+                            </button>
+                            <button
+                              type="button"
+                              class={`tab ${v.valorFixo !== undefined ? "is-active" : ""}`}
+                              style="font-size:var(--fs-xs);padding:3px 8px;"
+                              onClick={() =>
+                                setModalConta({
+                                  ...modalConta,
+                                  vinculo: { ...v, percentual: undefined, valorFixo: 0 },
+                                })
+                              }
+                            >
+                              Valor Fixo
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label" style="font-size:var(--fs-xs);">
+                          Origem ({v.tipo === "categoria" ? "Categoria" : "Conta"} base) *
+                        </label>
+                        {v.tipo === "categoria" ? (
+                          <CustomSelect
+                            value={v.origemId || ""}
+                            placeholder="Selecione a categoria..."
+                            options={todasCategoriasEmpresa.map((cat) => ({
+                              value: cat.id,
+                              label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
+                            }))}
+                            onChange={(origemId) =>
+                              setModalConta({
+                                ...modalConta,
+                                vinculo: { ...v, origemId },
+                              })
+                            }
+                          />
+                        ) : (
+                          <CustomSelect
+                            value={v.origemId || ""}
+                            placeholder="Selecione a conta..."
+                            options={todasContasEmpresa
+                              .filter((c) => c.id !== modalConta?.id)
+                              .map((c) => ({
+                                value: c.id,
+                                label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
+                              }))}
+                            onChange={(origemId) =>
+                              setModalConta({
+                                ...modalConta,
+                                vinculo: { ...v, origemId },
+                              })
+                            }
+                          />
+                        )}
+                      </div>
+
+                      {v.percentual !== undefined ? (
+                        <div class="form-group" style="margin-bottom:0;">
+                          <label class="form-label" style="font-size:var(--fs-xs);">Percentual da Origem (%) *</label>
+                          <div style="display:flex;align-items:center;gap:6px;">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="1000"
+                              class="input"
+                              placeholder="Ex: 30 para 30%"
+                              value={v.percentual}
+                              onInput={(e) =>
+                                setModalConta({
+                                  ...modalConta,
+                                  vinculo: {
+                                    ...v,
+                                    percentual: parseFloat(e.currentTarget.value) || 0,
+                                  },
+                                })
+                              }
+                            />
+                            <span style="font-weight:600;font-size:var(--fs-md);">%</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div class="form-group" style="margin-bottom:0;">
+                          <label class="form-label" style="font-size:var(--fs-xs);">Valor Fixo (R$) *</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input"
+                            placeholder="Ex: 1500.00"
+                            value={v.valorFixo !== undefined ? (v.valorFixo / 100).toString() : ""}
+                            onInput={(e) =>
+                              setModalConta({
+                                ...modalConta,
+                                vinculo: {
+                                  ...v,
+                                  valorFixo: Math.round(Number(e.currentTarget.value || 0) * 100),
+                                },
+                              })
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Modo Fórmula Livre */}
+                  {modoAtual === "formula" && (() => {
+                    const formulaTexto = v.formula || "";
+                    const varsDetectadas = extrairVariaveis(formulaTexto);
+                    const evalTeste = formulaTexto.trim()
+                      ? avaliarFormula(
+                          formulaTexto,
+                          Object.fromEntries(varsDetectadas.map((varName) => [varName, 1000]))
+                        )
+                      : { ok: true, valor: 0 };
+
+                    const inserirTextoFormula = (fragmento: string) => {
+                      setModalConta({
+                        ...modalConta,
+                        vinculo: {
+                          ...v,
+                          formula: formulaTexto ? `${formulaTexto} ${fragmento}` : fragmento,
+                        },
+                      });
+                    };
+
+                    return (
+                      <div class="stack" style="gap:10px;">
+                        <div class="form-group" style="margin-bottom:0;">
+                          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                            <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:0;">
+                              Expressão da Fórmula *
+                            </label>
+                            <span class="muted" style="font-size:11px;">
+                              Ex: <code>([Salário Bruto] - [INSS]) * 30%</code>
+                            </span>
+                          </div>
+                          <input
+                            class="input"
+                            placeholder="Ex: ([Salário Bruto] - [INSS]) * 30%"
+                            value={formulaTexto}
+                            onInput={(e) =>
+                              setModalConta({
+                                ...modalConta,
+                                vinculo: {
+                                  ...v,
+                                  formula: e.currentTarget.value,
+                                },
+                              })
+                            }
+                          />
+                        </div>
+
+                        {/* Operadores e Teclado Rápido */}
+                        <div>
+                          <div class="muted" style="font-size:11px;margin-bottom:4px;">
+                            Operadores Rápidos:
+                          </div>
+                          <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                            {["+", "-", "*", "/", "(", ")", "%"].map((op) => (
+                              <button
+                                key={op}
+                                type="button"
+                                class="btn btn--ghost btn--sm"
+                                style="font-family:monospace;font-weight:700;min-width:30px;min-height:26px;padding:2px 8px;"
+                                onClick={() => inserirTextoFormula(op)}
+                              >
+                                {op}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Chips de Variáveis das Contas */}
+                        <div>
+                          <div class="muted" style="font-size:11px;margin-bottom:4px;">
+                            Clique para inserir conta na fórmula:
+                          </div>
+                          <div style="display:flex;gap:4px;flex-wrap:wrap;max-height:90px;overflow-y:auto;">
+                            {todasContasEmpresa
+                              .filter((c) => c.id !== modalConta?.id)
+                              .map((c) => (
+                                <button
+                                  key={c.id}
+                                  type="button"
+                                  class="chip"
+                                  style="font-size:11px;padding:3px 8px;cursor:pointer;"
+                                  title={`Inserir [${c.nome}]`}
+                                  onClick={() => inserirTextoFormula(`[${c.nome}]`)}
+                                >
+                                  + [{c.nome}]
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+
+                        {/* Validador em Tempo Real */}
+                        {formulaTexto.trim() && (
+                          <div
+                            style={`padding:8px 12px;border-radius:var(--r-md);font-size:var(--fs-xs);${
+                              evalTeste.ok
+                                ? "background:var(--primary-soft);color:var(--primary);border:1px solid color-mix(in srgb, var(--primary) 20%, transparent);"
+                                : "background:var(--out-soft);color:var(--out);border:1px solid color-mix(in srgb, var(--out) 20%, transparent);"
+                            }`}
+                          >
+                            <div style="font-weight:600;display:flex;align-items:center;gap:6px;">
+                              <Icon name={evalTeste.ok ? "check" : "alertTriangle"} style="width:14px;height:14px;" />
+                              <span>{evalTeste.ok ? "Sintaxe da fórmula válida!" : evalTeste.erro}</span>
+                            </div>
+                            {varsDetectadas.length > 0 && (
+                              <div style="margin-top:4px;font-size:11px;color:var(--text-muted);">
+                                Variáveis detectadas: <b>{varsDetectadas.join(", ")}</b>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
           </div>
         </form>
       </Modal>

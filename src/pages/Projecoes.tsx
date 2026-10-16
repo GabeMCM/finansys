@@ -9,6 +9,7 @@ import { anos, categorias, contas, projecoes } from "../data/repo.ts";
 import { type Categoria, type Conta, type Natureza, NATUREZAS, type RegraVinculo } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { money, MONTHS } from "../lib/format.ts";
+import { avaliarFormula, calcularFormulaProjecoes, extrairVariaveis } from "../lib/formula.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
 
@@ -26,11 +27,13 @@ interface ModalNovaProjecaoState {
   valorEspecifico: number | string;
   valoresMensais: (number | string)[];
   obs: string;
+  vinculoModoTipo: "simples" | "formula";
   vinculoTipo: "conta" | "categoria";
   vinculoOrigemId: string;
   vinculoModo: "percentual" | "fixo";
   vinculoPercentual: number | string;
   vinculoValorFixo: number | string;
+  vinculoFormula: string;
   salvarVinculoNaConta: boolean;
 }
 
@@ -207,11 +210,13 @@ export function Projecoes() {
       valorEspecifico: "",
       valoresMensais: Array(12).fill(""),
       obs: "",
+      vinculoModoTipo: "simples",
       vinculoTipo: "conta",
       vinculoOrigemId: defaultOrigemId,
       vinculoModo: "percentual",
       vinculoPercentual: 30,
       vinculoValorFixo: "",
+      vinculoFormula: "",
       salvarVinculoNaConta: true,
     });
   };
@@ -277,21 +282,39 @@ export function Projecoes() {
         await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
       }
     } else if (modalNovaProjecao.modoValor === "vinculado") {
-      const regra: RegraVinculo = {
-        tipo: modalNovaProjecao.vinculoTipo,
-        origemId: modalNovaProjecao.vinculoOrigemId,
-        percentual: modalNovaProjecao.vinculoModo === "percentual" ? Number(modalNovaProjecao.vinculoPercentual || 0) : undefined,
-        valorFixo: modalNovaProjecao.vinculoModo === "fixo" ? Math.round(Number(modalNovaProjecao.vinculoValorFixo || 0) * 100) : undefined,
-      };
+      if (modalNovaProjecao.vinculoModoTipo === "formula") {
+        const formulaTexto = modalNovaProjecao.vinculoFormula.trim();
+        for (let m = 0; m < 12; m++) {
+          const res = calcularFormulaProjecoes(formulaTexto, m, ps, todasContas, todasCats);
+          await projecoes.set(ano.id, targetContaId, m, res.valorCentavos, obsTexto);
+        }
 
-      for (let m = 0; m < 12; m++) {
-        const baseCentavos = calcularBaseProjecoes(regra, m, ps, todasContas);
-        const valorCalculado = calcularValorVinculado(baseCentavos, regra);
-        await projecoes.set(ano.id, targetContaId, m, valorCalculado, obsTexto, modalNovaProjecao.vinculoOrigemId);
-      }
+        if (modalNovaProjecao.salvarVinculoNaConta) {
+          await contas.update(targetContaId, {
+            vinculo: {
+              modo: "formula",
+              formula: formulaTexto,
+            },
+          });
+        }
+      } else {
+        const regra: RegraVinculo = {
+          modo: "simples",
+          tipo: modalNovaProjecao.vinculoTipo,
+          origemId: modalNovaProjecao.vinculoOrigemId,
+          percentual: modalNovaProjecao.vinculoModo === "percentual" ? Number(modalNovaProjecao.vinculoPercentual || 0) : undefined,
+          valorFixo: modalNovaProjecao.vinculoModo === "fixo" ? Math.round(Number(modalNovaProjecao.vinculoValorFixo || 0) * 100) : undefined,
+        };
 
-      if (modalNovaProjecao.salvarVinculoNaConta) {
-        await contas.update(targetContaId, { vinculo: regra });
+        for (let m = 0; m < 12; m++) {
+          const baseCentavos = calcularBaseProjecoes(regra, m, ps, todasContas);
+          const valorCalculado = calcularValorVinculado(baseCentavos, regra);
+          await projecoes.set(ano.id, targetContaId, m, valorCalculado, obsTexto, modalNovaProjecao.vinculoOrigemId);
+        }
+
+        if (modalNovaProjecao.salvarVinculoNaConta) {
+          await contas.update(targetContaId, { vinculo: regra });
+        }
       }
     }
 
@@ -305,15 +328,17 @@ export function Projecoes() {
   };
 
   const recalcularVinculadas = async () => {
-    const vinculadas = todasContas.filter((c) => c.vinculo && c.vinculo.origemId);
+    const vinculadas = todasContas.filter(
+      (c) => c.vinculo && (c.vinculo.origemId || (c.vinculo.modo === "formula" && c.vinculo.formula))
+    );
     if (vinculadas.length === 0) {
-      toast.info("Nenhuma conta com vínculo automático cadastrada.");
+      toast.info("Nenhuma conta com vínculo automático ou fórmula cadastrada.");
       return;
     }
 
     const ok = await confirmarAcao({
-      titulo: "Recalcular Projeções Vinculadas",
-      mensagem: `Deseja recalcular as 12 projeções de ${vinculadas.length} conta(s) vinculada(s) com base nos valores atuais das origens em ${anoNum}?`,
+      titulo: "Recalcular Projeções Vinculadas & Fórmulas",
+      mensagem: `Deseja recalcular as 12 projeções de ${vinculadas.length} conta(s) vinculada(s) ou com fórmulas com base nos valores atuais das origens em ${anoNum}?`,
       rotuloConfirmar: "Recalcular Tudo",
       tipo: "info",
     });
@@ -322,13 +347,22 @@ export function Projecoes() {
     let alteradas = 0;
     for (const c of vinculadas) {
       if (!c.vinculo) continue;
-      for (let m = 0; m < 12; m++) {
-        const baseCentavos = calcularBaseProjecoes(c.vinculo, m, ps, todasContas);
-        const valorCalculado = calcularValorVinculado(baseCentavos, c.vinculo);
-        const atual = getProj(c.id, m);
-        await projecoes.set(ano.id, c.id, m, valorCalculado, atual.obs, c.vinculo.origemId);
+      if (c.vinculo.modo === "formula" && c.vinculo.formula) {
+        for (let m = 0; m < 12; m++) {
+          const res = calcularFormulaProjecoes(c.vinculo.formula, m, ps, todasContas, todasCats);
+          const atual = getProj(c.id, m);
+          await projecoes.set(ano.id, c.id, m, res.valorCentavos, atual.obs);
+        }
+        alteradas++;
+      } else if (c.vinculo.origemId) {
+        for (let m = 0; m < 12; m++) {
+          const baseCentavos = calcularBaseProjecoes(c.vinculo, m, ps, todasContas);
+          const valorCalculado = calcularValorVinculado(baseCentavos, c.vinculo);
+          const atual = getProj(c.id, m);
+          await projecoes.set(ano.id, c.id, m, valorCalculado, atual.obs, c.vinculo.origemId);
+        }
+        alteradas++;
       }
-      alteradas++;
     }
     toast.success(`${alteradas} conta(s) vinculada(s) recalculada(s) com sucesso!`);
   };
@@ -698,11 +732,24 @@ export function Projecoes() {
                                       {c.vinculo && (
                                         <span
                                           class="badge"
-                                          style="font-size:10px;padding:1px 4px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:2px;"
-                                          title={`Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : money(c.vinculo.valorFixo || 0)}`}
+                                          style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
+                                          title={
+                                            c.vinculo.modo === "formula"
+                                              ? `Fórmula: ${c.vinculo.formula || ""}`
+                                              : `Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : money(c.vinculo.valorFixo || 0)}`
+                                          }
                                         >
-                                          <Icon name="link" style="width:10px;height:10px;" />
-                                          {c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : "Fixo"}
+                                          {c.vinculo.modo === "formula" ? (
+                                            <>
+                                              <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span>
+                                              <span>fórmula</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Icon name="link" style="width:10px;height:10px;" />
+                                              <span>{c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : "Fixo"}</span>
+                                            </>
+                                          )}
                                         </span>
                                       )}
                                     </div>
@@ -926,10 +973,24 @@ export function Projecoes() {
                                   {c.vinculo && (
                                     <span
                                       class="badge"
-                                      style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:2px;"
+                                      style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
+                                      title={
+                                        c.vinculo.modo === "formula"
+                                          ? `Fórmula: ${c.vinculo.formula || ""}`
+                                          : `Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : money(c.vinculo.valorFixo || 0)}`
+                                      }
                                     >
-                                      <Icon name="link" style="width:10px;height:10px;" />
-                                      {c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : "Fixo"}
+                                      {c.vinculo.modo === "formula" ? (
+                                        <>
+                                          <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span>
+                                          <span>fórmula</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Icon name="link" style="width:10px;height:10px;" />
+                                          <span>{c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : "Fixo"}</span>
+                                        </>
+                                      )}
                                     </span>
                                   )}
                                 </div>
@@ -1301,132 +1362,259 @@ export function Projecoes() {
 
               {modalNovaProjecao.modoValor === "vinculado" && (() => {
                 const regraSimulada: RegraVinculo = {
+                  modo: modalNovaProjecao.vinculoModoTipo,
                   tipo: modalNovaProjecao.vinculoTipo,
                   origemId: modalNovaProjecao.vinculoOrigemId,
                   percentual: modalNovaProjecao.vinculoModo === "percentual" ? Number(modalNovaProjecao.vinculoPercentual || 0) : undefined,
                   valorFixo: modalNovaProjecao.vinculoModo === "fixo" ? Math.round(Number(modalNovaProjecao.vinculoValorFixo || 0) * 100) : undefined,
+                  formula: modalNovaProjecao.vinculoFormula,
                 };
                 let totalAnualCalculado = 0;
                 const previsaoMeses = MONTHS.map((m, idx) => {
-                  const baseMes = calcularBaseProjecoes(regraSimulada, idx, ps, todasContas);
-                  const valorCalculado = calcularValorVinculado(baseMes, regraSimulada);
-                  totalAnualCalculado += valorCalculado;
-                  return { mes: m, base: baseMes, valor: valorCalculado };
+                  if (modalNovaProjecao.vinculoModoTipo === "formula") {
+                    const res = calcularFormulaProjecoes(modalNovaProjecao.vinculoFormula || "", idx, ps, todasContas, todasCats);
+                    totalAnualCalculado += res.valorCentavos;
+                    return { mes: m, base: 0, valor: res.valorCentavos };
+                  } else {
+                    const baseMes = calcularBaseProjecoes(regraSimulada, idx, ps, todasContas);
+                    const valorCalculado = calcularValorVinculado(baseMes, regraSimulada);
+                    totalAnualCalculado += valorCalculado;
+                    return { mes: m, base: baseMes, valor: valorCalculado };
+                  }
                 });
 
                 return (
                   <div class="stack" style="gap:10px;">
-                    <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;">
-                      <div>
-                        <label class="form-label" style="font-size:var(--fs-xs);">Vincular a:</label>
-                        <div class="tabs tabs--sm" style="margin:0;">
-                          <button
-                            type="button"
-                            class={`tab ${modalNovaProjecao.vinculoTipo === "conta" ? "is-active" : ""}`}
-                            style="font-size:var(--fs-xs);padding:4px 8px;"
-                            onClick={() => {
-                              const def = todasContas.find((c) => c.natureza === "receber")?.id || todasContas[0]?.id || "";
-                              setModalNovaProjecao({ ...modalNovaProjecao, vinculoTipo: "conta", vinculoOrigemId: def });
-                            }}
-                          >
-                            Conta
-                          </button>
-                          <button
-                            type="button"
-                            class={`tab ${modalNovaProjecao.vinculoTipo === "categoria" ? "is-active" : ""}`}
-                            style="font-size:var(--fs-xs);padding:4px 8px;"
-                            onClick={() => {
-                              const def = todasCats.find((c) => c.natureza === "receber")?.id || todasCats[0]?.id || "";
-                              setModalNovaProjecao({ ...modalNovaProjecao, vinculoTipo: "categoria", vinculoOrigemId: def });
-                            }}
-                          >
-                            Categoria
-                          </button>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label class="form-label" style="font-size:var(--fs-xs);">Cálculo:</label>
-                        <div class="tabs tabs--sm" style="margin:0;">
-                          <button
-                            type="button"
-                            class={`tab ${modalNovaProjecao.vinculoModo === "percentual" ? "is-active" : ""}`}
-                            style="font-size:var(--fs-xs);padding:4px 8px;"
-                            onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModo: "percentual" })}
-                          >
-                            % Percentual
-                          </button>
-                          <button
-                            type="button"
-                            class={`tab ${modalNovaProjecao.vinculoModo === "fixo" ? "is-active" : ""}`}
-                            style="font-size:var(--fs-xs);padding:4px 8px;"
-                            onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModo: "fixo" })}
-                          >
-                            Valor Fixo
-                          </button>
-                        </div>
-                      </div>
+                    {/* Sub-tabs: Vínculo Simples vs Fórmula */}
+                    <div class="tabs tabs--sm" style="margin:0;">
+                      <button
+                        type="button"
+                        class={`tab ${modalNovaProjecao.vinculoModoTipo === "simples" ? "is-active" : ""}`}
+                        style="font-size:var(--fs-xs);padding:4px 10px;"
+                        onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModoTipo: "simples" })}
+                      >
+                        <Icon name="link" style="width:12px;height:12px;" /> Vínculo Direto
+                      </button>
+                      <button
+                        type="button"
+                        class={`tab ${modalNovaProjecao.vinculoModoTipo === "formula" ? "is-active" : ""}`}
+                        style="font-size:var(--fs-xs);padding:4px 10px;"
+                        onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModoTipo: "formula" })}
+                      >
+                        <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span> Fórmula com Variáveis
+                      </button>
                     </div>
 
-                    <div class="form-group" style="margin-bottom:0;">
-                      <label class="form-label" style="font-size:var(--fs-xs);">
-                        {modalNovaProjecao.vinculoTipo === "conta" ? "Conta de Origem *" : "Categoria de Origem *"}
-                      </label>
-                      {modalNovaProjecao.vinculoTipo === "conta" ? (
-                        <CustomSelect
-                          value={modalNovaProjecao.vinculoOrigemId}
-                          placeholder="Selecione a conta base..."
-                          options={todasContas.map((c) => ({
-                            value: c.id,
-                            label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
-                          }))}
-                          onChange={(origemId) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoOrigemId: origemId })}
-                        />
-                      ) : (
-                        <CustomSelect
-                          value={modalNovaProjecao.vinculoOrigemId}
-                          placeholder="Selecione a categoria base..."
-                          options={todasCats.map((cat) => ({
-                            value: cat.id,
-                            label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
-                          }))}
-                          onChange={(origemId) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoOrigemId: origemId })}
-                        />
-                      )}
-                    </div>
+                    {modalNovaProjecao.vinculoModoTipo === "simples" ? (
+                      <>
+                        <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;">
+                          <div>
+                            <label class="form-label" style="font-size:var(--fs-xs);">Vincular a:</label>
+                            <div class="tabs tabs--sm" style="margin:0;">
+                              <button
+                                type="button"
+                                class={`tab ${modalNovaProjecao.vinculoTipo === "conta" ? "is-active" : ""}`}
+                                style="font-size:var(--fs-xs);padding:4px 8px;"
+                                onClick={() => {
+                                  const def = todasContas.find((c) => c.natureza === "receber")?.id || todasContas[0]?.id || "";
+                                  setModalNovaProjecao({ ...modalNovaProjecao, vinculoTipo: "conta", vinculoOrigemId: def });
+                                }}
+                              >
+                                Conta
+                              </button>
+                              <button
+                                type="button"
+                                class={`tab ${modalNovaProjecao.vinculoTipo === "categoria" ? "is-active" : ""}`}
+                                style="font-size:var(--fs-xs);padding:4px 8px;"
+                                onClick={() => {
+                                  const def = todasCats.find((c) => c.natureza === "receber")?.id || todasCats[0]?.id || "";
+                                  setModalNovaProjecao({ ...modalNovaProjecao, vinculoTipo: "categoria", vinculoOrigemId: def });
+                                }}
+                              >
+                                Categoria
+                              </button>
+                            </div>
+                          </div>
 
-                    {modalNovaProjecao.vinculoModo === "percentual" ? (
-                      <div class="form-group" style="margin-bottom:0;">
-                        <label class="form-label" style="font-size:var(--fs-xs);">Percentual da Origem (%) *</label>
-                        <div style="display:flex;align-items:center;gap:6px;">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0.01"
-                            max="1000"
-                            required
-                            class="input"
-                            placeholder="Ex: 30 para 30%"
-                            value={modalNovaProjecao.vinculoPercentual}
-                            onInput={(e) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoPercentual: e.currentTarget.value })}
-                          />
-                          <span style="font-weight:600;font-size:var(--fs-md);">%</span>
+                          <div>
+                            <label class="form-label" style="font-size:var(--fs-xs);">Cálculo:</label>
+                            <div class="tabs tabs--sm" style="margin:0;">
+                              <button
+                                type="button"
+                                class={`tab ${modalNovaProjecao.vinculoModo === "percentual" ? "is-active" : ""}`}
+                                style="font-size:var(--fs-xs);padding:4px 8px;"
+                                onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModo: "percentual" })}
+                              >
+                                % Percentual
+                              </button>
+                              <button
+                                type="button"
+                                class={`tab ${modalNovaProjecao.vinculoModo === "fixo" ? "is-active" : ""}`}
+                                style="font-size:var(--fs-xs);padding:4px 8px;"
+                                onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModo: "fixo" })}
+                              >
+                                Valor Fixo
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
+
+                        <div class="form-group" style="margin-bottom:0;">
+                          <label class="form-label" style="font-size:var(--fs-xs);">
+                            {modalNovaProjecao.vinculoTipo === "conta" ? "Conta de Origem *" : "Categoria de Origem *"}
+                          </label>
+                          {modalNovaProjecao.vinculoTipo === "conta" ? (
+                            <CustomSelect
+                              value={modalNovaProjecao.vinculoOrigemId}
+                              placeholder="Selecione a conta base..."
+                              options={todasContas.map((c) => ({
+                                value: c.id,
+                                label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
+                              }))}
+                              onChange={(origemId) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoOrigemId: origemId })}
+                            />
+                          ) : (
+                            <CustomSelect
+                              value={modalNovaProjecao.vinculoOrigemId}
+                              placeholder="Selecione a categoria base..."
+                              options={todasCats.map((cat) => ({
+                                value: cat.id,
+                                label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
+                              }))}
+                              onChange={(origemId) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoOrigemId: origemId })}
+                            />
+                          )}
+                        </div>
+
+                        {modalNovaProjecao.vinculoModo === "percentual" ? (
+                          <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:var(--fs-xs);">Percentual da Origem (%) *</label>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                max="1000"
+                                required
+                                class="input"
+                                placeholder="Ex: 30 para 30%"
+                                value={modalNovaProjecao.vinculoPercentual}
+                                onInput={(e) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoPercentual: e.currentTarget.value })}
+                              />
+                              <span style="font-weight:600;font-size:var(--fs-md);">%</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div class="form-group" style="margin-bottom:0;">
+                            <label class="form-label" style="font-size:var(--fs-xs);">Valor Fixo Previsto (R$) *</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              required
+                              class="input"
+                              placeholder="0,00"
+                              value={modalNovaProjecao.vinculoValorFixo}
+                              onInput={(e) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoValorFixo: e.currentTarget.value })}
+                            />
+                          </div>
+                        )}
+                      </>
                     ) : (
-                      <div class="form-group" style="margin-bottom:0;">
-                        <label class="form-label" style="font-size:var(--fs-xs);">Valor Fixo Previsto (R$) *</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          required
-                          class="input"
-                          placeholder="0,00"
-                          value={modalNovaProjecao.vinculoValorFixo}
-                          onInput={(e) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoValorFixo: e.currentTarget.value })}
-                        />
-                      </div>
+                      <>
+                        <div class="muted" style="font-size:var(--fs-xs);">
+                          💡 Crie fórmulas combinando contas entre colchetes como <code>[Salário Bruto]</code> e use operadores aritméticos. Exemplo: <code>([Salário Bruto] - [INSS]) * 30%</code>
+                        </div>
+
+                        {/* Variáveis rápidas */}
+                        <div>
+                          <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:4px;">
+                            Contas Disponíveis (clique para inserir):
+                          </label>
+                          <div
+                            style="display:flex;gap:4px;flex-wrap:wrap;max-height:80px;overflow-y:auto;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);"
+                          >
+                            {todasContas.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                class="badge"
+                                style="cursor:pointer;background:var(--surface-soft);border:1px solid var(--border);color:var(--text);font-size:11px;padding:3px 6px;"
+                                onClick={() => {
+                                  const varNome = `[${c.nome}]`;
+                                  const atual = (modalNovaProjecao.vinculoFormula || "").trim();
+                                  setModalNovaProjecao({
+                                    ...modalNovaProjecao,
+                                    vinculoFormula: atual ? `${atual} + ${varNome}` : varNome,
+                                  });
+                                }}
+                              >
+                                + [{c.nome}]
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Operadores rápidos */}
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+                          <span class="muted" style="font-size:11px;">Operadores:</span>
+                          {["+", "-", "*", "/", "(", ")", "%"].map((op) => (
+                            <button
+                              key={op}
+                              type="button"
+                              class="btn btn--ghost"
+                              style="min-height:22px;padding:1px 6px;font-size:var(--fs-xs);font-weight:700;"
+                              onClick={() => {
+                                const atual = modalNovaProjecao.vinculoFormula || "";
+                                setModalNovaProjecao({
+                                  ...modalNovaProjecao,
+                                  vinculoFormula: `${atual} ${op} `,
+                                });
+                              }}
+                            >
+                              {op}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div class="form-group" style="margin-bottom:0;">
+                          <label class="form-label" style="font-size:var(--fs-xs);">Fórmula de Cálculo *</label>
+                          <textarea
+                            class="textarea"
+                            rows={2}
+                            placeholder="Ex: ([Salário Bruto] - [Previdência]) * 30%"
+                            value={modalNovaProjecao.vinculoFormula}
+                            onInput={(e) =>
+                              setModalNovaProjecao({ ...modalNovaProjecao, vinculoFormula: e.currentTarget.value })
+                            }
+                          />
+                        </div>
+
+                        {modalNovaProjecao.vinculoFormula.trim() && (() => {
+                          const evalTeste = calcularFormulaProjecoes(
+                            modalNovaProjecao.vinculoFormula,
+                            mesAtivo,
+                            ps,
+                            todasContas,
+                            todasCats
+                          );
+                          return evalTeste.ok ? (
+                            <div
+                              class="banner banner--success"
+                              style="padding:6px 10px;font-size:var(--fs-xs);margin:0;border-radius:var(--r-sm);"
+                            >
+                              ✓ Fórmula válida! Prévia em {MONTHS[mesAtivo]}: <b>{money(evalTeste.valorCentavos)}</b>
+                            </div>
+                          ) : (
+                            <div
+                              class="banner banner--warning"
+                              style="padding:6px 10px;font-size:var(--fs-xs);margin:0;border-radius:var(--r-sm);"
+                            >
+                              ⚠️ {evalTeste.erro}
+                            </div>
+                          );
+                        })()}
+                      </>
                     )}
 
                     <div style="display:flex;align-items:center;gap:8px;padding-top:4px;">
@@ -1455,12 +1643,14 @@ export function Projecoes() {
                         {previsaoMeses.map((p) => (
                           <div key={p.mes} style="background:var(--surface-soft);padding:4px 6px;border-radius:4px;text-align:center;">
                             <div style="font-size:10px;color:var(--text-muted);font-weight:600;">{p.mes}</div>
-                            <div style="font-size:11px;font-weight:700;color:p.valor > 0 ? 'var(--text)' : 'var(--text-muted)';">
+                            <div style={`font-size:11px;font-weight:700;color:${p.valor > 0 ? "var(--text)" : "var(--text-muted)"};`}>
                               {money(p.valor)}
                             </div>
-                            <div style="font-size:9px;color:var(--text-muted);">
-                              Base: {money(p.base)}
-                            </div>
+                            {modalNovaProjecao.vinculoModoTipo === "simples" && (
+                              <div style="font-size:9px;color:var(--text-muted);">
+                                Base: {money(p.base)}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

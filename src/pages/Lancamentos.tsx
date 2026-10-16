@@ -9,6 +9,7 @@ import { anos, categorias, contas, lancamentos, projecoes } from "../data/repo.t
 import { type Conta, type Lancamento, type Natureza, NATUREZAS, type RegraVinculo, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { money, MONTHS, signed } from "../lib/format.ts";
+import { calcularFormulaLancamentos, extrairVariaveis } from "../lib/formula.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
 
@@ -33,13 +34,15 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   const [modalCriarCat, setModalCriarCat] = useState<{ nome: string } | null>(null);
   const [modalCriarConta, setModalCriarConta] = useState<{ nome: string; categoriaId: string } | null>(null);
 
-  // Estados para ferramenta de cálculo por vínculo / entrada no modal
+  // Estados para ferramenta de cálculo por vínculo / fórmula no modal
   const [calcVinculoAberto, setCalcVinculoAberto] = useState(false);
+  const [calcModoGeral, setCalcModoGeral] = useState<"simples" | "formula">("simples");
   const [calcVinculoTipo, setCalcVinculoTipo] = useState<"conta" | "categoria">("conta");
   const [calcVinculoOrigemId, setCalcVinculoOrigemId] = useState<string>("");
   const [calcVinculoPercentual, setCalcVinculoPercentual] = useState<number | string>(30);
   const [calcVinculoModo, setCalcVinculoModo] = useState<"percentual" | "fixo">("percentual");
   const [calcVinculoValorFixo, setCalcVinculoValorFixo] = useState<number | string>("");
+  const [calcFormula, setCalcFormula] = useState<string>("");
 
   const dados = useLive(async () => {
     if (!empId) return null;
@@ -147,29 +150,60 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
       toast.success("Lançamento registrado com sucesso!");
       setModalLanc(null);
 
-      // Verificação proativa de regras de vínculo que apontam para esta conta ou sua categoria
+      // Verificação proativa de regras de vínculo ou fórmulas que apontam para esta conta ou sua categoria
       const cOrigem = contaMap.get(modalLanc.contaId);
-      const vinculadas = cs.filter(
-        (target) =>
-          target.ativa !== false &&
-          target.id !== modalLanc.contaId &&
-          target.vinculo &&
-          ((target.vinculo.tipo === "conta" && target.vinculo.origemId === modalLanc.contaId) ||
-           (target.vinculo.tipo === "categoria" && target.vinculo.origemId === cOrigem?.categoriaId))
-      );
+      const catOrigem = cats.find((ct) => ct.id === cOrigem?.categoriaId);
+      const nomeOrigemLower = cOrigem?.nome?.toLowerCase() || "";
+      const nomeCatLower = catOrigem?.nome?.toLowerCase() || "";
+
+      const vinculadas = cs.filter((target) => {
+        if (target.ativa === false || target.id === modalLanc.contaId || !target.vinculo) return false;
+        if (target.vinculo.modo === "formula" && target.vinculo.formula) {
+          const vars = extrairVariaveis(target.vinculo.formula).map((v) => v.toLowerCase());
+          return vars.some(
+            (v) =>
+              v === nomeOrigemLower ||
+              v === `cat:${nomeCatLower}` ||
+              v === `cat:${catOrigem?.id}` ||
+              v === cOrigem?.id
+          );
+        }
+        return (
+          (target.vinculo.tipo === "conta" && target.vinculo.origemId === modalLanc.contaId) ||
+          (target.vinculo.tipo === "categoria" && target.vinculo.origemId === cOrigem?.categoriaId)
+        );
+      });
+
+      // Inclui o lançamento recém-criado para avaliação precisa da fórmula
+      const lsComNovo = [...ls, createdLanc];
 
       for (const target of vinculadas) {
         if (!target.vinculo) continue;
-        const valorVinculado = calcularValorVinculado(centavos, target.vinculo);
-        if (valorVinculado <= 0) continue;
+        let valorVinculado = 0;
+        let regraTexto = "";
 
-        const regraTexto = target.vinculo.percentual !== undefined
-          ? `${target.vinculo.percentual}%`
-          : money(target.vinculo.valorFixo || 0);
+        if (target.vinculo.modo === "formula" && target.vinculo.formula) {
+          const resFormula = calcularFormulaLancamentos(
+            target.vinculo.formula,
+            mesCalculado,
+            lsComNovo,
+            cs,
+            cats
+          );
+          if (!resFormula.ok || resFormula.valorCentavos <= 0) continue;
+          valorVinculado = resFormula.valorCentavos;
+          regraTexto = `fx ${target.vinculo.formula}`;
+        } else {
+          valorVinculado = calcularValorVinculado(centavos, target.vinculo);
+          if (valorVinculado <= 0) continue;
+          regraTexto = target.vinculo.percentual !== undefined
+            ? `${target.vinculo.percentual}%`
+            : money(target.vinculo.valorFixo || 0);
+        }
 
         const ok = await confirmarAcao({
-          titulo: "Gerar Lançamento Vinculado?",
-          mensagem: `O lançamento em "${cOrigem?.nome || "conta base"}" possui vínculo automático com "${target.nome}" (${regraTexto}). Deseja gerar agora o lançamento correspondente de ${money(valorVinculado)}?`,
+          titulo: target.vinculo.modo === "formula" ? "Gerar Lançamento por Fórmula?" : "Gerar Lançamento Vinculado?",
+          mensagem: `O lançamento em "${cOrigem?.nome || "conta base"}" compõe o cálculo de "${target.nome}" (${regraTexto}). Deseja gerar agora o lançamento correspondente de ${money(valorVinculado)}?`,
           rotuloConfirmar: `Lançar ${money(valorVinculado)}`,
           rotuloCancelar: "Agora não",
           tipo: "info",
@@ -185,7 +219,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             descricao: `Vínculo: ${target.nome} ref. ${modalLanc.descricao?.trim() || cOrigem?.nome || ""}`,
             obs: `Gerado a partir do lançamento em ${cOrigem?.nome} (${regraTexto})`,
             vinculoLancamentoOrigemId: createdLanc.id,
-            vinculoDescricao: `Vinculado a ${cOrigem?.nome}`,
+            vinculoDescricao: target.vinculo.modo === "formula" ? `Fórmula: ${target.vinculo.formula}` : `Vinculado a ${cOrigem?.nome}`,
           });
           toast.success(`Lançamento vinculado de ${money(valorVinculado)} gerado em "${target.nome}"!`);
         }
@@ -427,7 +461,12 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                           style="font-size:0.7rem;padding:1px 6px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;"
                           title={l.vinculoDescricao}
                         >
-                          <Icon name="link" style="width:11px;height:11px;" /> {l.vinculoDescricao}
+                          {l.vinculoDescricao.toLowerCase().includes("fórmula") || l.vinculoDescricao.toLowerCase().includes("formula") ? (
+                            <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span>
+                          ) : (
+                            <Icon name="link" style="width:11px;height:11px;" />
+                          )}
+                          <span>{l.vinculoDescricao}</span>
                         </span>
                       )}
                       {l.parcela && l.totalParcelas ? (
@@ -533,373 +572,524 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         }
       >
         <form id="form-lancamento" onSubmit={salvarLancamento}>
-          {/* Seletor de Natureza no modal se for novo lançamento */}
-          {!modalLanc?.id && (
-            <div class="tabs" style="margin-bottom:var(--sp-3);">
-              {NATUREZAS.map((n) => {
-                const meta = NATURE_META[n];
-                return (
-                  <button
-                    type="button"
-                    key={n}
-                    class={`tab ${natAtualModal === n ? "is-active" : ""}`}
-                    onClick={() => {
-                      const catsDaNovaNat = cats.filter((cat) => cat.natureza === n);
-                      const primCat = catsDaNovaNat[0]?.id || "";
-                      const contasDaNovaNat = cs.filter((c) => c.categoriaId === primCat && c.ativa);
-                      setCatSelecionadaModal(primCat);
-                      setModalLanc({
-                        ...modalLanc,
-                        natureza: n,
-                        contaId: contasDaNovaNat[0]?.id || "",
-                      });
-                    }}
-                  >
-                    <Icon name={meta.icon} /> {meta.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Seletores de Categoria e Conta com Acesso Direto de Criação */}
-          <div class="form-row form-row--2">
-            <div class="form-group">
-              <label class="form-label" for="lanc-cat">Categoria *</label>
-              <CustomSelect
-                id="lanc-cat"
-                value={catAtualModal}
-                placeholder={catsParaModal.length === 0 ? "Nenhuma categoria" : "Selecione Categoria"}
-                options={catsParaModal.map((c) => ({ value: c.id, label: c.nome }))}
-                onChange={(novaCatId) => {
-                  setCatSelecionadaModal(novaCatId);
-                  const contasDestaCat = cs.filter((c) => c.categoriaId === novaCatId && c.ativa);
-                  setModalLanc({
-                    ...modalLanc,
-                    contaId: contasDestaCat[0]?.id || "",
-                  });
-                }}
-                action={{
-                  label: "Nova Categoria...",
-                  icon: "plus",
-                  onClick: () => setModalCriarCat({ nome: "" }),
-                }}
-              />
+          {/* Card 1: Classificação */}
+          <div
+            style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);"
+          >
+            <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:var(--sp-2);">
+              1. Classificação da Conta
             </div>
 
-            <div class="form-group">
-              <label class="form-label" for="lanc-conta">Conta *</label>
-              <CustomSelect
-                id="lanc-conta"
-                value={modalLanc?.contaId || ""}
-                placeholder={contasParaModal.length === 0 ? "Nenhuma conta cadastrada" : "Selecione Conta"}
-                options={contasParaModal.map((c) => ({ value: c.id, label: c.nome }))}
-                onChange={(contaId) => setModalLanc({ ...modalLanc, contaId })}
-                action={{
-                  label: "Nova Conta...",
-                  icon: "plus",
-                  onClick: () =>
-                    setModalCriarConta({
-                      nome: "",
-                      categoriaId: catAtualModal || catsParaModal[0]?.id || "",
-                    }),
-                }}
-              />
+            {/* Seletor de Natureza no modal se for novo lançamento */}
+            {!modalLanc?.id && (
+              <div class="tabs" style="margin-bottom:var(--sp-3);">
+                {NATUREZAS.map((n) => {
+                  const meta = NATURE_META[n];
+                  return (
+                    <button
+                      type="button"
+                      key={n}
+                      class={`tab ${natAtualModal === n ? "is-active" : ""}`}
+                      onClick={() => {
+                        const catsDaNovaNat = cats.filter((cat) => cat.natureza === n);
+                        const primCat = catsDaNovaNat[0]?.id || "";
+                        const contasDaNovaNat = cs.filter((c) => c.categoriaId === primCat && c.ativa);
+                        setCatSelecionadaModal(primCat);
+                        setModalLanc({
+                          ...modalLanc,
+                          natureza: n,
+                          contaId: contasDaNovaNat[0]?.id || "",
+                        });
+                      }}
+                    >
+                      <Icon name={meta.icon} /> {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Seletores de Categoria e Conta com Acesso Direto de Criação */}
+            <div class="form-row form-row--2">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="lanc-cat">Categoria *</label>
+                <CustomSelect
+                  id="lanc-cat"
+                  value={catAtualModal}
+                  placeholder={catsParaModal.length === 0 ? "Nenhuma categoria" : "Selecione Categoria"}
+                  options={catsParaModal.map((c) => ({ value: c.id, label: c.nome }))}
+                  onChange={(novaCatId) => {
+                    setCatSelecionadaModal(novaCatId);
+                    const contasDestaCat = cs.filter((c) => c.categoriaId === novaCatId && c.ativa);
+                    setModalLanc({
+                      ...modalLanc,
+                      contaId: contasDestaCat[0]?.id || "",
+                    });
+                  }}
+                  action={{
+                    label: "Nova Categoria...",
+                    icon: "plus",
+                    onClick: () => setModalCriarCat({ nome: "" }),
+                  }}
+                />
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="lanc-conta">Conta *</label>
+                <CustomSelect
+                  id="lanc-conta"
+                  value={modalLanc?.contaId || ""}
+                  placeholder={contasParaModal.length === 0 ? "Nenhuma conta cadastrada" : "Selecione Conta"}
+                  options={contasParaModal.map((c) => ({ value: c.id, label: c.nome }))}
+                  onChange={(contaId) => setModalLanc({ ...modalLanc, contaId })}
+                  action={{
+                    label: "Nova Conta...",
+                    icon: "plus",
+                    onClick: () =>
+                      setModalCriarConta({
+                        nome: "",
+                        categoriaId: catAtualModal || catsParaModal[0]?.id || "",
+                      }),
+                  }}
+                />
+              </div>
             </div>
           </div>
 
-          {/* Alerta de Teto Orçamentário em Tempo Real */}
-          {isNaturezaDespesaModal && catAtualModal && projCatModalMes > 0 && (
-            <div
-              style={`padding:10px 14px;border-radius:var(--r-md);margin-bottom:var(--sp-3);font-size:var(--fs-xs);display:flex;align-items:flex-start;gap:10px;${
-                totalComLancModal > projCatModalMes
-                  ? "background:var(--out-soft);color:var(--out);border:1px solid color-mix(in srgb, var(--out) 30%, transparent);"
-                  : pctTetoModal >= 80
-                  ? "background:color-mix(in srgb, var(--warn) 12%, transparent);color:var(--warn);border:1px solid color-mix(in srgb, var(--warn) 30%, transparent);"
-                  : "background:var(--surface-soft);color:var(--text-muted);border:1px solid var(--border);"
-              }`}
-            >
-              <Icon
-                name={totalComLancModal > projCatModalMes ? "alertTriangle" : pctTetoModal >= 80 ? "alertTriangle" : "info"}
-                style="flex:none;margin-top:2px;"
-              />
-              <div>
-                <b>
-                  {totalComLancModal > projCatModalMes
-                    ? `⚠️ Atenção: Teto orçamentário de ${MONTHS[mesDataModal]} excedido!`
-                    : pctTetoModal >= 80
-                    ? `⚡ Alerta de Teto: Limite de ${MONTHS[mesDataModal]} próximo!`
-                    : `Teto Orçamentário de ${MONTHS[mesDataModal]}:`}
-                </b>
-                <div style="margin-top:2px;">
-                  Projetado: <b>{money(projCatModalMes)}</b> · Realizado com este lançamento:{" "}
-                  <b>{money(totalComLancModal)}</b> ({pctTetoModal}% do teto)
-                  {totalComLancModal > projCatModalMes && (
-                    <span style="display:block;margin-top:2px;font-weight:600;">
-                      Ultrapassará em +{money(excessoTetoModal)}!
-                    </span>
-                  )}
-                </div>
-              </div>
+          {/* Card 2: Valor e Automação Inteligente */}
+          <div
+            style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);"
+          >
+            <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:var(--sp-2);">
+              2. Valor, Data & Automações
             </div>
-          )}
 
-          {/* Sugestão de Vínculo da Conta Selecionada */}
-          {contaAtualObj?.vinculo && (() => {
-            const v = contaAtualObj.vinculo;
-            const baseMes = calcularBaseLancamentos(v, mesDataModal, ls, cs);
-            const valSug = calcularValorVinculado(baseMes, v);
-            const nomeOrigem = v.tipo === "conta" ? contaMap.get(v.origemId)?.nome : cats.find((c) => c.id === v.origemId)?.nome;
-            const regraLabel = v.percentual !== undefined ? `${v.percentual}%` : money(v.valorFixo || 0);
-
-            return (
+            {/* Alerta de Teto Orçamentário em Tempo Real */}
+            {isNaturezaDespesaModal && catAtualModal && projCatModalMes > 0 && (
               <div
-                style="background:var(--primary-soft);border:1px solid color-mix(in srgb, var(--primary) 20%, transparent);border-radius:var(--r-md);padding:10px 14px;margin-bottom:var(--sp-3);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"
+                style={`padding:10px 14px;border-radius:var(--r-md);margin-bottom:var(--sp-3);font-size:var(--fs-xs);display:flex;align-items:flex-start;gap:10px;${
+                  totalComLancModal > projCatModalMes
+                    ? "background:var(--out-soft);color:var(--out);border:1px solid color-mix(in srgb, var(--out) 30%, transparent);"
+                    : pctTetoModal >= 80
+                    ? "background:color-mix(in srgb, var(--warn) 12%, transparent);color:var(--warn);border:1px solid color-mix(in srgb, var(--warn) 30%, transparent);"
+                    : "background:var(--surface);color:var(--text-muted);border:1px solid var(--border);"
+                }`}
               >
+                <Icon
+                  name={totalComLancModal > projCatModalMes ? "alertTriangle" : pctTetoModal >= 80 ? "alertTriangle" : "info"}
+                  style="flex:none;margin-top:2px;"
+                />
                 <div>
-                  <div style="font-weight:600;font-size:var(--fs-xs);color:var(--primary);display:flex;align-items:center;gap:5px;">
-                    <Icon name="link" style="width:13px;height:13px;" />
-                    Vínculo Configurado: {regraLabel} de {nomeOrigem || "Origem"}
-                  </div>
-                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
-                    Total realizado na origem em {MONTHS[mesDataModal]}: <b>{money(baseMes)}</b>
-                    {valSug > 0 ? ` · Sugestão calculada: ${money(valSug)}` : " (sem lançamentos na origem neste mês)"}
+                  <b>
+                    {totalComLancModal > projCatModalMes
+                      ? `⚠️ Atenção: Teto orçamentário de ${MONTHS[mesDataModal]} excedido!`
+                      : pctTetoModal >= 80
+                      ? `⚡ Alerta de Teto: Limite de ${MONTHS[mesDataModal]} próximo!`
+                      : `Teto Orçamentário de ${MONTHS[mesDataModal]}:`}
+                  </b>
+                  <div style="margin-top:2px;">
+                    Projetado: <b>{money(projCatModalMes)}</b> · Realizado com este lançamento:{" "}
+                    <b>{money(totalComLancModal)}</b> ({pctTetoModal}% do teto)
+                    {totalComLancModal > projCatModalMes && (
+                      <span style="display:block;margin-top:2px;font-weight:600;">
+                        Ultrapassará em +{money(excessoTetoModal)}!
+                      </span>
+                    )}
                   </div>
                 </div>
-                {valSug > 0 && (
-                  <button
-                    type="button"
-                    class="btn btn--secondary"
-                    style="min-height:28px;padding:2px 10px;font-size:var(--fs-xs);"
-                    onClick={() => setModalLanc({ ...modalLanc, valor: valSug / 100 })}
-                  >
-                    Aplicar {money(valSug)}
-                  </button>
-                )}
               </div>
-            );
-          })()}
+            )}
 
-          {/* Ferramenta Inline de Cálculo por Vínculo / Entrada (Opcional para qualquer lançamento) */}
-          <div style="margin-bottom:var(--sp-3);">
-            <div style="display:flex;justify-content:flex-end;">
-              <button
-                type="button"
-                class="btn btn--ghost btn--sm"
-                style="font-size:var(--fs-xs);padding:2px 8px;gap:4px;"
-                onClick={() => {
-                  if (!calcVinculoOrigemId) {
-                    const primReceber = cs.find((c) => c.natureza === "receber")?.id || cs[0]?.id || "";
-                    setCalcVinculoOrigemId(primReceber);
-                  }
-                  setCalcVinculoAberto(!calcVinculoAberto);
-                }}
-              >
-                <Icon name="link" style="width:12px;height:12px;" />
-                {calcVinculoAberto ? "Ocultar Calculadora de Vínculo" : "🔗 Calcular a partir de vínculo / entrada"}
-              </button>
-            </div>
+            {/* Sugestão de Vínculo ou Fórmula da Conta Selecionada */}
+            {contaAtualObj?.vinculo && (() => {
+              const v = contaAtualObj.vinculo;
+              let valSug = 0;
+              let labelVinc = "";
+              let detalheVinc = "";
 
-            {calcVinculoAberto && (() => {
-              const regraInline: RegraVinculo = {
-                tipo: calcVinculoTipo,
-                origemId: calcVinculoOrigemId,
-                percentual: calcVinculoModo === "percentual" ? Number(calcVinculoPercentual || 0) : undefined,
-                valorFixo: calcVinculoModo === "fixo" ? Math.round(Number(calcVinculoValorFixo || 0) * 100) : undefined,
-              };
-              const baseCalculada = calcularBaseLancamentos(regraInline, mesDataModal, ls, cs);
-              const valorFinalCalculado = calcularValorVinculado(baseCalculada, regraInline);
+              if (v.modo === "formula" && v.formula) {
+                const res = calcularFormulaLancamentos(v.formula, mesDataModal, ls, cs, cats);
+                valSug = res.valorCentavos;
+                labelVinc = `Fórmula Configurada: fx ${v.formula}`;
+                detalheVinc = res.ok
+                  ? `Resultado calculado com base nos lançamentos de ${MONTHS[mesDataModal]}: ${money(valSug)}`
+                  : `Erro no cálculo da fórmula: ${res.erro}`;
+              } else {
+                const baseMes = calcularBaseLancamentos(v, mesDataModal, ls, cs);
+                valSug = calcularValorVinculado(baseMes, v);
+                const nomeOrigem = v.tipo === "conta" ? contaMap.get(v.origemId || "")?.nome : cats.find((c) => c.id === v.origemId)?.nome;
+                const regraLabel = v.percentual !== undefined ? `${v.percentual}%` : money(v.valorFixo || 0);
+                labelVinc = `Vínculo Configurado: ${regraLabel} de ${nomeOrigem || "Origem"}`;
+                detalheVinc = `Total realizado na origem em ${MONTHS[mesDataModal]}: ${money(baseMes)}${
+                  valSug > 0 ? ` · Sugestão calculada: ${money(valSug)}` : " (sem lançamentos na origem neste mês)"
+                }`;
+              }
 
               return (
                 <div
-                  class="card"
-                  style="background:var(--surface-soft);border:1px dashed var(--border);padding:10px 12px;border-radius:var(--r-md);margin-top:6px;"
+                  style="background:var(--primary-soft);border:1px solid color-mix(in srgb, var(--primary) 20%, transparent);border-radius:var(--r-md);padding:10px 14px;margin-bottom:var(--sp-3);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"
                 >
-                  <div style="font-weight:600;font-size:var(--fs-xs);color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <Icon name="link" style="color:var(--primary);width:14px;height:14px;" />
-                    <span>Calculadora de Vínculo Dinâmico para {MONTHS[mesDataModal]}</span>
-                  </div>
-
-                  <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-                    <div>
-                      <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">Basear em:</label>
-                      <div class="tabs tabs--sm" style="margin:0;">
-                        <button
-                          type="button"
-                          class={`tab ${calcVinculoTipo === "conta" ? "is-active" : ""}`}
-                          style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
-                          onClick={() => {
-                            const def = cs.find((c) => c.natureza === "receber")?.id || cs[0]?.id || "";
-                            setCalcVinculoTipo("conta");
-                            setCalcVinculoOrigemId(def);
-                          }}
-                        >
-                          Conta
-                        </button>
-                        <button
-                          type="button"
-                          class={`tab ${calcVinculoTipo === "categoria" ? "is-active" : ""}`}
-                          style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
-                          onClick={() => {
-                            const def = cats.find((c) => c.natureza === "receber")?.id || cats[0]?.id || "";
-                            setCalcVinculoTipo("categoria");
-                            setCalcVinculoOrigemId(def);
-                          }}
-                        >
-                          Categoria
-                        </button>
-                      </div>
+                  <div>
+                    <div style="font-weight:600;font-size:var(--fs-xs);color:var(--primary);display:flex;align-items:center;gap:5px;">
+                      {v.modo === "formula" ? (
+                        <span style="font-weight:700;font-style:italic;font-family:serif;">fx</span>
+                      ) : (
+                        <Icon name="link" style="width:13px;height:13px;" />
+                      )}
+                      {labelVinc}
                     </div>
-
-                    <div>
-                      <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">Regra:</label>
-                      <div class="tabs tabs--sm" style="margin:0;">
-                        <button
-                          type="button"
-                          class={`tab ${calcVinculoModo === "percentual" ? "is-active" : ""}`}
-                          style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
-                          onClick={() => setCalcVinculoModo("percentual")}
-                        >
-                          % Percentual
-                        </button>
-                        <button
-                          type="button"
-                          class={`tab ${calcVinculoModo === "fixo" ? "is-active" : ""}`}
-                          style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
-                          onClick={() => setCalcVinculoModo("fixo")}
-                        >
-                          Valor Fixo
-                        </button>
-                      </div>
+                    <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">
+                      {detalheVinc}
                     </div>
                   </div>
-
-                  <div class="form-group" style="margin-bottom:8px;">
-                    <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">
-                      Origem ({calcVinculoTipo === "conta" ? "Conta" : "Categoria"})
-                    </label>
-                    {calcVinculoTipo === "conta" ? (
-                      <CustomSelect
-                        value={calcVinculoOrigemId}
-                        placeholder="Selecione a conta base..."
-                        options={cs
-                          .filter((c) => c.id !== modalLanc?.contaId)
-                          .map((c) => ({
-                            value: c.id,
-                            label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
-                          }))}
-                        onChange={(origemId) => setCalcVinculoOrigemId(origemId)}
-                      />
-                    ) : (
-                      <CustomSelect
-                        value={calcVinculoOrigemId}
-                        placeholder="Selecione a categoria base..."
-                        options={cats.map((cat) => ({
-                          value: cat.id,
-                          label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
-                        }))}
-                        onChange={(origemId) => setCalcVinculoOrigemId(origemId)}
-                      />
-                    )}
-                  </div>
-
-                  {calcVinculoModo === "percentual" ? (
-                    <div class="form-group" style="margin-bottom:8px;">
-                      <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">
-                        Percentual aplicado (%)
-                      </label>
-                      <div style="display:flex;align-items:center;gap:6px;">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          max="1000"
-                          class="input"
-                          style="min-height:30px;font-size:var(--fs-xs);"
-                          placeholder="Ex: 30"
-                          value={calcVinculoPercentual}
-                          onInput={(e) => setCalcVinculoPercentual(e.currentTarget.value)}
-                        />
-                        <span style="font-weight:600;font-size:var(--fs-sm);">%</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div class="form-group" style="margin-bottom:8px;">
-                      <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">
-                        Valor Fixo (R$)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        class="input"
-                        style="min-height:30px;font-size:var(--fs-xs);"
-                        placeholder="0,00"
-                        value={calcVinculoValorFixo}
-                        onInput={(e) => setCalcVinculoValorFixo(e.currentTarget.value)}
-                      />
-                    </div>
-                  )}
-
-                  <div
-                    style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--surface);border-radius:var(--r-sm);border:1px solid var(--border);"
-                  >
-                    <div style="font-size:var(--fs-xs);color:var(--text-muted);">
-                      Base em {MONTHS[mesDataModal]}: <b>{money(baseCalculada)}</b> → Resultado:{" "}
-                      <b style="color:var(--primary);">{money(valorFinalCalculado)}</b>
-                    </div>
+                  {valSug > 0 && (
                     <button
                       type="button"
-                      class="btn btn--primary btn--sm"
-                      style="font-size:var(--fs-xs);min-height:26px;padding:2px 10px;"
-                      disabled={valorFinalCalculado <= 0}
-                      onClick={() => {
-                        setModalLanc({ ...modalLanc, valor: valorFinalCalculado / 100 });
-                        setCalcVinculoAberto(false);
-                      }}
+                      class="btn btn--secondary"
+                      style="min-height:28px;padding:2px 10px;font-size:var(--fs-xs);"
+                      onClick={() => setModalLanc({ ...modalLanc, valor: valSug / 100 })}
                     >
-                      Aplicar ao Lançamento
+                      Aplicar {money(valSug)}
                     </button>
-                  </div>
+                  )}
                 </div>
               );
             })()}
+
+            {/* Ferramenta Inline de Cálculo por Vínculo / Fórmula */}
+            <div style="margin-bottom:var(--sp-3);">
+              <div style="display:flex;justify-content:flex-end;">
+                <button
+                  type="button"
+                  class="btn btn--ghost btn--sm"
+                  style="font-size:var(--fs-xs);padding:2px 8px;gap:4px;"
+                  onClick={() => {
+                    if (!calcVinculoOrigemId) {
+                      const primReceber = cs.find((c) => c.natureza === "receber")?.id || cs[0]?.id || "";
+                      setCalcVinculoOrigemId(primReceber);
+                    }
+                    setCalcVinculoAberto(!calcVinculoAberto);
+                  }}
+                >
+                  <Icon name="link" style="width:12px;height:12px;" />
+                  {calcVinculoAberto ? "Ocultar Calculadora de Automação" : "🔗 / fx Calcular por Vínculo ou Fórmula"}
+                </button>
+              </div>
+
+              {calcVinculoAberto && (() => {
+                const regraInline: RegraVinculo = {
+                  tipo: calcVinculoTipo,
+                  origemId: calcVinculoOrigemId,
+                  percentual: calcVinculoModo === "percentual" ? Number(calcVinculoPercentual || 0) : undefined,
+                  valorFixo: calcVinculoModo === "fixo" ? Math.round(Number(calcVinculoValorFixo || 0) * 100) : undefined,
+                };
+                const baseCalculada = calcularBaseLancamentos(regraInline, mesDataModal, ls, cs);
+                const valorSimplesCalculado = calcularValorVinculado(baseCalculada, regraInline);
+
+                const resFormula = calcularFormulaLancamentos(calcFormula, mesDataModal, ls, cs, cats);
+                const valorFinal = calcModoGeral === "formula" ? resFormula.valorCentavos : valorSimplesCalculado;
+
+                return (
+                  <div
+                    class="card"
+                    style="background:var(--surface);border:1px dashed var(--border);padding:10px 12px;border-radius:var(--r-md);margin-top:6px;"
+                  >
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+                      <div style="font-weight:600;font-size:var(--fs-xs);color:var(--text);display:flex;align-items:center;gap:6px;">
+                        {calcModoGeral === "formula" ? (
+                          <span style="font-weight:700;font-style:italic;font-family:serif;color:var(--primary);">fx</span>
+                        ) : (
+                          <Icon name="link" style="color:var(--primary);width:14px;height:14px;" />
+                        )}
+                        <span>Cálculo Dinâmico para {MONTHS[mesDataModal]}</span>
+                      </div>
+
+                      <div class="tabs tabs--sm" style="margin:0;">
+                        <button
+                          type="button"
+                          class={`tab ${calcModoGeral === "simples" ? "is-active" : ""}`}
+                          style="font-size:11px;padding:2px 8px;"
+                          onClick={() => setCalcModoGeral("simples")}
+                        >
+                          Vínculo Direto
+                        </button>
+                        <button
+                          type="button"
+                          class={`tab ${calcModoGeral === "formula" ? "is-active" : ""}`}
+                          style="font-size:11px;padding:2px 8px;"
+                          onClick={() => setCalcModoGeral("formula")}
+                        >
+                          Fórmula (fx)
+                        </button>
+                      </div>
+                    </div>
+
+                    {calcModoGeral === "simples" ? (
+                      <>
+                        <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                          <div>
+                            <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">Basear em:</label>
+                            <div class="tabs tabs--sm" style="margin:0;">
+                              <button
+                                type="button"
+                                class={`tab ${calcVinculoTipo === "conta" ? "is-active" : ""}`}
+                                style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
+                                onClick={() => {
+                                  const def = cs.find((c) => c.natureza === "receber")?.id || cs[0]?.id || "";
+                                  setCalcVinculoTipo("conta");
+                                  setCalcVinculoOrigemId(def);
+                                }}
+                              >
+                                Conta
+                              </button>
+                              <button
+                                type="button"
+                                class={`tab ${calcVinculoTipo === "categoria" ? "is-active" : ""}`}
+                                style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
+                                onClick={() => {
+                                  const def = cats.find((c) => c.natureza === "receber")?.id || cats[0]?.id || "";
+                                  setCalcVinculoTipo("categoria");
+                                  setCalcVinculoOrigemId(def);
+                                }}
+                              >
+                                Categoria
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">Regra:</label>
+                            <div class="tabs tabs--sm" style="margin:0;">
+                              <button
+                                type="button"
+                                class={`tab ${calcVinculoModo === "percentual" ? "is-active" : ""}`}
+                                style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
+                                onClick={() => setCalcVinculoModo("percentual")}
+                              >
+                                % Percentual
+                              </button>
+                              <button
+                                type="button"
+                                class={`tab ${calcVinculoModo === "fixo" ? "is-active" : ""}`}
+                                style="font-size:var(--fs-xs);padding:2px 8px;min-height:24px;"
+                                onClick={() => setCalcVinculoModo("fixo")}
+                              >
+                                Valor Fixo
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom:8px;">
+                          <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">
+                            Origem ({calcVinculoTipo === "conta" ? "Conta" : "Categoria"})
+                          </label>
+                          {calcVinculoTipo === "conta" ? (
+                            <CustomSelect
+                              value={calcVinculoOrigemId}
+                              placeholder="Selecione a conta base..."
+                              options={cs
+                                .filter((c) => c.id !== modalLanc?.contaId)
+                                .map((c) => ({
+                                  value: c.id,
+                                  label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
+                                }))}
+                              onChange={(origemId) => setCalcVinculoOrigemId(origemId)}
+                            />
+                          ) : (
+                            <CustomSelect
+                              value={calcVinculoOrigemId}
+                              placeholder="Selecione a categoria base..."
+                              options={cats.map((cat) => ({
+                                value: cat.id,
+                                label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
+                              }))}
+                              onChange={(origemId) => setCalcVinculoOrigemId(origemId)}
+                            />
+                          )}
+                        </div>
+
+                        {calcVinculoModo === "percentual" ? (
+                          <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">
+                              Percentual aplicado (%)
+                            </label>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                max="1000"
+                                class="input"
+                                style="min-height:30px;font-size:var(--fs-xs);"
+                                placeholder="Ex: 30"
+                                value={calcVinculoPercentual}
+                                onInput={(e) => setCalcVinculoPercentual(e.currentTarget.value)}
+                              />
+                              <span style="font-weight:600;font-size:var(--fs-sm);">%</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div class="form-group" style="margin-bottom:8px;">
+                            <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">
+                              Valor Fixo (R$)
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              class="input"
+                              style="min-height:30px;font-size:var(--fs-xs);"
+                              placeholder="0,00"
+                              value={calcVinculoValorFixo}
+                              onInput={(e) => setCalcVinculoValorFixo(e.currentTarget.value)}
+                            />
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div class="muted" style="font-size:var(--fs-xs);margin-bottom:6px;">
+                          💡 Insira contas entre colchetes como <code>[Salário]</code>. Exemplo: <code>([Vendas] - [Taxas]) * 10%</code>
+                        </div>
+
+                        {/* Variáveis rápidas */}
+                        <div style="margin-bottom:6px;">
+                          <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:2px;">
+                            Inserir Conta:
+                          </div>
+                          <div
+                            style="display:flex;gap:4px;flex-wrap:wrap;max-height:75px;overflow-y:auto;padding:4px;background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--r-sm);"
+                          >
+                            {cs.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                class="badge"
+                                style="cursor:pointer;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:11px;padding:2px 6px;"
+                                onClick={() => {
+                                  const varNome = `[${c.nome}]`;
+                                  const atual = calcFormula.trim();
+                                  setCalcFormula(atual ? `${atual} + ${varNome}` : varNome);
+                                }}
+                              >
+                                + [{c.nome}]
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Operadores rápidos */}
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
+                          <span class="muted" style="font-size:11px;">Operadores:</span>
+                          {["+", "-", "*", "/", "(", ")", "%"].map((op) => (
+                            <button
+                              key={op}
+                              type="button"
+                              class="btn btn--ghost"
+                              style="min-height:22px;padding:1px 6px;font-size:var(--fs-xs);font-weight:700;"
+                              onClick={() => setCalcFormula(`${calcFormula} ${op} `)}
+                            >
+                              {op}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div class="form-group" style="margin-bottom:6px;">
+                          <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:2px;">Fórmula</label>
+                          <textarea
+                            class="textarea"
+                            rows={2}
+                            placeholder="Ex: ([Salário] - [INSS]) * 30%"
+                            value={calcFormula}
+                            onInput={(e) => setCalcFormula(e.currentTarget.value)}
+                          />
+                        </div>
+
+                        {calcFormula.trim() && (
+                          <div
+                            class={`banner ${resFormula.ok ? "banner--success" : "banner--warning"}`}
+                            style="padding:4px 8px;font-size:var(--fs-xs);margin-bottom:8px;"
+                          >
+                            {resFormula.ok
+                              ? `✓ Sintaxe válida! Resultado em ${MONTHS[mesDataModal]}: ${money(resFormula.valorCentavos)}`
+                              : `⚠️ ${resFormula.erro}`}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    <div
+                      style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:var(--surface-soft);border-radius:var(--r-sm);border:1px solid var(--border);"
+                    >
+                      <div style="font-size:var(--fs-xs);color:var(--text-muted);">
+                        {calcModoGeral === "simples" ? (
+                          <>
+                            Base em {MONTHS[mesDataModal]}: <b>{money(baseCalculada)}</b> → Resultado:{" "}
+                            <b style="color:var(--primary);">{money(valorFinal)}</b>
+                          </>
+                        ) : (
+                          <>
+                            Resultado da Fórmula em {MONTHS[mesDataModal]}:{" "}
+                            <b style="color:var(--primary);">{money(valorFinal)}</b>
+                          </>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        class="btn btn--primary btn--sm"
+                        style="font-size:var(--fs-xs);min-height:26px;padding:2px 10px;"
+                        disabled={valorFinal <= 0}
+                        onClick={() => {
+                          setModalLanc({ ...modalLanc, valor: valorFinal / 100 });
+                          setCalcVinculoAberto(false);
+                        }}
+                      >
+                        Aplicar ao Lançamento
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div class="form-row form-row--2">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="lanc-data">Data de Pagamento/Recebimento *</label>
+                <input
+                  id="lanc-data"
+                  type="date"
+                  class="input"
+                  required
+                  value={modalLanc?.data || ""}
+                  onInput={(e) => setModalLanc({ ...modalLanc, data: e.currentTarget.value })}
+                />
+              </div>
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="lanc-valor">Valor Real (R$) *</label>
+                <input
+                  id="lanc-valor"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  class="input"
+                  required
+                  placeholder="0,00"
+                  value={modalLanc?.valor || ""}
+                  onInput={(e) => setModalLanc({ ...modalLanc, valor: Number(e.currentTarget.value) })}
+                />
+              </div>
+            </div>
           </div>
 
-          <div class="form-row form-row--2">
-            <div class="form-group">
-              <label class="form-label" for="lanc-data">Data de Pagamento/Recebimento *</label>
-              <input
-                id="lanc-data"
-                type="date"
-                class="input"
-                required
-                value={modalLanc?.data || ""}
-                onInput={(e) => setModalLanc({ ...modalLanc, data: e.currentTarget.value })}
-              />
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="lanc-valor">Valor Real (R$) *</label>
-              <input
-                id="lanc-valor"
-                type="number"
-                step="0.01"
-                min="0.01"
-                class="input"
-                required
-                placeholder="0,00"
-                value={modalLanc?.valor || ""}
-                onInput={(e) => setModalLanc({ ...modalLanc, valor: Number(e.currentTarget.value) })}
-              />
-            </div>
-          </div>
-
-          {/* Seletor de Repetição / Parcelamento para novos lançamentos */}
+          {/* Card 3: Repetição / Parcelamento */}
           {!modalLanc?.id && (
-            <div style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);">
-              <label class="form-label" style="margin-bottom:var(--sp-2);display:flex;align-items:center;gap:6px;">
-                <Icon name="calendar" /> Repetição / Parcelamento
-              </label>
+            <div
+              style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);margin-bottom:var(--sp-3);"
+            >
+              <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:var(--sp-2);">
+                3. Repetição / Parcelamento
+              </div>
               <div class="tabs" style="margin-bottom:var(--sp-2);">
                 <button
                   type="button"
@@ -1000,30 +1190,39 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             </div>
           )}
 
-          <div class="form-group">
-            <label class="form-label" for="lanc-desc">Descrição / Fornecedor / Favorecido</label>
-            <input
-              id="lanc-desc"
-              class="input"
-              placeholder="Ex: Nota fiscal 1234, Transferência PIX..."
-              value={modalLanc?.descricao || ""}
-              onInput={(e) => setModalLanc({ ...modalLanc, descricao: e.currentTarget.value })}
-            />
-          </div>
+          {/* Card 4: Detalhes Adicionais */}
+          <div
+            style="background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);"
+          >
+            <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:var(--sp-2);">
+              {!modalLanc?.id ? "4. Detalhes Adicionais" : "3. Detalhes Adicionais"}
+            </div>
 
-          {(natAtualModal === "aporte" || natAtualModal === "saida") && (
             <div class="form-group">
-              <label class="form-label" for="lanc-obs">Observação Adicional (Obs)</label>
-              <textarea
-                id="lanc-obs"
-                class="textarea"
-                rows={2}
-                placeholder="Ex: Motivo da saída livre, aporte de capital emergencial..."
-                value={modalLanc?.obs || ""}
-                onInput={(e) => setModalLanc({ ...modalLanc, obs: e.currentTarget.value })}
+              <label class="form-label" for="lanc-desc">Descrição / Fornecedor / Favorecido</label>
+              <input
+                id="lanc-desc"
+                class="input"
+                placeholder="Ex: Nota fiscal 1234, Transferência PIX..."
+                value={modalLanc?.descricao || ""}
+                onInput={(e) => setModalLanc({ ...modalLanc, descricao: e.currentTarget.value })}
               />
             </div>
-          )}
+
+            {(natAtualModal === "aporte" || natAtualModal === "saida") && (
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="lanc-obs">Observação Adicional (Obs)</label>
+                <textarea
+                  id="lanc-obs"
+                  class="textarea"
+                  rows={2}
+                  placeholder="Ex: Motivo da saída livre, aporte de capital emergencial..."
+                  value={modalLanc?.obs || ""}
+                  onInput={(e) => setModalLanc({ ...modalLanc, obs: e.currentTarget.value })}
+                />
+              </div>
+            )}
+          </div>
         </form>
       </Modal>
 
