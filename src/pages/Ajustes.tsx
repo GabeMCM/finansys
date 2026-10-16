@@ -11,7 +11,7 @@ import { atualizarNomePerfil, cloudSyncStatus, cloudUltimoBackup, cloudUser, des
 import { conectarGoogleDrive, desconectarGoogleDrive, googleUser, realizarBackupDrive, restaurarDoDrive, syncStatus, ultimoBackup } from "../data/driveSync.ts";
 import { anos, categorias, contas, empresas } from "../data/repo.ts";
 import { seedExemplo } from "../data/seed.ts";
-import { type Ano, type Categoria, type Conta, type Empresa, type Natureza, NATUREZAS } from "../data/types.ts";
+import { type Ano, type Categoria, type Conta, type Empresa, type Natureza, NATUREZAS, type RegraVinculo } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { formatCpfCnpj, labelCpfCnpj, money } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
@@ -43,6 +43,18 @@ export function Ajustes() {
   const listaAnos = useLive(() => (empId ? anos.byEmpresa(empId) : Promise.resolve([])), [empId], []);
   const listaCats = useLive(() => (empId ? categorias.byEmpresa(empId, natTab) : Promise.resolve([])), [empId, natTab], []);
   const listaContas = useLive(() => (empId ? contas.byEmpresa(empId, natTab) : Promise.resolve([])), [empId, natTab], []);
+  const todasContasEmpresa = useLive(() => (empId ? contas.byEmpresa(empId) : Promise.resolve([])), [empId], []);
+  const todasCategoriasEmpresa = useLive(() => (empId ? categorias.byEmpresa(empId) : Promise.resolve([])), [empId], []);
+
+  const getNomeOrigemVinculo = (v?: RegraVinculo) => {
+    if (!v) return "";
+    if (v.tipo === "conta") {
+      const c = todasContasEmpresa.find((x) => x.id === v.origemId);
+      return c ? c.nome : "Conta";
+    }
+    const cat = todasCategoriasEmpresa.find((x) => x.id === v.origemId);
+    return cat ? cat.nome : "Categoria";
+  };
 
   // Salvar Empresa
   const salvarEmpresa = async (e: Event) => {
@@ -110,11 +122,22 @@ export function Ajustes() {
   const salvarConta = async (e: Event) => {
     e.preventDefault();
     if (!empId || !modalConta || !modalConta.nome?.trim() || !modalConta.categoriaId) return;
+
+    const vinculoPayload = modalConta.vinculo?.origemId
+      ? {
+          tipo: modalConta.vinculo.tipo,
+          origemId: modalConta.vinculo.origemId,
+          percentual: modalConta.vinculo.percentual !== undefined ? Number(modalConta.vinculo.percentual) : undefined,
+          valorFixo: modalConta.vinculo.valorFixo !== undefined ? Math.round(Number(modalConta.vinculo.valorFixo)) : undefined,
+        }
+      : undefined;
+
     if (modalConta.id) {
       await contas.update(modalConta.id, {
         nome: modalConta.nome.trim(),
         categoriaId: modalConta.categoriaId,
         ativa: modalConta.ativa !== false,
+        vinculo: vinculoPayload,
       });
     } else {
       await contas.create({
@@ -123,6 +146,7 @@ export function Ajustes() {
         natureza: natTab,
         nome: modalConta.nome.trim(),
         ativa: true,
+        vinculo: vinculoPayload,
       });
     }
     setModalConta(null);
@@ -462,8 +486,21 @@ export function Ajustes() {
                           {contasDaCat.map((c) => (
                             <div class="list__item" key={c.id} style="padding: 6px 0;">
                               <div class="list__body">
-                                <div class="list__title" style="font-size:var(--fs-sm);opacity:!c.ativa ? 0.5 : 1;">
-                                  {c.nome} {!c.ativa && <span class="badge badge--warn">Inativa</span>}
+                                <div class="list__title" style="font-size:var(--fs-sm);opacity:!c.ativa ? 0.5 : 1;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+                                  <span>{c.nome}</span>
+                                  {!c.ativa && <span class="badge badge--warn">Inativa</span>}
+                                  {c.vinculo && (
+                                    <span
+                                      class="badge"
+                                      style="font-size:11px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:4px;"
+                                      title={`Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${getNomeOrigemVinculo(c.vinculo)}`}
+                                    >
+                                      <Icon name="link" style="width:12px;height:12px;" />
+                                      {c.vinculo.percentual !== undefined
+                                        ? `${c.vinculo.percentual}% de ${getNomeOrigemVinculo(c.vinculo)}`
+                                        : `${money(c.vinculo.valorFixo || 0)} de ${getNomeOrigemVinculo(c.vinculo)}`}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               <div style="display:flex;gap:4px;">
@@ -1077,6 +1114,211 @@ export function Ajustes() {
               </label>
             </div>
           )}
+
+          {/* Seção Vínculo Automático (Opcional) */}
+          <div class="card" style="margin-top:16px;background:var(--bg-app);border:1px dashed var(--border);padding:12px;border-radius:var(--radius-md);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <label for="conta-tem-vinculo" style="font-weight:600;font-size:var(--fs-sm);display:flex;align-items:center;gap:6px;cursor:pointer;">
+                <Icon name="link" style="color:var(--primary);" />
+                <span>Vínculo Automático (Opcional)</span>
+              </label>
+              <input
+                id="conta-tem-vinculo"
+                type="checkbox"
+                checked={Boolean(modalConta?.vinculo)}
+                onChange={(e) => {
+                  if (e.currentTarget.checked) {
+                    const defaultOrigem = todasContasEmpresa.find((c) => c.id !== modalConta?.id)?.id || "";
+                    setModalConta({
+                      ...modalConta,
+                      vinculo: {
+                        tipo: "conta",
+                        origemId: defaultOrigem,
+                        percentual: 30,
+                      },
+                    });
+                  } else {
+                    setModalConta({
+                      ...modalConta,
+                      vinculo: undefined,
+                    });
+                  }
+                }}
+              />
+            </div>
+            <p class="text-muted" style="font-size:var(--fs-xs);margin-bottom:10px;">
+              Vincule esta conta a uma entrada ou outra conta/categoria para calcular valores automáticos (% ou fixo), sugerir lançamentos e sincronizar projeções.
+            </p>
+
+            {modalConta?.vinculo && (
+              <div class="stack" style="gap:10px;padding-top:6px;border-top:1px solid var(--border);">
+                <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;">
+                  <div>
+                    <label class="form-label" style="font-size:var(--fs-xs);">Vincular a:</label>
+                    <div class="tabs tabs--sm" style="margin:0;">
+                      <button
+                        type="button"
+                        class={`tab ${modalConta.vinculo.tipo === "conta" ? "is-active" : ""}`}
+                        style="font-size:var(--fs-xs);padding:4px 8px;"
+                        onClick={() => {
+                          const def = todasContasEmpresa.find((c) => c.id !== modalConta?.id)?.id || "";
+                          setModalConta({
+                            ...modalConta,
+                            vinculo: { ...modalConta.vinculo!, tipo: "conta", origemId: def },
+                          });
+                        }}
+                      >
+                        Conta
+                      </button>
+                      <button
+                        type="button"
+                        class={`tab ${modalConta.vinculo.tipo === "categoria" ? "is-active" : ""}`}
+                        style="font-size:var(--fs-xs);padding:4px 8px;"
+                        onClick={() => {
+                          const def = todasCategoriasEmpresa[0]?.id || "";
+                          setModalConta({
+                            ...modalConta,
+                            vinculo: { ...modalConta.vinculo!, tipo: "categoria", origemId: def },
+                          });
+                        }}
+                      >
+                        Categoria
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="form-label" style="font-size:var(--fs-xs);">Forma de Cálculo:</label>
+                    <div class="tabs tabs--sm" style="margin:0;">
+                      <button
+                        type="button"
+                        class={`tab ${modalConta.vinculo.percentual !== undefined ? "is-active" : ""}`}
+                        style="font-size:var(--fs-xs);padding:4px 8px;"
+                        onClick={() => {
+                          setModalConta({
+                            ...modalConta,
+                            vinculo: {
+                              tipo: modalConta.vinculo!.tipo,
+                              origemId: modalConta.vinculo!.origemId,
+                              percentual: 30,
+                              valorFixo: undefined,
+                            },
+                          });
+                        }}
+                      >
+                        % Percentual
+                      </button>
+                      <button
+                        type="button"
+                        class={`tab ${modalConta.vinculo.valorFixo !== undefined ? "is-active" : ""}`}
+                        style="font-size:var(--fs-xs);padding:4px 8px;"
+                        onClick={() => {
+                          setModalConta({
+                            ...modalConta,
+                            vinculo: {
+                              tipo: modalConta.vinculo!.tipo,
+                              origemId: modalConta.vinculo!.origemId,
+                              percentual: undefined,
+                              valorFixo: 0,
+                            },
+                          });
+                        }}
+                      >
+                        Valor Fixo
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" style="font-size:var(--fs-xs);">
+                    Origem ({modalConta.vinculo.tipo === "conta" ? "Conta" : "Categoria"} base) *
+                  </label>
+                  {modalConta.vinculo.tipo === "conta" ? (
+                    <CustomSelect
+                      value={modalConta.vinculo.origemId}
+                      placeholder="Selecione a conta de origem"
+                      options={todasContasEmpresa
+                        .filter((c) => c.id !== modalConta?.id)
+                        .map((c) => ({
+                          value: c.id,
+                          label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
+                        }))}
+                      onChange={(origemId) =>
+                        setModalConta({
+                          ...modalConta,
+                          vinculo: { ...modalConta.vinculo!, origemId },
+                        })
+                      }
+                    />
+                  ) : (
+                    <CustomSelect
+                      value={modalConta.vinculo.origemId}
+                      placeholder="Selecione a categoria de origem"
+                      options={todasCategoriasEmpresa.map((cat) => ({
+                        value: cat.id,
+                        label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
+                      }))}
+                      onChange={(origemId) =>
+                        setModalConta({
+                          ...modalConta,
+                          vinculo: { ...modalConta.vinculo!, origemId },
+                        })
+                      }
+                    />
+                  )}
+                </div>
+
+                {modalConta.vinculo.percentual !== undefined ? (
+                  <div class="form-group">
+                    <label class="form-label" style="font-size:var(--fs-xs);">Percentual da Origem (%) *</label>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="1000"
+                        class="input"
+                        placeholder="Ex: 30 para 30%"
+                        value={modalConta.vinculo.percentual || ""}
+                        onInput={(e) =>
+                          setModalConta({
+                            ...modalConta,
+                            vinculo: {
+                              ...modalConta.vinculo!,
+                              percentual: parseFloat(e.currentTarget.value) || 0,
+                            },
+                          })
+                        }
+                      />
+                      <span style="font-weight:600;font-size:var(--fs-md);">%</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div class="form-group">
+                    <label class="form-label" style="font-size:var(--fs-xs);">Valor Fixo (R$) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      class="input"
+                      placeholder="Ex: 1500.00"
+                      value={modalConta.vinculo.valorFixo !== undefined ? (modalConta.vinculo.valorFixo / 100).toString() : ""}
+                      onInput={(e) =>
+                        setModalConta({
+                          ...modalConta,
+                          vinculo: {
+                            ...modalConta.vinculo!,
+                            valorFixo: Math.round(Number(e.currentTarget.value || 0) * 100),
+                          },
+                        })
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </form>
       </Modal>
 

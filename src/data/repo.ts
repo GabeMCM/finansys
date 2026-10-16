@@ -60,10 +60,10 @@ export const projecoes = {
   ...repo<Projecao>(db.projecoes),
   byAno: (anoId: string) => db.projecoes.where({ anoId }).filter(alive).toArray(),
   /** Define (cria ou atualiza) a projeção de uma conta num mês. */
-  async set(anoId: string, contaId: string, mes: number, valor: number, obs?: string) {
+  async set(anoId: string, contaId: string, mes: number, valor: number, obs?: string, vinculoOrigemId?: string) {
     const cur = await db.projecoes.where({ anoId, contaId, mes }).filter(alive).first();
-    if (cur) return projecoes.update(cur.id, { valor, obs });
-    return projecoes.create({ anoId, contaId, mes, valor, obs });
+    if (cur) return projecoes.update(cur.id, { valor, obs, vinculoOrigemId });
+    return projecoes.create({ anoId, contaId, mes, valor, obs, vinculoOrigemId });
   },
 };
 

@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { calcular } from "./calc.ts";
+import { calcular, calcularBaseLancamentos, calcularBaseProjecoes, calcularValorVinculado } from "./calc.ts";
 import type { Conta, Lancamento, Projecao } from "./types.ts";
 
 const base = { createdAt: 0, updatedAt: 0 };
@@ -38,4 +38,34 @@ Deno.test("desvio e limite de mês do saldo real", () => {
 Deno.test("lançamento de conta inexistente é ignorado", () => {
   const r = calcular(0, contas, [], [lanc("fantasma", 0, 1_00)]);
   assertEquals(r.anual.resultadoReal, 0);
+});
+
+Deno.test("calcularValorVinculado percentual e fixo com arredondamento seguro", () => {
+  // 30% de R$ 5.000,00 (500000 centavos) = 150000 centavos (R$ 1.500,00)
+  assertEquals(calcularValorVinculado(5000_00, { tipo: "conta", origemId: "salario", percentual: 30 }), 1500_00);
+  // 33.33% de R$ 100,00 (10000 centavos) = 3333 centavos
+  assertEquals(calcularValorVinculado(100_00, { tipo: "conta", origemId: "salario", percentual: 33.33 }), 3333);
+  // Fixo R$ 250,00 (25000 centavos)
+  assertEquals(calcularValorVinculado(5000_00, { tipo: "conta", origemId: "salario", valorFixo: 250_00 }), 250_00);
+});
+
+Deno.test("calcularBaseProjecoes e calcularBaseLancamentos por conta e por categoria", () => {
+  const c1: Conta = { ...base, id: "c1", empresaId: "e", categoriaId: "cat_vendas", natureza: "receber", nome: "Vendas Loja", ativa: true };
+  const c2: Conta = { ...base, id: "c2", empresaId: "e", categoriaId: "cat_vendas", natureza: "receber", nome: "Vendas Online", ativa: true };
+  const contasVendas = [c1, c2];
+
+  const p1 = proj("c1", 3, 2000_00);
+  const p2 = proj("c2", 3, 3000_00);
+
+  // Base de conta individual
+  assertEquals(calcularBaseProjecoes({ tipo: "conta", origemId: "c1" }, 3, [p1, p2], contasVendas), 2000_00);
+  // Base de categoria inteira (soma c1 + c2)
+  assertEquals(calcularBaseProjecoes({ tipo: "categoria", origemId: "cat_vendas" }, 3, [p1, p2], contasVendas), 5000_00);
+
+  const l1 = lanc("c1", 3, 1200_00);
+  const l2 = lanc("c2", 3, 1800_00);
+  // Base de lançamentos por conta
+  assertEquals(calcularBaseLancamentos({ tipo: "conta", origemId: "c2" }, 3, [l1, l2], contasVendas), 1800_00);
+  // Base de lançamentos por categoria
+  assertEquals(calcularBaseLancamentos({ tipo: "categoria", origemId: "cat_vendas" }, 3, [l1, l2], contasVendas), 3000_00);
 });

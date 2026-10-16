@@ -1,4 +1,4 @@
-import { type Conta, type Lancamento, type Natureza, NATUREZAS, type Projecao, SINAL } from "./types.ts";
+import { type Conta, type Lancamento, type Natureza, NATUREZAS, type Projecao, type RegraVinculo, SINAL } from "./types.ts";
 
 /** Matriz [natureza][mes] em centavos. */
 export type PorNatureza = Record<Natureza, number[]>;
@@ -84,4 +84,60 @@ export function calcular(
       saldoFinalReal: saldoReal[11],
     },
   };
+}
+
+/**
+ * Calcula o valor vinculado (em centavos) com base no valor base da origem
+ * e na regra de vínculo (percentual ou valor fixo).
+ */
+export function calcularValorVinculado(
+  valorBaseOrigemCentavos: number,
+  regra: RegraVinculo,
+): number {
+  if (regra.percentual !== undefined && regra.percentual !== null && !isNaN(Number(regra.percentual))) {
+    return Math.round(valorBaseOrigemCentavos * (Number(regra.percentual) / 100));
+  }
+  if (regra.valorFixo !== undefined && regra.valorFixo !== null && !isNaN(Number(regra.valorFixo))) {
+    return Math.round(Number(regra.valorFixo));
+  }
+  return 0;
+}
+
+/**
+ * Calcula a base total de um vínculo (conta ou categoria) para um dado mês a partir de projeções.
+ */
+export function calcularBaseProjecoes(
+  regra: RegraVinculo,
+  mes: number,
+  projecoes: Projecao[],
+  contas: Conta[],
+): number {
+  if (regra.tipo === "conta") {
+    const p = projecoes.find((p) => p.contaId === regra.origemId && p.mes === mes);
+    return p ? p.valor : 0;
+  }
+  const contasIds = new Set(contas.filter((c) => c.categoriaId === regra.origemId).map((c) => c.id));
+  return projecoes
+    .filter((p) => contasIds.has(p.contaId) && p.mes === mes)
+    .reduce((sum, p) => sum + p.valor, 0);
+}
+
+/**
+ * Calcula a base total de um vínculo para um dado mês a partir de lançamentos realizados.
+ */
+export function calcularBaseLancamentos(
+  regra: RegraVinculo,
+  mes: number,
+  lancamentos: Lancamento[],
+  contas: Conta[],
+): number {
+  if (regra.tipo === "conta") {
+    return lancamentos
+      .filter((l) => l.contaId === regra.origemId && l.mes === mes)
+      .reduce((sum, l) => sum + l.valor, 0);
+  }
+  const contasIds = new Set(contas.filter((c) => c.categoriaId === regra.origemId).map((c) => c.id));
+  return lancamentos
+    .filter((l) => contasIds.has(l.contaId) && l.mes === mes)
+    .reduce((sum, l) => sum + l.valor, 0);
 }

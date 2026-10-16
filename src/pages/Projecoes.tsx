@@ -4,8 +4,9 @@ import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
 import { confirmarAcao } from "../components/ModalConfirm.tsx";
 import { toast } from "../components/Toast.tsx";
+import { calcularBaseProjecoes, calcularValorVinculado } from "../data/calc.ts";
 import { anos, categorias, contas, projecoes } from "../data/repo.ts";
-import { type Categoria, type Conta, type Natureza, NATUREZAS } from "../data/types.ts";
+import { type Categoria, type Conta, type Natureza, NATUREZAS, type RegraVinculo } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { money, MONTHS } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
@@ -19,12 +20,18 @@ interface ModalNovaProjecaoState {
   modoConta: "nova" | "existente";
   contaId: string;
   novaContaNome: string;
-  modoValor: "fixo" | "especifico" | "mensal";
+  modoValor: "fixo" | "especifico" | "mensal" | "vinculado";
   valorFixo: number | string;
   mesEspecifico: number;
   valorEspecifico: number | string;
   valoresMensais: (number | string)[];
   obs: string;
+  vinculoTipo: "conta" | "categoria";
+  vinculoOrigemId: string;
+  vinculoModo: "percentual" | "fixo";
+  vinculoPercentual: number | string;
+  vinculoValorFixo: number | string;
+  salvarVinculoNaConta: boolean;
 }
 
 export function Projecoes() {
@@ -184,6 +191,7 @@ export function Projecoes() {
     const catsDestaNat = todasCats.filter((c) => c.natureza === natEscolhida);
     const catId = categoriaIdPadrao || catsDestaNat[0]?.id || "";
     const contasDestaCat = todasContas.filter((c) => c.natureza === natEscolhida && c.categoriaId === catId && c.ativa);
+    const defaultOrigemId = todasContas.find((c) => c.natureza === "receber" && c.ativa)?.id || todasContas[0]?.id || "";
 
     setModalNovaProjecao({
       natureza: natEscolhida,
@@ -199,6 +207,12 @@ export function Projecoes() {
       valorEspecifico: "",
       valoresMensais: Array(12).fill(""),
       obs: "",
+      vinculoTipo: "conta",
+      vinculoOrigemId: defaultOrigemId,
+      vinculoModo: "percentual",
+      vinculoPercentual: 30,
+      vinculoValorFixo: "",
+      salvarVinculoNaConta: true,
     });
   };
 
@@ -256,11 +270,28 @@ export function Projecoes() {
         const val = m === modalNovaProjecao.mesEspecifico ? centavos : 0;
         await projecoes.set(ano.id, targetContaId, m, val, m === modalNovaProjecao.mesEspecifico ? obsTexto : undefined);
       }
-    } else {
+    } else if (modalNovaProjecao.modoValor === "mensal") {
       // Modo mensal individual
       for (let m = 0; m < 12; m++) {
         const centavos = Math.round(Number(modalNovaProjecao.valoresMensais[m] || 0) * 100);
         await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
+      }
+    } else if (modalNovaProjecao.modoValor === "vinculado") {
+      const regra: RegraVinculo = {
+        tipo: modalNovaProjecao.vinculoTipo,
+        origemId: modalNovaProjecao.vinculoOrigemId,
+        percentual: modalNovaProjecao.vinculoModo === "percentual" ? Number(modalNovaProjecao.vinculoPercentual || 0) : undefined,
+        valorFixo: modalNovaProjecao.vinculoModo === "fixo" ? Math.round(Number(modalNovaProjecao.vinculoValorFixo || 0) * 100) : undefined,
+      };
+
+      for (let m = 0; m < 12; m++) {
+        const baseCentavos = calcularBaseProjecoes(regra, m, ps, todasContas);
+        const valorCalculado = calcularValorVinculado(baseCentavos, regra);
+        await projecoes.set(ano.id, targetContaId, m, valorCalculado, obsTexto, modalNovaProjecao.vinculoOrigemId);
+      }
+
+      if (modalNovaProjecao.salvarVinculoNaConta) {
+        await contas.update(targetContaId, { vinculo: regra });
       }
     }
 
@@ -271,6 +302,35 @@ export function Projecoes() {
 
     toast.success("Projeção e conta registradas com sucesso!");
     setModalNovaProjecao(null);
+  };
+
+  const recalcularVinculadas = async () => {
+    const vinculadas = todasContas.filter((c) => c.vinculo && c.vinculo.origemId);
+    if (vinculadas.length === 0) {
+      toast.info("Nenhuma conta com vínculo automático cadastrada.");
+      return;
+    }
+
+    const ok = await confirmarAcao({
+      titulo: "Recalcular Projeções Vinculadas",
+      mensagem: `Deseja recalcular as 12 projeções de ${vinculadas.length} conta(s) vinculada(s) com base nos valores atuais das origens em ${anoNum}?`,
+      rotuloConfirmar: "Recalcular Tudo",
+      tipo: "info",
+    });
+    if (!ok) return;
+
+    let alteradas = 0;
+    for (const c of vinculadas) {
+      if (!c.vinculo) continue;
+      for (let m = 0; m < 12; m++) {
+        const baseCentavos = calcularBaseProjecoes(c.vinculo, m, ps, todasContas);
+        const valorCalculado = calcularValorVinculado(baseCentavos, c.vinculo);
+        const atual = getProj(c.id, m);
+        await projecoes.set(ano.id, c.id, m, valorCalculado, atual.obs, c.vinculo.origemId);
+      }
+      alteradas++;
+    }
+    toast.success(`${alteradas} conta(s) vinculada(s) recalculada(s) com sucesso!`);
   };
 
   const toggleCategoria = (catId: string) => {
@@ -363,6 +423,19 @@ export function Projecoes() {
               <Icon name="calendar" style="width:14px;height:14px;" /> Visão Mensal
             </button>
           </div>
+
+          {/* Botão de Recalcular Projeções Vinculadas */}
+          {todasContas.some((c) => c.vinculo && c.vinculo.origemId) && (
+            <button
+              type="button"
+              class="btn btn--secondary"
+              onClick={recalcularVinculadas}
+              title="Recalcular projeções vinculadas com base nos valores das origens"
+              style="display:inline-flex;align-items:center;gap:6px;"
+            >
+              <Icon name="refresh" /> Recalcular Vinculadas
+            </button>
+          )}
 
           {/* Botão de Incluir Projeção / Nova Conta diretamente */}
           <button
@@ -620,7 +693,19 @@ export function Projecoes() {
                               <tr key={c.id}>
                                 <td style="padding-left:28px;">
                                   <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-                                    <span style="font-weight:500;color:var(--text);">{c.nome}</span>
+                                    <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+                                      <span style="font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{c.nome}</span>
+                                      {c.vinculo && (
+                                        <span
+                                          class="badge"
+                                          style="font-size:10px;padding:1px 4px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:2px;"
+                                          title={`Vinculado a ${c.vinculo.tipo === "conta" ? "conta" : "categoria"}: ${c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : money(c.vinculo.valorFixo || 0)}`}
+                                        >
+                                          <Icon name="link" style="width:10px;height:10px;" />
+                                          {c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : "Fixo"}
+                                        </span>
+                                      )}
+                                    </div>
                                     {getProj(c.id, mesAtivo).obs && (
                                       <span
                                         title={`Observação: ${getProj(c.id, mesAtivo).obs}`}
@@ -836,7 +921,18 @@ export function Projecoes() {
                               style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);"
                             >
                               <div style="flex:1;min-width:0;">
-                                <div style="font-weight:600;font-size:var(--fs-sm);">{c.nome}</div>
+                                <div style="font-weight:600;font-size:var(--fs-sm);display:flex;align-items:center;gap:6px;">
+                                  <span>{c.nome}</span>
+                                  {c.vinculo && (
+                                    <span
+                                      class="badge"
+                                      style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:2px;"
+                                    >
+                                      <Icon name="link" style="width:10px;height:10px;" />
+                                      {c.vinculo.percentual !== undefined ? `${c.vinculo.percentual}%` : "Fixo"}
+                                    </span>
+                                  )}
+                                </div>
                                 {p.obs && (
                                   <div class="muted" style="font-size:var(--fs-xs);margin-top:2px;">
                                     Obs: {p.obs}
@@ -1106,6 +1202,13 @@ export function Projecoes() {
                 >
                   Grade Mês a Mês
                 </button>
+                <button
+                  type="button"
+                  class={`tab ${modalNovaProjecao.modoValor === "vinculado" ? "is-active" : ""}`}
+                  onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, modoValor: "vinculado" })}
+                >
+                  <Icon name="link" style="width:13px;height:13px;" /> Vinculado
+                </button>
               </div>
 
               {modalNovaProjecao.modoValor === "fixo" && (
@@ -1195,6 +1298,176 @@ export function Projecoes() {
                   </div>
                 </div>
               )}
+
+              {modalNovaProjecao.modoValor === "vinculado" && (() => {
+                const regraSimulada: RegraVinculo = {
+                  tipo: modalNovaProjecao.vinculoTipo,
+                  origemId: modalNovaProjecao.vinculoOrigemId,
+                  percentual: modalNovaProjecao.vinculoModo === "percentual" ? Number(modalNovaProjecao.vinculoPercentual || 0) : undefined,
+                  valorFixo: modalNovaProjecao.vinculoModo === "fixo" ? Math.round(Number(modalNovaProjecao.vinculoValorFixo || 0) * 100) : undefined,
+                };
+                let totalAnualCalculado = 0;
+                const previsaoMeses = MONTHS.map((m, idx) => {
+                  const baseMes = calcularBaseProjecoes(regraSimulada, idx, ps, todasContas);
+                  const valorCalculado = calcularValorVinculado(baseMes, regraSimulada);
+                  totalAnualCalculado += valorCalculado;
+                  return { mes: m, base: baseMes, valor: valorCalculado };
+                });
+
+                return (
+                  <div class="stack" style="gap:10px;">
+                    <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;">
+                      <div>
+                        <label class="form-label" style="font-size:var(--fs-xs);">Vincular a:</label>
+                        <div class="tabs tabs--sm" style="margin:0;">
+                          <button
+                            type="button"
+                            class={`tab ${modalNovaProjecao.vinculoTipo === "conta" ? "is-active" : ""}`}
+                            style="font-size:var(--fs-xs);padding:4px 8px;"
+                            onClick={() => {
+                              const def = todasContas.find((c) => c.natureza === "receber")?.id || todasContas[0]?.id || "";
+                              setModalNovaProjecao({ ...modalNovaProjecao, vinculoTipo: "conta", vinculoOrigemId: def });
+                            }}
+                          >
+                            Conta
+                          </button>
+                          <button
+                            type="button"
+                            class={`tab ${modalNovaProjecao.vinculoTipo === "categoria" ? "is-active" : ""}`}
+                            style="font-size:var(--fs-xs);padding:4px 8px;"
+                            onClick={() => {
+                              const def = todasCats.find((c) => c.natureza === "receber")?.id || todasCats[0]?.id || "";
+                              setModalNovaProjecao({ ...modalNovaProjecao, vinculoTipo: "categoria", vinculoOrigemId: def });
+                            }}
+                          >
+                            Categoria
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label class="form-label" style="font-size:var(--fs-xs);">Cálculo:</label>
+                        <div class="tabs tabs--sm" style="margin:0;">
+                          <button
+                            type="button"
+                            class={`tab ${modalNovaProjecao.vinculoModo === "percentual" ? "is-active" : ""}`}
+                            style="font-size:var(--fs-xs);padding:4px 8px;"
+                            onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModo: "percentual" })}
+                          >
+                            % Percentual
+                          </button>
+                          <button
+                            type="button"
+                            class={`tab ${modalNovaProjecao.vinculoModo === "fixo" ? "is-active" : ""}`}
+                            style="font-size:var(--fs-xs);padding:4px 8px;"
+                            onClick={() => setModalNovaProjecao({ ...modalNovaProjecao, vinculoModo: "fixo" })}
+                          >
+                            Valor Fixo
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom:0;">
+                      <label class="form-label" style="font-size:var(--fs-xs);">
+                        {modalNovaProjecao.vinculoTipo === "conta" ? "Conta de Origem *" : "Categoria de Origem *"}
+                      </label>
+                      {modalNovaProjecao.vinculoTipo === "conta" ? (
+                        <CustomSelect
+                          value={modalNovaProjecao.vinculoOrigemId}
+                          placeholder="Selecione a conta base..."
+                          options={todasContas.map((c) => ({
+                            value: c.id,
+                            label: `${c.nome} (${NATURE_META[c.natureza]?.label || c.natureza})`,
+                          }))}
+                          onChange={(origemId) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoOrigemId: origemId })}
+                        />
+                      ) : (
+                        <CustomSelect
+                          value={modalNovaProjecao.vinculoOrigemId}
+                          placeholder="Selecione a categoria base..."
+                          options={todasCats.map((cat) => ({
+                            value: cat.id,
+                            label: `${cat.nome} (${NATURE_META[cat.natureza]?.label || cat.natureza})`,
+                          }))}
+                          onChange={(origemId) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoOrigemId: origemId })}
+                        />
+                      )}
+                    </div>
+
+                    {modalNovaProjecao.vinculoModo === "percentual" ? (
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label" style="font-size:var(--fs-xs);">Percentual da Origem (%) *</label>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            max="1000"
+                            required
+                            class="input"
+                            placeholder="Ex: 30 para 30%"
+                            value={modalNovaProjecao.vinculoPercentual}
+                            onInput={(e) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoPercentual: e.currentTarget.value })}
+                          />
+                          <span style="font-weight:600;font-size:var(--fs-md);">%</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div class="form-group" style="margin-bottom:0;">
+                        <label class="form-label" style="font-size:var(--fs-xs);">Valor Fixo Previsto (R$) *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          required
+                          class="input"
+                          placeholder="0,00"
+                          value={modalNovaProjecao.vinculoValorFixo}
+                          onInput={(e) => setModalNovaProjecao({ ...modalNovaProjecao, vinculoValorFixo: e.currentTarget.value })}
+                        />
+                      </div>
+                    )}
+
+                    <div style="display:flex;align-items:center;gap:8px;padding-top:4px;">
+                      <input
+                        id="salvar-vinculo-conta"
+                        type="checkbox"
+                        checked={modalNovaProjecao.salvarVinculoNaConta}
+                        onChange={(e) => setModalNovaProjecao({ ...modalNovaProjecao, salvarVinculoNaConta: e.currentTarget.checked })}
+                      />
+                      <label for="salvar-vinculo-conta" style="font-size:var(--fs-xs);cursor:pointer;">
+                        Salvar regra na conta (para sugerir lançamentos futuros e sincronizar)
+                      </label>
+                    </div>
+
+                    {/* Pré-visualização dos 12 meses calculados */}
+                    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:10px;">
+                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="font-size:var(--fs-xs);font-weight:600;color:var(--text);">
+                          📊 Prévia dos 12 Meses Calculados
+                        </span>
+                        <span style="font-size:var(--fs-xs);font-weight:700;color:var(--primary);">
+                          Total: {money(totalAnualCalculado)}
+                        </span>
+                      </div>
+                      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(80px, 1fr));gap:6px;">
+                        {previsaoMeses.map((p) => (
+                          <div key={p.mes} style="background:var(--surface-soft);padding:4px 6px;border-radius:4px;text-align:center;">
+                            <div style="font-size:10px;color:var(--text-muted);font-weight:600;">{p.mes}</div>
+                            <div style="font-size:11px;font-weight:700;color:p.valor > 0 ? 'var(--text)' : 'var(--text-muted)';">
+                              {money(p.valor)}
+                            </div>
+                            <div style="font-size:9px;color:var(--text-muted);">
+                              Base: {money(p.base)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Observação / Detalhes */}

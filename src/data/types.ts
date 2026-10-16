@@ -42,12 +42,20 @@ export interface Categoria extends Base {
   nome: string;
 }
 
+export interface RegraVinculo {
+  tipo: "conta" | "categoria";
+  origemId: string;
+  percentual?: number; // ex: 30 para 30%
+  valorFixo?: number; // em centavos
+}
+
 export interface Conta extends Base {
   empresaId: string;
   categoriaId: string;
   natureza: Natureza;
   nome: string;
   ativa: boolean;
+  vinculo?: RegraVinculo;
 }
 
 export interface Projecao extends Base {
@@ -56,6 +64,7 @@ export interface Projecao extends Base {
   mes: number;
   valor: number;
   obs?: string;
+  vinculoOrigemId?: string;
 }
 
 export interface Lancamento extends Base {
@@ -69,6 +78,8 @@ export interface Lancamento extends Base {
   recorrenciaId?: string;
   parcela?: number;
   totalParcelas?: number;
+  vinculoLancamentoOrigemId?: string;
+  vinculoDescricao?: string;
 }
 
 export interface Setting {
