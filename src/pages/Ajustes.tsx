@@ -7,7 +7,7 @@ import { ModalConfirm, confirmarAcao } from "../components/ModalConfirm.tsx";
 import { ModalReplicacao } from "../components/ModalReplicacao.tsx";
 import { toast } from "../components/Toast.tsx";
 import { dumpDatabase, restoreDatabase } from "../data/backup.ts";
-import { cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem, puxarBackupNuvem } from "../data/cloudSync.ts";
+import { atualizarNomePerfil, cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem, puxarBackupNuvem } from "../data/cloudSync.ts";
 import { conectarGoogleDrive, desconectarGoogleDrive, googleUser, realizarBackupDrive, restaurarDoDrive, syncStatus, ultimoBackup } from "../data/driveSync.ts";
 import { anos, categorias, contas, empresas } from "../data/repo.ts";
 import { seedExemplo } from "../data/seed.ts";
@@ -35,6 +35,7 @@ export function Ajustes() {
   // Estado de Autenticação / Finansys Cloud Vault
   const [modalAuthAberto, setModalAuthAberto] = useState(false);
   const [mostrarDrive, setMostrarDrive] = useState(false);
+  const [modalEditarNomePerfil, setModalEditarNomePerfil] = useState<string | null>(null);
 
   // Live data
   const empId = empresaAtiva.value;
@@ -540,12 +541,21 @@ export function Ajustes() {
               {cloudUser.value ? (
                 <div style="display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:var(--r-md);padding:14px;background:var(--surface);flex-wrap:wrap;gap:12px;">
                   <div>
-                    <div style="display:flex;align-items:center;gap:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                       <i class="dot" style="background:var(--in);" />
                       <b style="font-size:var(--fs-sm);color:var(--text);">
                         {cloudUser.value.nome ? `${cloudUser.value.nome} (${cloudUser.value.email})` : cloudUser.value.email}
                       </b>
                       <span class="badge badge--in">Nuvem Ativa</span>
+                      <button
+                        type="button"
+                        class="btn btn--ghost"
+                        style="font-size:0.7rem;padding:2px 8px;min-height:22px;gap:4px;"
+                        onClick={() => setModalEditarNomePerfil(cloudUser.value?.nome || "")}
+                        title="Alterar seu nome salvo"
+                      >
+                        <Icon name="pencil" style="width:12px;height:12px;" /> Alterar nome
+                      </button>
                     </div>
                     <div class="muted" style="font-size:var(--fs-xs);margin-top:4px;">
                       {cloudUltimoBackup.value ? (
@@ -1083,6 +1093,56 @@ export function Ajustes() {
 
       {/* Modal de Autenticação */}
       <ModalAuth isOpen={modalAuthAberto} onClose={() => setModalAuthAberto(false)} />
+
+      {/* Modal Editar Nome do Perfil */}
+      {modalEditarNomePerfil !== null && (
+        <Modal
+          title="Alterar Nome da Conta"
+          isOpen={true}
+          onClose={() => setModalEditarNomePerfil(null)}
+          footer={
+            <>
+              <button type="button" class="btn btn--ghost" onClick={() => setModalEditarNomePerfil(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                class="btn btn--primary"
+                onClick={async () => {
+                  if (!modalEditarNomePerfil.trim()) {
+                    toast.warn("Informe um nome válido.");
+                    return;
+                  }
+                  const res = await atualizarNomePerfil(modalEditarNomePerfil.trim());
+                  if (res.ok) {
+                    toast.success("Nome atualizado com sucesso!");
+                    setModalEditarNomePerfil(null);
+                  } else {
+                    toast.error(res.error || "Erro ao atualizar nome.");
+                  }
+                }}
+              >
+                Salvar Nome
+              </button>
+            </>
+          }
+        >
+          <div class="form-group">
+            <label class="form-label" for="edit-perfil-nome">Seu Nome *</label>
+            <input
+              id="edit-perfil-nome"
+              class="input"
+              autoFocus
+              placeholder="Ex: Aline Silva"
+              value={modalEditarNomePerfil}
+              onInput={(e) => setModalEditarNomePerfil(e.currentTarget.value)}
+            />
+            <span class="muted" style="font-size:var(--fs-xs);margin-top:4px;display:block;">
+              Este nome será exibido no topo do sistema e salvo permanentemente em sua conta.
+            </span>
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

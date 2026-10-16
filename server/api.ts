@@ -181,7 +181,21 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     return (session.value as { email: string })?.email || null;
   };
 
-  // 1. POST /api/auth (Login ou Registro unificado com email e senha)
+  // 1. GET /api/auth/lookup (Reconhece se o e-mail já existe e retorna o nome cadastrado)
+  if (url.pathname === "/api/auth/lookup" && req.method === "GET") {
+    const email = String(url.searchParams.get("email") || "").trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      return json({ exists: false });
+    }
+    const userEntry = await kv.get(["users", email]);
+    if (!userEntry.value) {
+      return json({ exists: false });
+    }
+    const user = userEntry.value as { nome?: string };
+    return json({ exists: true, email, nome: user.nome || "" });
+  }
+
+  // 2. POST /api/auth (Login ou Registro unificado com email e senha)
   if (url.pathname === "/api/auth" && req.method === "POST") {
     try {
       const body = await req.json();
@@ -221,12 +235,15 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           return json({ error: "Senha incorreta para este e-mail." }, 401);
         }
 
+        // Se o usuário já possuía nome cadastrado, PRESERVA o nome cadastrado
         let nome = user.nome;
-        if (nomeRecebido && (!nome || nome !== nomeRecebido)) {
+        if (nomeRecebido && nomeRecebido !== user.nome) {
           nome = nomeRecebido;
           await kv.set(["users", email], { ...user, nome });
+        } else if (!nome) {
+          nome = nomeRecebido || extractName(email);
+          await kv.set(["users", email], { ...user, nome });
         }
-        if (!nome) nome = extractName(email);
 
         const token = crypto.randomUUID();
         await kv.set(["sessions", token], { email, createdAt: Date.now() });
@@ -237,13 +254,33 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     }
   }
 
-  // 2. GET /api/auth/me (Validação de sessão ativa)
+  // 3. GET /api/auth/me (Validação de sessão ativa)
   if (url.pathname === "/api/auth/me" && req.method === "GET") {
     const email = await getAuthUser();
     if (!email) return json({ error: "Não autenticado." }, 401);
     const userEntry = await kv.get(["users", email]);
     const nome = (userEntry.value as { nome?: string })?.nome || email.split("@")[0];
     return json({ email, nome });
+  }
+
+  // 4. POST /api/auth/profile (Atualiza o nome do usuário autenticado)
+  if (url.pathname === "/api/auth/profile" && req.method === "POST") {
+    const email = await getAuthUser();
+    if (!email) return json({ error: "Não autenticado." }, 401);
+    try {
+      const body = await req.json();
+      const novoNome = String(body.nome || "").trim();
+      if (!novoNome) return json({ error: "O nome não pode ser vazio." }, 400);
+
+      const userEntry = await kv.get(["users", email]);
+      if (!userEntry.value) return json({ error: "Usuário não encontrado." }, 404);
+
+      const user = userEntry.value as { salt: string; hash: string; nome?: string };
+      await kv.set(["users", email], { ...user, nome: novoNome });
+      return json({ ok: true, email, nome: novoNome });
+    } catch (err) {
+      return json({ error: String(err) }, 500);
+    }
   }
 
   // 3. POST /api/sync/push (Salva backup em nuvem com chunking seguro e notifica dispositivos)

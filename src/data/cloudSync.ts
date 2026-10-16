@@ -202,6 +202,104 @@ async function verificarAtualizacaoNuvem() {
   }
 }
 
+const KNOWN_NAMES_KEY = "finansys_known_user_names";
+
+function getCachedName(email: string): string | undefined {
+  try {
+    const raw = localStorage.getItem(KNOWN_NAMES_KEY);
+    if (!raw) return undefined;
+    const map = JSON.parse(raw);
+    return map[email.toLowerCase()];
+  } catch {
+    return undefined;
+  }
+}
+
+function setCachedName(email: string, nome: string) {
+  if (!email || !nome) return;
+  try {
+    const raw = localStorage.getItem(KNOWN_NAMES_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    map[email.toLowerCase()] = nome;
+    localStorage.setItem(KNOWN_NAMES_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Consulta se um e-mail já possui conta cadastrada e recupera o nome salvo.
+ * Verifica o cache local imediatamente e em seguida consulta o servidor.
+ */
+export async function buscarPerfilPorEmail(email: string): Promise<{ exists: boolean; nome?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes("@")) {
+    return { exists: false };
+  }
+
+  // 1. Verifica cache local do navegador
+  const cached = getCachedName(cleanEmail);
+
+  try {
+    const res = await fetch(`/api/auth/lookup?email=${encodeURIComponent(cleanEmail)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.exists) {
+        if (data.nome) setCachedName(cleanEmail, data.nome);
+        return { exists: true, nome: data.nome || cached };
+      }
+      return { exists: false };
+    }
+  } catch {
+    // Se a rede falhar, retorna o que tiver em cache local
+  }
+
+  if (cached) {
+    return { exists: true, nome: cached };
+  }
+
+  return { exists: false };
+}
+
+/**
+ * Atualiza o nome de exibição do usuário na nuvem e localmente.
+ */
+export async function atualizarNomePerfil(novoNome: string): Promise<{ ok: boolean; error?: string }> {
+  const token = getToken();
+  if (!token || !cloudUser.value) {
+    return { ok: false, error: "Nenhuma sessão ativa." };
+  }
+
+  const nomeLimpo = novoNome.trim();
+  if (!nomeLimpo) {
+    return { ok: false, error: "O nome não pode ser vazio." };
+  }
+
+  try {
+    const res = await fetch("/api/auth/profile", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ nome: nomeLimpo }),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      return { ok: false, error: errData.error || "Erro ao atualizar nome." };
+    }
+
+    const updated = { email: cloudUser.value.email, nome: nomeLimpo };
+    cloudUser.value = updated;
+    localStorage.setItem(USER_KEY, JSON.stringify(updated));
+    setCachedName(updated.email, nomeLimpo);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 /**
  * Entra ou cria conta automaticamente apenas com e-mail e senha.
  */
@@ -233,6 +331,7 @@ export async function autenticarConta(
     localStorage.setItem(TOKEN_KEY, json.token);
     const u = { email: json.email, nome: json.nome };
     localStorage.setItem(USER_KEY, JSON.stringify(u));
+    if (json.nome) setCachedName(json.email, json.nome);
     cloudUser.value = u;
     cloudSyncStatus.value = "salvando";
 
