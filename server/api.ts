@@ -28,31 +28,41 @@ try {
 }
 
 let _mongoClient: MongoClient | null = null;
+let _db: Db | null = null;
 let _dbPromise: Promise<Db> | null = null;
 
 export async function getDb(): Promise<Db> {
+  if (_db) return _db;
   if (_dbPromise) return _dbPromise;
 
   _dbPromise = (async () => {
-    const uri = Deno.env.get("MONGODB_URI");
-    if (!uri) {
-      throw new Error("Variável de ambiente MONGODB_URI não configurada. Defina MONGODB_URI no arquivo .env ou no painel do Deno Deploy.");
-    }
-
-    _mongoClient = new MongoClient(uri);
-    await _mongoClient.connect();
-    const database = _mongoClient.db("finansys");
-
-    // Índices de alta performance e integridade
     try {
-      await database.collection("users").createIndex({ email: 1 }, { unique: true });
-      await database.collection("backups").createIndex({ email: 1 }, { unique: true });
-      await database.collection("sessions").createIndex({ token: 1 }, { unique: true });
-    } catch (_idxErr) {
-      // Índices já existentes
-    }
+      const uri = Deno.env.get("MONGODB_URI");
+      if (!uri) {
+        throw new Error("Variável de ambiente MONGODB_URI não configurada no Render.");
+      }
 
-    return database;
+      _mongoClient = new MongoClient(uri);
+      await _mongoClient.connect();
+      const database = _mongoClient.db("finansys");
+
+      // Índices de alta performance e integridade
+      try {
+        await database.collection("users").createIndex({ email: 1 }, { unique: true });
+        await database.collection("backups").createIndex({ email: 1 }, { unique: true });
+        await database.collection("sessions").createIndex({ token: 1 }, { unique: true });
+      } catch (_idxErr) {
+        // Índices já existentes
+      }
+
+      _db = database;
+      return database;
+    } catch (err) {
+      _dbPromise = null;
+      _mongoClient = null;
+      _db = null;
+      throw err;
+    }
   })();
 
   return _dbPromise;
