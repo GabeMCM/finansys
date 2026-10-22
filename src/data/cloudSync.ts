@@ -12,9 +12,8 @@ export const cloudUser = signal<{ email: string; nome?: string } | null>(null);
 export const cloudSyncStatus = signal<CloudState>("desconectado");
 export const cloudUltimoBackup = signal<Date | null>(null);
 
-/** Notificação quando este aparelho teve a sessão revogada por outro dispositivo */
+// Mantido para compatibilidade de componentes que possam referenciar
 export const sessionRevokedSignal = signal<{ revoked: boolean; newDevice?: string } | null>(null);
-
 export function fecharAvisoSessionRevoked() {
   sessionRevokedSignal.value = null;
 }
@@ -74,8 +73,85 @@ function setLastSyncTime(t: number) {
 }
 
 /**
+ * PROTOCOLO UNIFICADO DE CARREGAMENTO E RESTAURAÇÃO DE DADOS DA NUVEM:
+ * - Busca os dados armazenados na conta do usuário no servidor.
+ * - Restaura no IndexedDB local de forma atômica e segura.
+ * - Atualiza a interface e estado da aplicação.
+ */
+export async function carregarDadosDaNuvem(
+  forcar = false,
+): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const token = getToken();
+  if (!token) {
+    return { ok: false, error: "Nenhuma conta conectada. Faça login com seu e-mail primeiro." };
+  }
+
+  if (isPulling) {
+    console.log("[Finansys Cloud] Pull já em execução. Aguardando...");
+    return { ok: true, count: 0 };
+  }
+
+  isPulling = true;
+  cloudSyncStatus.value = "salvando";
+
+  try {
+    const res = await fetch("/api/sync/pull", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        await desconectarConta(false);
+        return { ok: false, error: "Sua sessão expirou. Por favor, entre novamente." };
+      }
+      throw new Error(`Erro do servidor HTTP ${res.status}`);
+    }
+
+    const json = await res.json();
+    if (!json.payload) {
+      cloudSyncStatus.value = "salvo";
+      return { ok: true, count: 0 };
+    }
+
+    // deno-lint-ignore no-explicit-any
+    const dataObj = (json.payload as any)?.data || json.payload;
+    const remoteEmpresas = dataObj?.empresas?.length ?? 0;
+    const remoteLancamentos = dataObj?.lancamentos?.length ?? 0;
+
+    // Se o backup remoto tem empresas/lançamentos ou se foi forçado:
+    if (remoteEmpresas > 0 || remoteLancamentos > 0 || forcar) {
+      // Limpa a base local para garantir restauração fiel sem duplicações
+      await limparBancoLocal();
+
+      const { totalImportados } = await restoreDatabase(json.payload, "overwrite");
+      await loadState();
+
+      const savedAt = json.savedAt || Date.now();
+      setLastSyncTime(savedAt);
+      cloudUltimoBackup.value = new Date(savedAt);
+      cloudSyncStatus.value = "salvo";
+
+      console.log(`[Finansys Cloud] Protocolo de restauração concluído com sucesso: ${totalImportados} registros importados.`);
+      return { ok: true, count: totalImportados };
+    } else {
+      cloudSyncStatus.value = "salvo";
+      return { ok: true, count: 0 };
+    }
+  } catch (err) {
+    console.error("Falha no protocolo de busca na nuvem:", err);
+    cloudSyncStatus.value = "erro";
+    return { ok: false, error: String(err) };
+  } finally {
+    isPulling = false;
+  }
+}
+
+// Alias para compatibilidade
+export const puxarBackupNuvem = carregarDadosDaNuvem;
+
+/**
  * Conexão Server-Sent Events (SSE) para receber avisos em tempo real
- * quando outro dispositivo (ex: computador ou celular) sincroniza.
+ * quando outro dispositivo (computador ou celular) sincroniza dados.
  */
 function iniciarConexaoSSE() {
   const token = getToken();
@@ -98,38 +174,33 @@ function iniciarConexaoSSE() {
       try {
         const data = JSON.parse(evt.data);
 
-        // Se outro dispositivo assumiu a sessão ativa desta conta:
-        if (data.type === "session_revoked") {
-          console.warn("[Finansys Cloud] Sessão revogada por outro dispositivo:", data.newDevice);
-          await limparDadosLocaisCompletos();
-          sessionRevokedSignal.value = {
-            revoked: true,
-            newDevice: data.newDevice || "Outro dispositivo",
-          };
-          return;
-        }
-
         if (data.type === "sync_updated") {
-          // Ignora notificações disparadas por este próprio cliente/aba
+          // Ignora notificações disparadas por esta própria aba
           if (data.senderId && data.senderId === CLIENT_SESSION_ID) {
             return;
           }
 
           if (isPulling) return;
-          isPulling = true;
+          console.log("[Finansys Cloud] Alteração recebida de outro dispositivo em tempo real. Atualizando...");
 
-          try {
-            console.log("[Finansys Cloud] Evento recebido de outro dispositivo. Atualizando...");
-            const res = await puxarBackupNuvem(false, "overwrite");
-            if (res.ok && (res.totalImportados ?? 0) > 0) {
+          const res = await fetch("/api/sync/pull", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const pullJson = await res.json();
+            if (pullJson.payload) {
+              await restoreDatabase(pullJson.payload, "merge");
+              await loadState();
+              if (pullJson.savedAt) {
+                setLastSyncTime(pullJson.savedAt);
+                cloudUltimoBackup.value = new Date(pullJson.savedAt);
+              }
               const agora = Date.now();
               if (agora - lastToastTime > 3500) {
                 lastToastTime = agora;
                 toast.info("Dados sincronizados de outro aparelho em tempo real.", "Nuvem Finansys");
               }
             }
-          } finally {
-            isPulling = false;
           }
         }
       } catch (err) {
@@ -140,12 +211,11 @@ function iniciarConexaoSSE() {
     es.onerror = () => {
       es.close();
       eventSource = null;
-      // Tenta reconectar apenas se a sessão continuar ativa e não tiver sido revogada
-      if (getToken() && !sessionRevokedSignal.value && !reconnectTimer) {
+      if (getToken() && !reconnectTimer) {
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
           iniciarConexaoSSE();
-        }, 4000);
+        }, 5000);
       }
     };
   } catch (err) {
@@ -166,16 +236,7 @@ export function initCloudSync() {
       fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
         .then(async (r) => {
           if (!r.ok) {
-            const errData = await r.json().catch(() => ({}));
-            if (errData.error === "SESSION_REVOKED") {
-              await limparDadosLocaisCompletos();
-              sessionRevokedSignal.value = {
-                revoked: true,
-                newDevice: errData.newDevice || "Outro dispositivo",
-              };
-            } else {
-              await desconectarConta(false);
-            }
+            await desconectarConta(false);
           } else {
             const me = await r.json();
             if (me.email) {
@@ -187,8 +248,15 @@ export function initCloudSync() {
         })
         .catch(() => {});
 
-      // 2. Busca e mescla os dados mais recentes da nuvem na abertura se houver nova versão
-      void verificarAtualizacaoNuvem();
+      // 2. Se a base local estiver vazia, SEMPRE puxa da nuvem para restaurar tudo fielmente
+      db.empresas.count().then(async (empCount) => {
+        if (empCount === 0) {
+          console.log("[Finansys Cloud] Base local vazia na inicialização. Puxando dados da nuvem...");
+          await carregarDadosDaNuvem(true);
+        } else {
+          void verificarAtualizacaoNuvem();
+        }
+      }).catch(() => {});
 
       // 3. Abre o canal de comunicação em tempo real (SSE)
       iniciarConexaoSSE();
@@ -231,7 +299,7 @@ export function initCloudSync() {
     }
   });
 
-  // Heartbeat de fallback a cada 60s quando a página estiver ativa (o SSE já cuida do tempo real)
+  // Heartbeat de fallback a cada 60s
   setInterval(() => {
     if (getToken() && document.visibilityState === "visible") {
       void verificarAtualizacaoNuvem();
@@ -241,7 +309,6 @@ export function initCloudSync() {
 
 /**
  * Checa de forma leve se o servidor possui backup mais novo do que o nosso local.
- * Se a base local estiver vazia, SEMPRE puxa do servidor para garantir restauração.
  */
 async function verificarAtualizacaoNuvem() {
   const token = getToken();
@@ -250,7 +317,7 @@ async function verificarAtualizacaoNuvem() {
   try {
     const empCount = await db.empresas.count();
     if (empCount === 0) {
-      await puxarBackupNuvem(false, "overwrite");
+      await carregarDadosDaNuvem(true);
       return;
     }
 
@@ -260,8 +327,19 @@ async function verificarAtualizacaoNuvem() {
     if (!res.ok) return;
     const { savedAt } = await res.json();
     if (savedAt && savedAt > getLastSyncTime()) {
-      await puxarBackupNuvem(false, "merge");
-      toast.info("Dados mais recentes da nuvem carregados.", "Nuvem Finansys");
+      const pullRes = await fetch("/api/sync/pull", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (pullRes.ok) {
+        const pullJson = await pullRes.json();
+        if (pullJson.payload) {
+          await restoreDatabase(pullJson.payload, "merge");
+          await loadState();
+          setLastSyncTime(savedAt);
+          cloudUltimoBackup.value = new Date(savedAt);
+          toast.info("Dados mais recentes da nuvem carregados.", "Nuvem Finansys");
+        }
+      }
     }
   } catch (_e) {
     // ignore
@@ -295,7 +373,6 @@ function setCachedName(email: string, nome: string) {
 
 /**
  * Consulta se um e-mail já possui conta cadastrada e recupera o nome salvo.
- * Verifica o cache local imediatamente e em seguida consulta o servidor.
  */
 export async function buscarPerfilPorEmail(email: string): Promise<{ exists: boolean; nome?: string }> {
   const cleanEmail = email.trim().toLowerCase();
@@ -303,7 +380,6 @@ export async function buscarPerfilPorEmail(email: string): Promise<{ exists: boo
     return { exists: false };
   }
 
-  // 1. Verifica cache local do navegador
   const cached = getCachedName(cleanEmail);
 
   try {
@@ -367,8 +443,7 @@ export async function atualizarNomePerfil(novoNome: string): Promise<{ ok: boole
 }
 
 /**
- * Zera completamente o banco de dados IndexedDB e chaves de sessão,
- * garantindo um sistema 100% limpo sem qualquer resquício de contas anteriores.
+ * Zera completamente o banco de dados IndexedDB e chaves de sessão.
  */
 export async function limparDadosLocaisCompletos(): Promise<void> {
   // 1. Zera todas as tabelas locais (IndexedDB / Dexie)
@@ -408,30 +483,23 @@ export async function limparDadosLocaisCompletos(): Promise<void> {
 }
 
 /**
- * Entra ou cria conta com controle de sessão única por aparelho.
- * Se outro dispositivo estiver conectado, sinaliza requiresTakeoverConfirm.
+ * Autentica ou cria conta com suporte multi-dispositivo seguro.
+ * Imediatamente busca os dados salvos na nuvem daquela conta.
  */
 export async function autenticarConta(
   email: string,
   password: string,
   nome?: string,
-  confirmTakeover = false,
 ): Promise<{
   ok: boolean;
   error?: string;
   isNew?: boolean;
-  requiresTakeoverConfirm?: boolean;
-  activeDeviceName?: string;
-  message?: string;
 }> {
   try {
-    const deviceId = getDeviceId();
-    const deviceName = getDeviceName();
-
     const res = await fetch("/api/auth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, nome, deviceId, deviceName, confirmTakeover }),
+      body: JSON.stringify({ email, password, nome }),
     });
 
     const text = await res.text();
@@ -443,23 +511,14 @@ export async function autenticarConta(
       return { ok: false, error: `Servidor retornou erro (${res.status}): ${text.slice(0, 160) || "Sem resposta válida"}` };
     }
 
-    if (json.requiresTakeoverConfirm) {
-      return {
-        ok: false,
-        requiresTakeoverConfirm: true,
-        activeDeviceName: json.activeDeviceName || "Outro dispositivo",
-        message: json.message,
-      };
-    }
-
     if (!res.ok) {
       return { ok: false, error: json.error || "Erro ao conectar conta." };
     }
 
-    // 1. Reseta o timer de inatividade imediatamente para evitar travamento durante o login
+    // 1. Reseta o timer de inatividade
     resetInactivityTimer();
 
-    // 2. ZERA totalmente os dados locais para evitar qualquer contaminação cruzada
+    // 2. Limpa dados residuais de contas anteriores neste aparelho
     await limparDadosLocaisCompletos();
 
     // 3. Grava novas credenciais
@@ -470,20 +529,19 @@ export async function autenticarConta(
     cloudUser.value = u;
     cloudSyncStatus.value = "salvando";
 
-    // 4. Puxa os dados diretamente da nuvem com sobrescrita total (overwrite)
-    const pullRes = await puxarBackupNuvem(false, "overwrite");
-    if (pullRes.ok && (pullRes.totalImportados ?? 0) > 0) {
-      await loadState();
-      cloudSyncStatus.value = "salvo";
+    // 4. Executa o protocolo unificado de carregamento da nuvem
+    const pullRes = await carregarDadosDaNuvem(false);
+    if (pullRes.ok && (pullRes.count ?? 0) > 0) {
+      toast.success(`Bem-vindo(a)! Dados da nuvem carregados com sucesso (${pullRes.count} registros).`);
     } else {
-      // Conta nova e sem dados: a base permanece 100% limpa e vazia
       await loadState();
       cloudSyncStatus.value = "salvo";
+      if (!json.isNew) {
+        toast.info("Conta conectada.");
+      }
     }
 
-    // 5. Reseta novamente o timer de inatividade
     resetInactivityTimer();
-
     iniciarConexaoSSE();
 
     return { ok: true, isNew: json.isNew };
@@ -520,15 +578,12 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
     return { ok: false, error: "Nenhuma conta conectada. Faça login com seu e-mail primeiro." };
   }
 
-  // Mutex guard: se uma restauração ou pull já estiver rodando, não sincroniza agora
   if (isPulling || isRestoring) {
     console.log("[Finansys Cloud] Sincronização ignorada pois restauração/pull está ativa.");
     return { ok: true };
   }
 
-  // Se não há alterações pendentes locais, apenas puxa novidades se houver
   const isPendente = cloudSyncStatus.value === "pendente";
-
   cloudSyncStatus.value = "salvando";
 
   try {
@@ -550,15 +605,6 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
         }
       }
     } else if (pullRes.status === 401) {
-      const errData = await pullRes.json().catch(() => ({}));
-      if (errData.error === "SESSION_REVOKED") {
-        await limparDadosLocaisCompletos();
-        sessionRevokedSignal.value = {
-          revoked: true,
-          newDevice: errData.newDevice || "Outro dispositivo",
-        };
-        return { ok: false, error: "Sessão desconectada porque foi acessada em outro aparelho." };
-      }
       await desconectarConta(false);
       return { ok: false, error: "Sua sessão expirou. Por favor, entre novamente." };
     }
@@ -593,14 +639,6 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
 
     if (!pushRes.ok) {
       const data = await pushRes.json().catch(() => ({}));
-      if (pushRes.status === 401 && data.error === "SESSION_REVOKED") {
-        await limparDadosLocaisCompletos();
-        sessionRevokedSignal.value = {
-          revoked: true,
-          newDevice: data.newDevice || "Outro dispositivo",
-        };
-        return { ok: false, error: "Sessão desconectada porque foi acessada em outro aparelho." };
-      }
       throw new Error(data.error || `Erro do servidor HTTP ${pushRes.status}`);
     }
 
@@ -615,68 +653,6 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
     console.error("Falha na sincronização inteligente:", err);
     cloudSyncStatus.value = "erro";
     return { ok: false, error: String(err) };
-  }
-}
-
-/**
- * Puxa os dados salvos na nuvem e restaura no banco local.
- */
-export async function puxarBackupNuvem(
-  _mostrarAviso = true,
-  strategy: "merge" | "overwrite" = "overwrite",
-): Promise<{ ok: boolean; error?: string; totalImportados?: number }> {
-  const token = getToken();
-  if (!token) return { ok: false, error: "Não autenticado." };
-
-  if (isPulling) {
-    console.log("[Finansys Cloud] Pull já em execução. Aguardando...");
-    return { ok: true, totalImportados: 0 };
-  }
-
-  isPulling = true;
-  cloudSyncStatus.value = "salvando";
-
-  try {
-    const res = await fetch("/api/sync/pull", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 401) {
-        if (data.error === "SESSION_REVOKED") {
-          await limparDadosLocaisCompletos();
-          sessionRevokedSignal.value = {
-            revoked: true,
-            newDevice: data.newDevice || "Outro dispositivo",
-          };
-          return { ok: false, error: "Sessão desconectada em outro aparelho." };
-        }
-        await desconectarConta(false);
-        return { ok: false, error: "Sessão expirada." };
-      }
-      throw new Error(data.error || `Erro HTTP ${res.status}`);
-    }
-    const json = await res.json();
-
-    if (json.payload) {
-      const { totalImportados } = await restoreDatabase(json.payload, strategy);
-      await loadState();
-      cloudSyncStatus.value = "salvo";
-      const savedAt = json.savedAt || Date.now();
-      setLastSyncTime(savedAt);
-      cloudUltimoBackup.value = new Date(savedAt);
-      return { ok: true, totalImportados };
-    } else {
-      cloudSyncStatus.value = "salvo";
-      return { ok: true, totalImportados: 0 };
-    }
-  } catch (err) {
-    console.error("Falha ao puxar da nuvem:", err);
-    cloudSyncStatus.value = "erro";
-    return { ok: false, error: String(err) };
-  } finally {
-    isPulling = false;
   }
 }
 

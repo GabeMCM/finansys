@@ -2,7 +2,7 @@ import { signal } from "@preact/signals";
 import { cloudSyncStatus, cloudUser, sincronizarInteligente } from "./cloudSync.ts";
 
 export const isScreenLocked = signal<boolean>(false);
-export const inactivityTimeoutSignal = signal<number>(10);
+export const inactivityTimeoutSignal = signal<number>(900);
 
 const STORAGE_KEY = "finansys_inactivity_timeout_seconds";
 
@@ -10,9 +10,14 @@ export function getInactivityTimeout(): number {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved !== null) {
     const parsed = parseInt(saved, 10);
+    // Migra valor anterior restritivo de 10s para 15 minutos (900s)
+    if (parsed === 10) {
+      localStorage.setItem(STORAGE_KEY, "900");
+      return 900;
+    }
     if (!isNaN(parsed)) return parsed;
   }
-  return 10; // Padrão: 10 segundos conforme solicitado
+  return 900; // Padrão: 15 minutos (900s)
 }
 
 export function setInactivityTimeout(seconds: number) {

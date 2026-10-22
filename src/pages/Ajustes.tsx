@@ -662,7 +662,7 @@ export function Ajustes() {
                       </div>
                     </div>
 
-                    <div style="display:flex;gap:6px;align-items:center;">
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                       <button
                         type="button"
                         class="btn btn--secondary"
@@ -677,13 +677,33 @@ export function Ajustes() {
                       </button>
                       <button
                         type="button"
+                        class="btn btn--ghost"
+                        style="font-size:var(--fs-xs);min-height:34px;"
+                        onClick={async () => {
+                          const ok = await confirmarAcao({
+                            titulo: "Restaurar Dados da Nuvem",
+                            mensagem: "Deseja baixar os dados salvos na sua conta e restaurar este aparelho? Os dados salvos na nuvem serão carregados no sistema.",
+                            rotuloConfirmar: "Sim, Puxar da Nuvem",
+                          });
+                          if (ok) {
+                            const res = await puxarBackupNuvem(true);
+                            if (res.ok) toast.success(`Dados da nuvem restaurados com sucesso! (${res.count ?? 0} registros)`);
+                            else toast.error(res.error || "Erro ao puxar dados da nuvem.");
+                          }
+                        }}
+                        title="Busca e restaura manualmente os dados salvos na nuvem"
+                      >
+                        <Icon name="download" /> Puxar da Nuvem
+                      </button>
+                      <button
+                        type="button"
                         class="btn btn--ghost btn--danger"
                         style="font-size:var(--fs-xs);min-height:34px;"
                         onClick={async () => {
                           const ok = await confirmarAcao({
                             titulo: "Desconectar Conta",
-                            mensagem: "Deseja sair da conta neste aparelho? Para proteger suas finanças e evitar contaminação com outras contas, todos os dados locais deste dispositivo serão limpos. Seus dados continuam salvos na nuvem.",
-                            rotuloConfirmar: "Sair e Limpar Dados",
+                            mensagem: "Deseja sair da conta neste aparelho? Para proteger suas finanças, todos os dados locais deste dispositivo serão limpos. Seus dados continuam salvos na nuvem.",
+                            rotuloConfirmar: "Sair da Conta",
                             tipo: "warning",
                           });
                           if (ok) {
@@ -691,7 +711,7 @@ export function Ajustes() {
                           }
                         }}
                       >
-                        Sair e Limpar
+                        Sair da Conta
                       </button>
                     </div>
                   </div>
@@ -703,7 +723,7 @@ export function Ajustes() {
                         <Icon name="lock" style="width:14px;height:14px;" /> Bloqueio Automático por Inatividade
                       </div>
                       <div class="muted" style="font-size:0.7rem;margin-top:2px;">
-                        Sincroniza automaticamente e protege sua tela caso fique sem mexer no sistema.
+                        Protege sua tela caso você fique um período sem mexer no sistema.
                       </div>
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;">
@@ -717,11 +737,10 @@ export function Ajustes() {
                           toast.info(val === 0 ? "Bloqueio por inatividade desativado." : `Bloqueio definido para ${val >= 60 ? `${val / 60} min` : `${val}s`}.`);
                         }}
                       >
-                        <option value={10}>10 segundos (Máxima proteção / Teste)</option>
-                        <option value={30}>30 segundos</option>
-                        <option value={60}>1 minuto</option>
+                        <option value={900}>15 minutos (Padrão)</option>
                         <option value={300}>5 minutos</option>
-                        <option value={900}>15 minutos</option>
+                        <option value={60}>1 minuto</option>
+                        <option value={30}>30 segundos</option>
                         <option value={0}>Desativado</option>
                       </select>
                       <button

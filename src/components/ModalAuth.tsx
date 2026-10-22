@@ -19,11 +19,8 @@ export function ModalAuth({ isOpen, onClose }: ModalAuthProps) {
   const [errorMsg, setErrorMsg] = useState("");
   const timerBuscaRef = useRef<number | null>(null);
 
-  const [takeoverPrompt, setTakeoverPrompt] = useState<{ activeDeviceName: string; message: string } | null>(null);
-
   // Consulta e reconhece o usuário assim que digita o e-mail
   useEffect(() => {
-    setTakeoverPrompt(null);
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes("@")) {
       setContaExiste(null);
@@ -52,25 +49,16 @@ export function ModalAuth({ isOpen, onClose }: ModalAuthProps) {
     };
   }, [email]);
 
-  const handleSubmit = async (e: Event, confirmTakeover = false) => {
+  const handleSubmit = async (e: Event) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) return;
     setLoading(true);
     setErrorMsg("");
 
-    const res = await autenticarConta(email.trim(), password.trim(), nome.trim() || undefined, confirmTakeover);
+    const res = await autenticarConta(email.trim(), password.trim(), nome.trim() || undefined);
     setLoading(false);
 
-    if (res.requiresTakeoverConfirm) {
-      setTakeoverPrompt({
-        activeDeviceName: res.activeDeviceName || "Outro aparelho",
-        message: res.message || "Esta conta já está conectada em outro dispositivo.",
-      });
-      return;
-    }
-
     if (res.ok) {
-      setTakeoverPrompt(null);
       onClose();
     } else {
       setErrorMsg(res.error || "Erro ao conectar conta.");
@@ -81,88 +69,35 @@ export function ModalAuth({ isOpen, onClose }: ModalAuthProps) {
     <Modal
       title="Acesso ao Finansys"
       isOpen={isOpen}
-      onClose={() => {
-        setTakeoverPrompt(null);
-        onClose();
-      }}
+      onClose={onClose}
       footer={
-        takeoverPrompt ? (
-          <div style="display:flex;justify-content:flex-end;align-items:center;width:100%;gap:12px;flex-wrap:wrap;">
-            <button
-              type="button"
-              class="btn btn--ghost"
-              style="font-size:var(--fs-xs);"
-              onClick={() => setTakeoverPrompt(null)}
-              disabled={loading}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              class="btn btn--primary"
-              style="background:var(--warn);border-color:var(--warn);color:#fff;"
-              disabled={loading}
-              onClick={(e) => handleSubmit(e, true)}
-            >
-              <Icon name="cloud" />{" "}
-              {loading ? "Conectando..." : "Desconectar lá e Entrar aqui"}
-            </button>
-          </div>
-        ) : (
-          <div style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:12px;flex-wrap:wrap;">
-            <button
-              type="button"
-              class="btn btn--ghost"
-              style="font-size:var(--fs-xs);"
-              onClick={onClose}
-            >
-              Usar sem conta (offline)
-            </button>
-            <button
-              type="submit"
-              form="form-auth-modal"
-              class="btn btn--primary"
-              disabled={loading}
-            >
-              <Icon name="cloud" />{" "}
-              {loading
-                ? "Conectando..."
-                : contaExiste === true
-                ? "Entrar na Conta"
-                : contaExiste === false
-                ? "Criar Nova Conta"
-                : "Entrar / Criar Conta"}
-            </button>
-          </div>
-        )
+        <div style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:12px;flex-wrap:wrap;">
+          <button
+            type="button"
+            class="btn btn--ghost"
+            style="font-size:var(--fs-xs);"
+            onClick={onClose}
+          >
+            Usar sem conta (offline)
+          </button>
+          <button
+            type="submit"
+            form="form-auth-modal"
+            class="btn btn--primary"
+            disabled={loading}
+          >
+            <Icon name="cloud" />{" "}
+            {loading
+              ? "Conectando..."
+              : contaExiste === true
+              ? "Entrar na Conta"
+              : contaExiste === false
+              ? "Criar Nova Conta"
+              : "Entrar / Criar Conta"}
+          </button>
+        </div>
       }
     >
-      {takeoverPrompt ? (
-        <div class="stack" style="gap:var(--sp-3);padding:var(--sp-1) 0;">
-          <div
-            style="background:var(--warn-soft);color:var(--text);border:1px solid color-mix(in srgb, var(--warn) 35%, transparent);border-radius:var(--r-md);padding:16px;font-size:var(--fs-xs);line-height:1.5;"
-          >
-            <div style="display:flex;align-items:center;gap:8px;font-weight:700;color:var(--warn);margin-bottom:8px;font-size:var(--fs-sm);">
-              <Icon name="warn" />
-              <span>Sessão Aberta em Outro Aparelho</span>
-            </div>
-            <p style="margin:0 0 10px 0;">
-              Esta conta já está conectada no momento em: <br />
-              <strong style="font-size:var(--fs-sm);display:inline-block;margin-top:4px;">
-                {takeoverPrompt.activeDeviceName}
-              </strong>
-            </p>
-            <p style="margin:0;color:var(--text-muted);">
-              Para evitar conflito ou mistura de dados entre computadores e celulares, a sessão naquele aparelho será desconectada automaticamente, todos os dados locais de lá serão limpos, e os dados mais recentes salvos serão trazidos para este dispositivo.
-            </p>
-          </div>
-          {errorMsg && (
-            <div style="background:var(--out-soft);color:var(--out);padding:8px 12px;border-radius:var(--r-md);font-size:var(--fs-xs);">
-              {errorMsg}
-            </div>
-          )}
-        </div>
-      ) : (
       <form id="form-auth-modal" onSubmit={handleSubmit} class="stack" style="gap:var(--sp-3);">
         <div style="text-align:center;padding:var(--sp-2) 0;">
           <img src="/favicon.svg" alt="" style="width:40px;height:40px;margin-bottom:8px;" />
@@ -285,7 +220,6 @@ export function ModalAuth({ isOpen, onClose }: ModalAuthProps) {
           </span>
         </div>
       </form>
-      )}
     </Modal>
   );
 }

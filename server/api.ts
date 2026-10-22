@@ -61,18 +61,6 @@ function notifySyncUpdate(email: string, savedAt: number, senderId?: string) {
   }
 }
 
-function notifySessionRevoked(email: string, newDevice?: string) {
-  const subs = sseSubscribers.get(email);
-  if (!subs || subs.size === 0) return;
-  const msg = new TextEncoder().encode(`data: ${JSON.stringify({ type: "session_revoked", reason: "dispositivo_conectado", newDevice })}\n\n`);
-  for (const controller of subs) {
-    try {
-      controller.enqueue(msg);
-    } catch (_err) {
-      subs.delete(controller);
-    }
-  }
-}
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -185,30 +173,16 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
   try {
     const kv = await getKv();
 
-  // Helper para ler token do header e verificar revogação
+  // Helper para ler token do header e verificar sessão
   const getAuth = async (): Promise<
     | { ok: true; email: string; token: string }
-    | { ok: false; status: number; error: string; reason?: string; newDevice?: string; message?: string }
+    | { ok: false; status: number; error: string }
   > => {
     const auth = req.headers.get("Authorization");
     if (!auth || !auth.startsWith("Bearer ")) {
       return { ok: false, status: 401, error: "Não autenticado." };
     }
     const token = auth.slice(7).trim();
-
-    // Verifica se o token foi revogado por conexão em outro aparelho
-    const revoked = await kv.get(["revoked_sessions", token]);
-    if (revoked.value) {
-      const r = revoked.value as { reason?: string; newDevice?: string };
-      return {
-        ok: false,
-        status: 401,
-        error: "SESSION_REVOKED",
-        reason: r.reason,
-        newDevice: r.newDevice,
-        message: "Esta sessão foi desconectada porque a conta foi conectada em outro aparelho.",
-      };
-    }
 
     const session = await kv.get(["sessions", token]);
     if (!session.value) {
@@ -232,15 +206,12 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     return json({ exists: true, email, nome: user.nome || "" });
   }
 
-  // 2. POST /api/auth (Login ou Registro com controle de sessão única por aparelho)
+  // 2. POST /api/auth (Login ou Registro com suporte multi-dispositivo)
   if (url.pathname === "/api/auth" && req.method === "POST") {
     try {
       const body = await req.json();
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "").trim();
-      const deviceId = String(body.deviceId || "").trim() || "unknown";
-      const deviceName = String(body.deviceName || "").trim() || "Outro Dispositivo";
-      const confirmTakeover = Boolean(body.confirmTakeover);
 
       if (!email || !email.includes("@")) {
         return json({ error: "E-mail inválido." }, 400);
@@ -284,55 +255,9 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
         }
       }
 
-      // Verifica se já existe sessão ativa para esta conta em outro dispositivo
-      const activeEntry = await kv.get(["active_session", email]);
-      if (activeEntry.value) {
-        const active = activeEntry.value as { deviceId: string; deviceName: string; token: string; lastActive: number };
-        if (active.deviceId && active.deviceId !== deviceId) {
-          if (!confirmTakeover) {
-            return json({
-              ok: false,
-              requiresTakeoverConfirm: true,
-              activeDeviceName: active.deviceName || "Outro dispositivo",
-              lastActive: active.lastActive,
-              message: `Esta conta já está conectada em ${active.deviceName || "outro aparelho"}. Se continuar, a sessão naquele aparelho será desconectada e os dados salvos serão trazidos para cá.`,
-            });
-          }
-
-          // Takeover confirmado pelo usuário: revoga a sessão anterior
-          const oldToken = active.token;
-          if (oldToken) {
-            await kv.delete(["sessions", oldToken]);
-            await kv.set(["revoked_sessions", oldToken], {
-              revokedAt: Date.now(),
-              reason: "dispositivo_conectado",
-              newDevice: deviceName,
-            });
-          }
-
-          // Notifica o aparelho anterior em tempo real
-          notifySessionRevoked(email, deviceName);
-          try {
-            await kv.set(["session_revocations", email], {
-              revokedToken: oldToken,
-              newDevice: deviceName,
-              timestamp: Date.now(),
-            });
-          } catch (_e) {
-            // ignore
-          }
-        }
-      }
-
-      // Registra a nova sessão ativa
+      // Registra a nova sessão para este dispositivo
       const token = crypto.randomUUID();
-      await kv.set(["sessions", token], { email, deviceId, createdAt: Date.now() });
-      await kv.set(["active_session", email], {
-        deviceId,
-        deviceName,
-        token,
-        lastActive: Date.now(),
-      });
+      await kv.set(["sessions", token], { email, createdAt: Date.now() });
 
       return json({ ok: true, isNew, token, email, nome });
     } catch (err) {
@@ -362,7 +287,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
   if (url.pathname === "/api/auth/me" && req.method === "GET") {
     const auth = await getAuth();
     if (!auth.ok) {
-      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+      return json({ error: auth.error }, auth.status);
     }
     const userEntry = await kv.get(["users", auth.email]);
     const nome = (userEntry.value as { nome?: string })?.nome || auth.email.split("@")[0];
@@ -373,7 +298,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
   if (url.pathname === "/api/auth/profile" && req.method === "POST") {
     const auth = await getAuth();
     if (!auth.ok) {
-      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+      return json({ error: auth.error }, auth.status);
     }
     try {
       const body = await req.json();
@@ -395,7 +320,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
   if (url.pathname === "/api/sync/push" && req.method === "POST") {
     const auth = await getAuth();
     if (!auth.ok) {
-      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+      return json({ error: auth.error }, auth.status);
     }
 
     try {
@@ -452,7 +377,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
   if (url.pathname === "/api/sync/pull" && req.method === "GET") {
     const auth = await getAuth();
     if (!auth.ok) {
-      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+      return json({ error: auth.error }, auth.status);
     }
 
     try {
@@ -471,7 +396,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
   if (url.pathname === "/api/sync/status" && req.method === "GET") {
     const auth = await getAuth();
     if (!auth.ok) {
-      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+      return json({ error: auth.error }, auth.status);
     }
 
     try {
@@ -492,17 +417,11 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     }
     if (!token) return json({ error: "Token não fornecido." }, 401);
 
-    // Verifica se a sessão foi previamente revogada
-    const revoked = await kv.get(["revoked_sessions", token]);
-    if (revoked.value) {
-      const r = revoked.value as { reason?: string; newDevice?: string };
-      return json({ error: "SESSION_REVOKED", reason: r.reason, newDevice: r.newDevice }, 401);
-    }
-
     const session = await kv.get(["sessions", token]);
     const email = (session.value as { email: string })?.email;
     if (!email) return json({ error: "Sessão inválida ou expirada." }, 401);
 
+    const connectionTime = Date.now();
     let streamController: ReadableStreamDefaultController | null = null;
     // deno-lint-ignore no-explicit-any
     let kvWatcherStream: any = null;
@@ -520,10 +439,10 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
         // Ping inicial
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "connected", email })}\n\n`));
 
-        // Inicia escuta nativa do Deno KV watch (propaga entre nós do Deno KV)
+        // Inicia escuta nativa do Deno KV watch
         try {
           if (typeof kv.watch === "function") {
-            const watcher = kv.watch([["sync_updates", email], ["session_revocations", email]]);
+            const watcher = kv.watch([["sync_updates", email]]);
             kvWatcherStream = watcher;
             const reader = watcher.getReader();
             (async () => {
@@ -532,20 +451,16 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
                   const { value, done } = await reader.read();
                   if (done) break;
 
-                  // 1. Atualizações de backup
+                  // Atualizações de backup
                   const syncEntry = value?.[0];
                   if (syncEntry && syncEntry.value) {
                     const data = syncEntry.value as { savedAt: number; senderId?: string };
-                    const msg = new TextEncoder().encode(`data: ${JSON.stringify({ type: "sync_updated", savedAt: data.savedAt, senderId: data.senderId })}\n\n`);
-                    controller.enqueue(msg);
-                  }
-
-                  // 2. Revogação de sessão por login em outro aparelho
-                  const revEntry = value?.[1];
-                  if (revEntry && revEntry.value) {
-                    const data = revEntry.value as { newDevice?: string };
-                    const msg = new TextEncoder().encode(`data: ${JSON.stringify({ type: "session_revoked", reason: "dispositivo_conectado", newDevice: data.newDevice })}\n\n`);
-                    controller.enqueue(msg);
+                    if (data.savedAt && data.savedAt > connectionTime) {
+                      const msg = new TextEncoder().encode(
+                        `data: ${JSON.stringify({ type: "sync_updated", savedAt: data.savedAt, senderId: data.senderId })}\n\n`
+                      );
+                      controller.enqueue(msg);
+                    }
                   }
                 }
               } catch (_err) {
