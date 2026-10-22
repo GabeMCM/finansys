@@ -1,5 +1,5 @@
 import { signal } from "@preact/signals";
-import { cloudUser, desconectarConta, sincronizarInteligente } from "./cloudSync.ts";
+import { cloudSyncStatus, cloudUser, sincronizarInteligente } from "./cloudSync.ts";
 
 export const isScreenLocked = signal<boolean>(false);
 export const inactivityTimeoutSignal = signal<number>(10);
@@ -23,6 +23,10 @@ export function setInactivityTimeout(seconds: number) {
 let lastActivity = Date.now();
 let guardStarted = false;
 
+export function resetInactivityTimer() {
+  lastActivity = Date.now();
+}
+
 function onUserActivity() {
   if (!isScreenLocked.value) {
     lastActivity = Date.now();
@@ -34,9 +38,21 @@ export function initInactivityGuard() {
   guardStarted = true;
 
   inactivityTimeoutSignal.value = getInactivityTimeout();
+  lastActivity = Date.now();
 
-  // Escuta interações do usuário
-  const events = ["mousedown", "mousemove", "keydown", "touchstart", "scroll", "pointerdown"];
+  // Escuta interações do usuário abrangentes
+  const events = [
+    "mousedown",
+    "mousemove",
+    "keydown",
+    "touchstart",
+    "scroll",
+    "pointerdown",
+    "click",
+    "input",
+    "focus",
+    "change",
+  ];
   for (const ev of events) {
     window.addEventListener(ev, onUserActivity, { passive: true });
   }
@@ -53,8 +69,10 @@ export function initInactivityGuard() {
 
     const elapsed = Date.now() - lastActivity;
     if (elapsed >= timeoutSec * 1000) {
-      // 1. Sincroniza dados pendentes com a nuvem antes de bloquear
-      void sincronizarInteligente();
+      // 1. Sincroniza dados com a nuvem antes de bloquear APENAS se houver alterações pendentes
+      if (cloudSyncStatus.value === "pendente") {
+        void sincronizarInteligente();
+      }
 
       // 2. Trava a tela com o modal de bloqueio
       isScreenLocked.value = true;
@@ -64,7 +82,9 @@ export function initInactivityGuard() {
 
 export function lockScreenNow() {
   if (!cloudUser.value) return;
-  void sincronizarInteligente();
+  if (cloudSyncStatus.value === "pendente") {
+    void sincronizarInteligente();
+  }
   isScreenLocked.value = true;
 }
 

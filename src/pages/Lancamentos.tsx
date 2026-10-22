@@ -140,7 +140,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   };
 
   const mudarDataModal = (novaDataStr: string) => {
-    if (!modalLanc) return;
+    if (!modalLanc || !modalLanc.data) return;
     const mesAntigo = parseInt(modalLanc.data.split("-")[1], 10) - 1;
     const mesNovo = parseInt(novaDataStr.split("-")[1], 10) - 1;
 

@@ -402,6 +402,26 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
       const body = await req.json();
       if (!body.payload) return json({ error: "Payload vazio." }, 400);
 
+      // Proteção de segurança no servidor: não sobrescrever backup existente populado por um payload vazio
+      // deno-lint-ignore no-explicit-any
+      const payloadData = (body.payload as any)?.data || body.payload;
+      const empresasCount = payloadData?.empresas?.length ?? 0;
+      const lancamentosCount = payloadData?.lancamentos?.length ?? 0;
+
+      if (empresasCount === 0 && lancamentosCount === 0) {
+        const existing = await getBackupKv(kv, auth.email);
+        if (existing && existing.payload) {
+          // deno-lint-ignore no-explicit-any
+          const exData = (existing.payload as any)?.data || existing.payload;
+          const exEmp = exData?.empresas?.length ?? 0;
+          const exLanc = exData?.lancamentos?.length ?? 0;
+          if (exEmp > 0 || exLanc > 0) {
+            console.warn(`[Sync Server] Push de base vazia ignorado para ${auth.email} (preservando ${exEmp} empresas e ${exLanc} lançamentos remotos).`);
+            return json({ ok: true, ignored: true, savedAt: existing.savedAt });
+          }
+        }
+      }
+
       const savedAt = Date.now();
       await saveBackupKv(kv, auth.email, body.payload, savedAt);
 

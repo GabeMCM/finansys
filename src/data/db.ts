@@ -46,10 +46,19 @@ export class FinansysDB extends Dexie {
 
 export const db = new FinansysDB();
 
+let restoringDepth = 0;
 export let isRestoring = false;
 
 export function setRestoring(val: boolean) {
-  isRestoring = val;
+  if (val) {
+    restoringDepth++;
+    isRestoring = true;
+  } else {
+    restoringDepth = Math.max(0, restoringDepth - 1);
+    if (restoringDepth === 0) {
+      isRestoring = false;
+    }
+  }
 }
 
 /** Notifica (debounced na etapa 9) que houve alteração — gancho para o backup automático. */

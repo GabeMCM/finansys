@@ -137,6 +137,16 @@ export async function realizarBackupDrive(): Promise<boolean> {
 
   try {
     const payload = await dumpDatabase();
+
+    // Proteção absoluta: Nunca enviar base vazia para o Google Drive
+    const empCount = payload.data?.empresas?.length ?? 0;
+    const lancCount = payload.data?.lancamentos?.length ?? 0;
+    if (empCount === 0 && lancCount === 0) {
+      console.warn("[Google Drive] Base local vazia (0 empresas, 0 lançamentos). Backup evitado para proteger arquivo remoto.");
+      syncStatus.value = "salvo";
+      return false;
+    }
+
     const content = JSON.stringify(payload);
 
     // 1. Procura se o arquivo já existe na appDataFolder
@@ -227,8 +237,9 @@ export async function restaurarDoDrive(): Promise<boolean> {
     const existingFile = listData.files?.[0];
 
     if (!existingFile) {
-      // Primeiro acesso com esta conta, nenhum backup remoto ainda: salva o estado atual
-      await realizarBackupDrive();
+      // Primeiro acesso com esta conta, nenhum backup remoto ainda
+      console.log("[Google Drive] Nenhum arquivo de backup encontrado no Google Drive.");
+      syncStatus.value = "salvo";
       return true;
     }
 
@@ -241,7 +252,7 @@ export async function restaurarDoDrive(): Promise<boolean> {
     if (!downloadRes.ok) throw new Error("Erro ao baixar backup");
     const payload = await downloadRes.json();
 
-    if (payload && payload.data) {
+    if (payload) {
       await restoreDatabase(payload, "overwrite");
       await loadState();
       syncStatus.value = "salvo";

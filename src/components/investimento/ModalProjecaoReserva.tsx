@@ -64,7 +64,7 @@ export function ModalProjecaoReserva({
         valorRendimento: rapidoRendimento > 0 ? rapidoRendimento : l.valorRendimento,
       }))
     );
-    toast({ tipo: "sucesso", texto: "Valores aplicados para os 12 meses!" });
+    toast.success("Valores aplicados para os 12 meses!");
   };
 
   const atualizarLinha = (mes: number, campo: "valorAporte" | "valorResgate" | "valorRendimento", valor: number) => {
@@ -84,12 +84,12 @@ export function ModalProjecaoReserva({
           valorRendimento: linha.valorRendimento,
         });
       }
-      toast({ tipo: "sucesso", texto: `Projeções de "${reserva.nome}" salvas!` });
+      toast.success(`Projeções de "${reserva.nome}" salvas!`);
       onSuccess();
       onClose();
     } catch (err) {
       console.error(err);
-      toast({ tipo: "erro", texto: "Erro ao salvar projeções." });
+      toast.error("Erro ao salvar projeções.");
     } finally {
       setSalvando(false);
     }

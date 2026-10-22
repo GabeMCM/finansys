@@ -569,23 +569,23 @@ export function Investimentos() {
       <ModalReserva
         isOpen={modalReservaAberta !== null}
         reserva={modalReservaAberta === "nova" ? null : modalReservaAberta}
-        empresaId={empId}
+        empresaId={dados.emp.id}
         onClose={() => setModalReservaAberta(null)}
         onSave={async (dadosReserva) => {
           if (modalReservaAberta === "nova") {
             await reservas.create({
-              empresaId: empId,
+              empresaId: dados.emp.id,
               ...dadosReserva,
             });
-            toast({ tipo: "sucesso", texto: "Reserva criada com sucesso!" });
+            toast.success("Reserva criada com sucesso!");
           } else if (modalReservaAberta) {
             await reservas.update(modalReservaAberta.id, dadosReserva);
-            toast({ tipo: "sucesso", texto: "Reserva atualizada com sucesso!" });
+            toast.success("Reserva atualizada com sucesso!");
           }
         }}
         onDelete={async (id) => {
           await reservas.delete(id);
-          toast({ tipo: "sucesso", texto: "Reserva excluída com sucesso." });
+          toast.success("Reserva excluída com sucesso.");
         }}
       />
 
@@ -594,7 +594,7 @@ export function Investimentos() {
           isOpen={true}
           reservas={resList}
           contas={contList}
-          empresaId={empId}
+          empresaId={dados.emp.id}
           anoId={ano.id}
           anoNum={ano.ano}
           initialReservaId={modalMovimento.reservaId}
@@ -609,7 +609,7 @@ export function Investimentos() {
         <ModalProjecaoReserva
           isOpen={true}
           reserva={modalProjecaoReserva}
-          empresaId={empId}
+          empresaId={dados.emp.id}
           anoId={ano.id}
           projecoes={projList}
           onClose={() => setModalProjecaoReserva(null)}

@@ -89,4 +89,75 @@ Deno.test("API Auth: sessão única e confirmação de takeover entre múltiplos
   assertEquals(resMe2?.status, 200);
   const dataMe2 = await resMe2?.json();
   assertEquals(dataMe2.email, testEmail);
+
+  // 6. Aparelho 2 envia backup inicial populado
+  const initialPayload = {
+    version: 2,
+    exportedAt: Date.now(),
+    data: {
+      empresas: [{ id: "emp_1", nome: "Empresa 1", updatedAt: Date.now() }],
+      lancamentos: [{ id: "lanc_1", valorCentavos: 10000, updatedAt: Date.now() }],
+      anos: [],
+      categorias: [],
+      contas: [],
+      projecoes: [],
+    },
+  };
+
+  const reqPush1 = new Request("http://localhost/api/sync/push", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${tokenDevice2}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ payload: initialPayload, clientId: "cli_1" }),
+  });
+  const resPush1 = await handleApiRequest(reqPush1);
+  assertEquals(resPush1?.status, 200);
+
+  // 7. Confirma que o pull retorna os dados populados
+  const reqPull1 = new Request("http://localhost/api/sync/pull", {
+    headers: { Authorization: `Bearer ${tokenDevice2}` },
+  });
+  const resPull1 = await handleApiRequest(reqPull1);
+  assertEquals(resPull1?.status, 200);
+  const dataPull1 = await resPull1?.json();
+  assertEquals(dataPull1.payload.data.empresas.length, 1);
+  assertEquals(dataPull1.payload.data.lancamentos.length, 1);
+
+  // 8. Tenta enviar push com payload vazio (0 empresas, 0 lançamentos)
+  const emptyPayload = {
+    version: 2,
+    exportedAt: Date.now(),
+    data: {
+      empresas: [],
+      lancamentos: [],
+      anos: [],
+      categorias: [],
+      contas: [],
+      projecoes: [],
+    },
+  };
+  const reqPushEmpty = new Request("http://localhost/api/sync/push", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${tokenDevice2}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ payload: emptyPayload, clientId: "cli_1" }),
+  });
+  const resPushEmpty = await handleApiRequest(reqPushEmpty);
+  assertEquals(resPushEmpty?.status, 200);
+  const dataPushEmpty = await resPushEmpty?.json();
+  assertEquals(dataPushEmpty.ignored, true);
+
+  // 9. Confirma que o servidor preservou os dados intactos
+  const reqPull2 = new Request("http://localhost/api/sync/pull", {
+    headers: { Authorization: `Bearer ${tokenDevice2}` },
+  });
+  const resPull2 = await handleApiRequest(reqPull2);
+  assertEquals(resPull2?.status, 200);
+  const dataPull2 = await resPull2?.json();
+  assertEquals(dataPull2.payload.data.empresas.length, 1);
+  assertEquals(dataPull2.payload.data.lancamentos.length, 1);
 });

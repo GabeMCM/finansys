@@ -16,9 +16,7 @@ export async function limparBancoLocal(): Promise<void> {
       }
     });
   } finally {
-    setTimeout(() => {
-      setRestoring(false);
-    }, 120);
+    setRestoring(false);
   }
 }
 
@@ -95,16 +93,18 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
         db.reservaProjecoes,
       ],
       async () => {
+        // deno-lint-ignore no-explicit-any
+        const dataObj = (payload as any)?.data || payload;
         const tabelas = [
-          { t: db.empresas, itens: payload.data.empresas },
-          { t: db.anos, itens: payload.data.anos },
-          { t: db.categorias, itens: payload.data.categorias },
-          { t: db.contas, itens: payload.data.contas },
-          { t: db.projecoes, itens: payload.data.projecoes },
-          { t: db.lancamentos, itens: payload.data.lancamentos },
-          { t: db.reservas, itens: payload.data.reservas },
-          { t: db.reservaMovimentos, itens: payload.data.reservaMovimentos },
-          { t: db.reservaProjecoes, itens: payload.data.reservaProjecoes },
+          { t: db.empresas, itens: dataObj?.empresas },
+          { t: db.anos, itens: dataObj?.anos },
+          { t: db.categorias, itens: dataObj?.categorias },
+          { t: db.contas, itens: dataObj?.contas },
+          { t: db.projecoes, itens: dataObj?.projecoes },
+          { t: db.lancamentos, itens: dataObj?.lancamentos },
+          { t: db.reservas, itens: dataObj?.reservas },
+          { t: db.reservaMovimentos, itens: dataObj?.reservaMovimentos },
+          { t: db.reservaProjecoes, itens: dataObj?.reservaProjecoes },
         ];
 
       for (const { t, itens } of tabelas) {
@@ -149,10 +149,7 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
       }
     });
   } finally {
-    // Pequeno delay para garantir que transações assíncronas do Dexie terminem antes de liberar os hooks
-    setTimeout(() => {
-      setRestoring(false);
-    }, 120);
+    setRestoring(false);
   }
 
   return { totalImportados: count };

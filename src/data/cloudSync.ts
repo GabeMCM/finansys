@@ -1,8 +1,9 @@
 import { signal } from "@preact/signals";
 import { toast } from "../components/Toast.tsx";
 import { dumpDatabase, isRestoring, limparBancoLocal, restoreDatabase } from "./backup.ts";
-import { changes } from "./db.ts";
+import { db, changes } from "./db.ts";
 import { googleUser, syncStatus, ultimoBackup } from "./driveSync.ts";
+import { resetInactivityTimer } from "./inactivityGuard.ts";
 import { anoAtivo, empresaAtiva, loadState } from "../state.ts";
 
 export type CloudState = "desconectado" | "salvo" | "salvando" | "pendente" | "erro";
@@ -199,7 +200,7 @@ export function initCloudSync() {
   // Escuta alterações locais no banco de dados para agendar backup automático
   changes.addEventListener("change", () => {
     // Ignora mutações geradas pela própria sincronização ou restauração
-    if (isRestoring) return;
+    if (isRestoring || isPulling) return;
     if (!getToken()) return;
     cloudSyncStatus.value = "pendente";
 
@@ -240,19 +241,26 @@ export function initCloudSync() {
 
 /**
  * Checa de forma leve se o servidor possui backup mais novo do que o nosso local.
+ * Se a base local estiver vazia, SEMPRE puxa do servidor para garantir restauração.
  */
 async function verificarAtualizacaoNuvem() {
   const token = getToken();
   if (!token) return;
 
   try {
+    const empCount = await db.empresas.count();
+    if (empCount === 0) {
+      await puxarBackupNuvem(false, "overwrite");
+      return;
+    }
+
     const res = await fetch("/api/sync/status", {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return;
     const { savedAt } = await res.json();
     if (savedAt && savedAt > getLastSyncTime()) {
-      await puxarBackupNuvem(false);
+      await puxarBackupNuvem(false, "merge");
       toast.info("Dados mais recentes da nuvem carregados.", "Nuvem Finansys");
     }
   } catch (_e) {
@@ -448,10 +456,13 @@ export async function autenticarConta(
       return { ok: false, error: json.error || "Erro ao conectar conta." };
     }
 
-    // 1. ZERA totalmente os dados locais para evitar qualquer contaminação cruzada
+    // 1. Reseta o timer de inatividade imediatamente para evitar travamento durante o login
+    resetInactivityTimer();
+
+    // 2. ZERA totalmente os dados locais para evitar qualquer contaminação cruzada
     await limparDadosLocaisCompletos();
 
-    // 2. Grava novas credenciais
+    // 3. Grava novas credenciais
     localStorage.setItem(TOKEN_KEY, json.token);
     const u = { email: json.email, nome: json.nome };
     localStorage.setItem(USER_KEY, JSON.stringify(u));
@@ -459,15 +470,19 @@ export async function autenticarConta(
     cloudUser.value = u;
     cloudSyncStatus.value = "salvando";
 
-    // 3. Puxa os dados diretamente da nuvem com sobrescrita total (overwrite)
+    // 4. Puxa os dados diretamente da nuvem com sobrescrita total (overwrite)
     const pullRes = await puxarBackupNuvem(false, "overwrite");
     if (pullRes.ok && (pullRes.totalImportados ?? 0) > 0) {
       await loadState();
       cloudSyncStatus.value = "salvo";
     } else {
       // Conta nova e sem dados: a base permanece 100% limpa e vazia
+      await loadState();
       cloudSyncStatus.value = "salvo";
     }
+
+    // 5. Reseta novamente o timer de inatividade
+    resetInactivityTimer();
 
     iniciarConexaoSSE();
 
@@ -496,7 +511,7 @@ export async function desconectarConta(showToast = true): Promise<void> {
 /**
  * SINCRONIZAÇÃO INTELIGENTE BIDIRECIONAL:
  * 1. Puxa os dados da nuvem primeiro e mescla na base local se houver alterações de outro aparelho.
- * 2. Em seguida, extrai a base local consolidada e envia de volta para a nuvem.
+ * 2. Em seguida, extrai a base local consolidada e envia de volta para a nuvem apenas se houver alterações locais pendentes.
  */
 export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: string }> {
   const token = getToken();
@@ -504,6 +519,15 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
     cloudSyncStatus.value = "desconectado";
     return { ok: false, error: "Nenhuma conta conectada. Faça login com seu e-mail primeiro." };
   }
+
+  // Mutex guard: se uma restauração ou pull já estiver rodando, não sincroniza agora
+  if (isPulling || isRestoring) {
+    console.log("[Finansys Cloud] Sincronização ignorada pois restauração/pull está ativa.");
+    return { ok: true };
+  }
+
+  // Se não há alterações pendentes locais, apenas puxa novidades se houver
+  const isPendente = cloudSyncStatus.value === "pendente";
 
   cloudSyncStatus.value = "salvando";
 
@@ -516,7 +540,10 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
     if (pullRes.ok) {
       const pullJson = await pullRes.json();
       if (pullJson.payload) {
-        await restoreDatabase(pullJson.payload, "merge");
+        const empCount = await db.empresas.count();
+        const strategy = empCount === 0 ? "overwrite" : "merge";
+        await restoreDatabase(pullJson.payload, strategy);
+        await loadState();
         if (pullJson.savedAt) {
           setLastSyncTime(pullJson.savedAt);
           cloudUltimoBackup.value = new Date(pullJson.savedAt);
@@ -536,8 +563,23 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
       return { ok: false, error: "Sua sessão expirou. Por favor, entre novamente." };
     }
 
+    // Se NÃO havia alterações pendentes locais, encerra por aqui sem enviar nada
+    if (!isPendente) {
+      cloudSyncStatus.value = "salvo";
+      return { ok: true };
+    }
+
     // 2. Extrai a base local consolidada
     const payload = await dumpDatabase();
+
+    // PROTEÇÃO ABSOLUTA: NUNCA enviar uma base vazia para a nuvem
+    const empCount = payload.data?.empresas?.length ?? 0;
+    const lancCount = payload.data?.lancamentos?.length ?? 0;
+    if (empCount === 0 && lancCount === 0) {
+      console.warn("[Finansys Cloud] Base local vazia (0 empresas, 0 lançamentos). Envio bloqueado para proteger backup remoto.");
+      cloudSyncStatus.value = "salvo";
+      return { ok: true };
+    }
 
     // 3. Envia o estado consolidado para a nuvem
     const pushRes = await fetch("/api/sync/push", {
@@ -586,6 +628,12 @@ export async function puxarBackupNuvem(
   const token = getToken();
   if (!token) return { ok: false, error: "Não autenticado." };
 
+  if (isPulling) {
+    console.log("[Finansys Cloud] Pull já em execução. Aguardando...");
+    return { ok: true, totalImportados: 0 };
+  }
+
+  isPulling = true;
   cloudSyncStatus.value = "salvando";
 
   try {
@@ -627,6 +675,8 @@ export async function puxarBackupNuvem(
     console.error("Falha ao puxar da nuvem:", err);
     cloudSyncStatus.value = "erro";
     return { ok: false, error: String(err) };
+  } finally {
+    isPulling = false;
   }
 }
 

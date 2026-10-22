@@ -72,7 +72,7 @@ export function ModalMovimentoReserva({
   const handleSubmit = async (e?: Event) => {
     if (e) e.preventDefault();
     if (!reservaId || valorCentavos <= 0 || !data) {
-      toast({ tipo: "erro", texto: "Preencha o valor e a data da movimentação." });
+      toast.error("Preencha o valor e a data da movimentação.");
       return;
     }
 
@@ -112,7 +112,7 @@ export function ModalMovimentoReserva({
           }
         } else if (contaId && (tipo === "aporte" || tipo === "resgate")) {
           // Não tinha vínculo antes, mas o usuário agora selecionou uma conta operacional
-          const lancId = await lancamentos.create({
+          const novoLanc = await lancamentos.create({
             anoId,
             contaId,
             mes,
@@ -122,16 +122,16 @@ export function ModalMovimentoReserva({
             reservaId,
             tipoReserva: tipo,
           });
-          await reservaMovimentos.update(movimento.id, { lancamentoId: lancId });
+          await reservaMovimentos.update(movimento.id, { lancamentoId: novoLanc.id });
         }
 
-        toast({ tipo: "sucesso", texto: "Movimentação atualizada com sucesso!" });
+        toast.success("Movimentação atualizada com sucesso!");
       } else {
         // Criação de novo movimento
         let lancId: string | undefined = undefined;
 
         if (contaId && (tipo === "aporte" || tipo === "resgate")) {
-          lancId = await lancamentos.create({
+          const novoLanc = await lancamentos.create({
             anoId,
             contaId,
             mes,
@@ -141,6 +141,7 @@ export function ModalMovimentoReserva({
             reservaId,
             tipoReserva: tipo,
           });
+          lancId = novoLanc.id;
         }
 
         await reservaMovimentos.create({
@@ -156,14 +157,14 @@ export function ModalMovimentoReserva({
           lancamentoId: lancId,
         });
 
-        toast({ tipo: "sucesso", texto: "Movimentação registrada com sucesso!" });
+        toast.success("Movimentação registrada com sucesso!");
       }
 
       onSuccess();
       onClose();
     } catch (err) {
       console.error(err);
-      toast({ tipo: "erro", texto: "Erro ao registrar movimentação." });
+      toast.error("Erro ao registrar movimentação.");
     } finally {
       setSalvando(false);
     }
@@ -184,7 +185,7 @@ export function ModalMovimentoReserva({
           await lancamentos.delete(movimento.lancamentoId);
         }
         await reservaMovimentos.delete(movimento.id);
-        toast({ tipo: "sucesso", texto: "Movimentação excluída." });
+        toast.success("Movimentação excluída.");
         onSuccess();
         onClose();
       } finally {
