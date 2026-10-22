@@ -58,6 +58,8 @@ let eventSource: EventSource | null = null;
 let reconnectTimer: number | null = null;
 let isPulling = false;
 let lastToastTime = 0;
+let lastPushHash = "";
+let lastPushTime = 0;
 
 function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -126,6 +128,7 @@ export async function carregarDadosDaNuvem(
       const { totalImportados } = await restoreDatabase(json.payload, "overwrite");
       await loadState();
 
+      lastPushHash = JSON.stringify(dataObj);
       const savedAt = json.savedAt || Date.now();
       setLastSyncTime(savedAt);
       cloudUltimoBackup.value = new Date(savedAt);
@@ -189,6 +192,7 @@ function iniciarConexaoSSE() {
           if (res.ok) {
             const pullJson = await res.json();
             if (pullJson.payload) {
+              lastPushHash = JSON.stringify(pullJson.payload.data || pullJson.payload);
               await restoreDatabase(pullJson.payload, "merge");
               await loadState();
               if (pullJson.savedAt) {
@@ -333,6 +337,7 @@ async function verificarAtualizacaoNuvem() {
       if (pullRes.ok) {
         const pullJson = await pullRes.json();
         if (pullJson.payload) {
+          lastPushHash = JSON.stringify(pullJson.payload.data || pullJson.payload);
           await restoreDatabase(pullJson.payload, "merge");
           await loadState();
           setLastSyncTime(savedAt);
@@ -595,6 +600,7 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
     if (pullRes.ok) {
       const pullJson = await pullRes.json();
       if (pullJson.payload) {
+        lastPushHash = JSON.stringify(pullJson.payload.data || pullJson.payload);
         const empCount = await db.empresas.count();
         const strategy = empCount === 0 ? "overwrite" : "merge";
         await restoreDatabase(pullJson.payload, strategy);
@@ -627,6 +633,13 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
       return { ok: true };
     }
 
+    // PROTEÇÃO ANTI-LOOP: Não envia se os dados locais forem idênticos ao último estado conhecido
+    const currentHash = JSON.stringify(payload.data);
+    if (currentHash === lastPushHash) {
+      cloudSyncStatus.value = "salvo";
+      return { ok: true };
+    }
+
     // 3. Envia o estado consolidado para a nuvem
     const pushRes = await fetch("/api/sync/push", {
       method: "POST",
@@ -643,6 +656,8 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
     }
 
     const pushData = await pushRes.json();
+    lastPushHash = currentHash;
+    lastPushTime = Date.now();
     const savedAt = pushData.savedAt || Date.now();
     setLastSyncTime(savedAt);
     cloudSyncStatus.value = "salvo";

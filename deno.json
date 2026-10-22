@@ -19,6 +19,7 @@
   },
   "imports": {
     "dexie": "npm:dexie@^4.4.6",
+    "mongodb": "npm:mongodb@^6.12.0",
     "vite": "npm:vite@^6.3.0",
     "@preact/preset-vite": "npm:@preact/preset-vite@^2.10.0",
     "preact": "npm:preact@^10.26.0",

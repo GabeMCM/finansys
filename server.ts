@@ -2,8 +2,30 @@ import { handleApiRequest } from "./server/api.ts";
 
 /**
  * Servidor HTTP nativo do Deno para produção / Deno Deploy.
- * Executa as APIs /api/* via Deno KV e serve a SPA de dist/
+ * Executa as APIs /api/* via MongoDB Atlas e serve a SPA de dist/
  */
+
+// Carrega variáveis do arquivo .env em ambiente local
+try {
+  const envText = await Deno.readTextFile("./.env");
+  for (const line of envText.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq > 0) {
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (!Deno.env.get(key)) {
+        Deno.env.set(key, val);
+      }
+    }
+  }
+} catch {
+  // Ignora se .env não existir (em produção no Deno Deploy injetado via painel)
+}
 
 const port = Number(Deno.env.get("PORT") || 8000);
 

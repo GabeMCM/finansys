@@ -149,7 +149,10 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
       }
     });
   } finally {
-    setRestoring(false);
+    // Mantém isRestoring ativo brevemente para esgotar microtasks e hooks de banco
+    setTimeout(() => {
+      setRestoring(false);
+    }, 400);
   }
 
   return { totalImportados: count };
