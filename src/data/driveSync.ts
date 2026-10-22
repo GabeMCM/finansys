@@ -1,7 +1,8 @@
 import { signal } from "@preact/signals";
 import { toast } from "../components/Toast.tsx";
-import { dumpDatabase, isRestoring, restoreDatabase } from "./backup.ts";
+import { dumpDatabase, isRestoring, limparBancoLocal, restoreDatabase } from "./backup.ts";
 import { changes } from "./db.ts";
+import { anoAtivo, empresaAtiva, loadState } from "../state.ts";
 
 export type SyncState = "desconectado" | "salvo" | "salvando" | "pendente" | "erro";
 
@@ -109,13 +110,18 @@ export async function conectarGoogleDrive(clientId: string): Promise<boolean> {
   });
 }
 
-export function desconectarGoogleDrive() {
+export async function desconectarGoogleDrive() {
   tokenInMemory = null;
   localStorage.removeItem(SETTINGS_TOKEN_KEY);
   localStorage.removeItem("g_drive_user");
   googleUser.value = null;
   syncStatus.value = "desconectado";
   ultimoBackup.value = null;
+
+  await limparBancoLocal();
+  empresaAtiva.value = null;
+  anoAtivo.value = new Date().getFullYear();
+  toast.info("Google Drive desconectado. Dados locais limpos com segurança.");
 }
 
 /**
@@ -236,7 +242,8 @@ export async function restaurarDoDrive(): Promise<boolean> {
     const payload = await downloadRes.json();
 
     if (payload && payload.data) {
-      await restoreDatabase(payload, "merge");
+      await restoreDatabase(payload, "overwrite");
+      await loadState();
       syncStatus.value = "salvo";
       ultimoBackup.value = new Date(existingFile.modifiedTime || Date.now());
       return true;

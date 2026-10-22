@@ -1,7 +1,9 @@
 import { signal } from "@preact/signals";
 import { toast } from "../components/Toast.tsx";
-import { dumpDatabase, isRestoring, restoreDatabase } from "./backup.ts";
+import { dumpDatabase, isRestoring, limparBancoLocal, restoreDatabase } from "./backup.ts";
 import { changes } from "./db.ts";
+import { googleUser, syncStatus, ultimoBackup } from "./driveSync.ts";
+import { anoAtivo, empresaAtiva, loadState } from "../state.ts";
 
 export type CloudState = "desconectado" | "salvo" | "salvando" | "pendente" | "erro";
 
@@ -9,12 +11,47 @@ export const cloudUser = signal<{ email: string; nome?: string } | null>(null);
 export const cloudSyncStatus = signal<CloudState>("desconectado");
 export const cloudUltimoBackup = signal<Date | null>(null);
 
+/** Notificação quando este aparelho teve a sessão revogada por outro dispositivo */
+export const sessionRevokedSignal = signal<{ revoked: boolean; newDevice?: string } | null>(null);
+
+export function fecharAvisoSessionRevoked() {
+  sessionRevokedSignal.value = null;
+}
+
 const TOKEN_KEY = "finansys_cloud_token";
 const USER_KEY = "finansys_cloud_user";
 const LAST_SYNC_KEY = "finansys_last_cloud_sync_time";
 
 // Identificador único da sessão desta aba para evitar eco SSE
 const CLIENT_SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+export function getDeviceId(): string {
+  let id = localStorage.getItem("finansys_device_id");
+  if (!id) {
+    id = "dev_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem("finansys_device_id", id);
+  }
+  return id;
+}
+
+export function getDeviceName(): string {
+  const ua = navigator.userAgent;
+  let dev = "Navegador";
+  if (/Android/i.test(ua)) dev = "Android";
+  else if (/iPhone/i.test(ua)) dev = "iPhone";
+  else if (/iPad/i.test(ua)) dev = "iPad";
+  else if (/Windows/i.test(ua)) dev = "PC Windows";
+  else if (/Macintosh|Mac OS/i.test(ua)) dev = "Mac";
+  else if (/Linux/i.test(ua)) dev = "Linux";
+
+  let browser = "Web";
+  if (/Edg/i.test(ua)) browser = "Edge";
+  else if (/Chrome/i.test(ua)) browser = "Chrome";
+  else if (/Firefox/i.test(ua)) browser = "Firefox";
+  else if (/Safari/i.test(ua)) browser = "Safari";
+
+  return `${browser} no ${dev}`;
+}
 
 let debounceTimer: number | null = null;
 let eventSource: EventSource | null = null;
@@ -59,6 +96,18 @@ function iniciarConexaoSSE() {
     es.onmessage = async (evt) => {
       try {
         const data = JSON.parse(evt.data);
+
+        // Se outro dispositivo assumiu a sessão ativa desta conta:
+        if (data.type === "session_revoked") {
+          console.warn("[Finansys Cloud] Sessão revogada por outro dispositivo:", data.newDevice);
+          await limparDadosLocaisCompletos();
+          sessionRevokedSignal.value = {
+            revoked: true,
+            newDevice: data.newDevice || "Outro dispositivo",
+          };
+          return;
+        }
+
         if (data.type === "sync_updated") {
           // Ignora notificações disparadas por este próprio cliente/aba
           if (data.senderId && data.senderId === CLIENT_SESSION_ID) {
@@ -70,8 +119,8 @@ function iniciarConexaoSSE() {
 
           try {
             console.log("[Finansys Cloud] Evento recebido de outro dispositivo. Atualizando...");
-            const res = await puxarBackupNuvem(false);
-            if (res.ok && (res.totalImportados ?? 1) > 0) {
+            const res = await puxarBackupNuvem(false, "overwrite");
+            if (res.ok && (res.totalImportados ?? 0) > 0) {
               const agora = Date.now();
               if (agora - lastToastTime > 3500) {
                 lastToastTime = agora;
@@ -90,12 +139,12 @@ function iniciarConexaoSSE() {
     es.onerror = () => {
       es.close();
       eventSource = null;
-      // Tenta reconectar rapidamente após 3 segundos se a sessão continuar ativa
-      if (getToken() && !reconnectTimer) {
+      // Tenta reconectar apenas se a sessão continuar ativa e não tiver sido revogada
+      if (getToken() && !sessionRevokedSignal.value && !reconnectTimer) {
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
           iniciarConexaoSSE();
-        }, 3000);
+        }, 4000);
       }
     };
   } catch (err) {
@@ -116,7 +165,16 @@ export function initCloudSync() {
       fetch("/api/auth/me", { headers: { Authorization: `Bearer ${token}` } })
         .then(async (r) => {
           if (!r.ok) {
-            desconectarConta();
+            const errData = await r.json().catch(() => ({}));
+            if (errData.error === "SESSION_REVOKED") {
+              await limparDadosLocaisCompletos();
+              sessionRevokedSignal.value = {
+                revoked: true,
+                newDevice: errData.newDevice || "Outro dispositivo",
+              };
+            } else {
+              await desconectarConta(false);
+            }
           } else {
             const me = await r.json();
             if (me.email) {
@@ -301,18 +359,71 @@ export async function atualizarNomePerfil(novoNome: string): Promise<{ ok: boole
 }
 
 /**
- * Entra ou cria conta automaticamente apenas com e-mail e senha.
+ * Zera completamente o banco de dados IndexedDB e chaves de sessão,
+ * garantindo um sistema 100% limpo sem qualquer resquício de contas anteriores.
+ */
+export async function limparDadosLocaisCompletos(): Promise<void> {
+  // 1. Zera todas as tabelas locais (IndexedDB / Dexie)
+  await limparBancoLocal();
+
+  // 2. Remove tokens e chaves de sessão
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(LAST_SYNC_KEY);
+  localStorage.removeItem("finansys_auth_prompted");
+  localStorage.removeItem("g_drive_access_token");
+  localStorage.removeItem("g_drive_user");
+
+  // 3. Reseta os estados da nuvem
+  cloudUser.value = null;
+  cloudSyncStatus.value = "desconectado";
+  cloudUltimoBackup.value = null;
+
+  // 4. Reseta os estados do Google Drive
+  googleUser.value = null;
+  syncStatus.value = "desconectado";
+  ultimoBackup.value = null;
+
+  // 5. Reseta seleção de empresa e ano
+  empresaAtiva.value = null;
+  anoAtivo.value = new Date().getFullYear();
+
+  // 6. Encerra conexão SSE
+  if (eventSource) {
+    try {
+      eventSource.close();
+    } catch (_e) {
+      // ignore
+    }
+    eventSource = null;
+  }
+}
+
+/**
+ * Entra ou cria conta com controle de sessão única por aparelho.
+ * Se outro dispositivo estiver conectado, sinaliza requiresTakeoverConfirm.
  */
 export async function autenticarConta(
   email: string,
   password: string,
   nome?: string,
-): Promise<{ ok: boolean; error?: string; isNew?: boolean }> {
+  confirmTakeover = false,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  isNew?: boolean;
+  requiresTakeoverConfirm?: boolean;
+  activeDeviceName?: string;
+  message?: string;
+}> {
   try {
+    const deviceId = getDeviceId();
+    const deviceName = getDeviceName();
+
     const res = await fetch("/api/auth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, nome }),
+      body: JSON.stringify({ email, password, nome, deviceId, deviceName, confirmTakeover }),
     });
 
     const text = await res.text();
@@ -324,10 +435,23 @@ export async function autenticarConta(
       return { ok: false, error: `Servidor retornou erro (${res.status}): ${text.slice(0, 160) || "Sem resposta válida"}` };
     }
 
+    if (json.requiresTakeoverConfirm) {
+      return {
+        ok: false,
+        requiresTakeoverConfirm: true,
+        activeDeviceName: json.activeDeviceName || "Outro dispositivo",
+        message: json.message,
+      };
+    }
+
     if (!res.ok) {
       return { ok: false, error: json.error || "Erro ao conectar conta." };
     }
 
+    // 1. ZERA totalmente os dados locais para evitar qualquer contaminação cruzada
+    await limparDadosLocaisCompletos();
+
+    // 2. Grava novas credenciais
     localStorage.setItem(TOKEN_KEY, json.token);
     const u = { email: json.email, nome: json.nome };
     localStorage.setItem(USER_KEY, JSON.stringify(u));
@@ -335,8 +459,16 @@ export async function autenticarConta(
     cloudUser.value = u;
     cloudSyncStatus.value = "salvando";
 
-    // Puxa e mescla dados da nuvem se for conta existente, ou faz o primeiro backup se for nova
-    await sincronizarInteligente();
+    // 3. Puxa os dados diretamente da nuvem com sobrescrita total (overwrite)
+    const pullRes = await puxarBackupNuvem(false, "overwrite");
+    if (pullRes.ok && (pullRes.totalImportados ?? 0) > 0) {
+      await loadState();
+      cloudSyncStatus.value = "salvo";
+    } else {
+      // Conta nova e sem dados: a base permanece 100% limpa e vazia
+      cloudSyncStatus.value = "salvo";
+    }
+
     iniciarConexaoSSE();
 
     return { ok: true, isNew: json.isNew };
@@ -345,27 +477,26 @@ export async function autenticarConta(
   }
 }
 
-export function desconectarConta() {
-  if (eventSource) {
-    try {
-      eventSource.close();
-    } catch (_e) {
-      // ignore
-    }
-    eventSource = null;
+export async function desconectarConta(showToast = true): Promise<void> {
+  const token = getToken();
+  if (token) {
+    fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
   }
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-  localStorage.removeItem(LAST_SYNC_KEY);
-  cloudUser.value = null;
-  cloudSyncStatus.value = "desconectado";
-  cloudUltimoBackup.value = null;
+
+  await limparDadosLocaisCompletos();
+
+  if (showToast) {
+    toast.info("Você saiu da conta. Todos os dados locais foram limpos com segurança.");
+  }
 }
 
 /**
  * SINCRONIZAÇÃO INTELIGENTE BIDIRECIONAL:
- * 1. Puxa os dados da nuvem primeiro e mescla na base local (evita sobrescrever dados de outro aparelho).
- * 2. Em seguida, extrai a base completa consolidada localmente e envia de volta para a nuvem.
+ * 1. Puxa os dados da nuvem primeiro e mescla na base local se houver alterações de outro aparelho.
+ * 2. Em seguida, extrai a base local consolidada e envia de volta para a nuvem.
  */
 export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: string }> {
   const token = getToken();
@@ -377,7 +508,7 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
   cloudSyncStatus.value = "salvando";
 
   try {
-    // 1. Puxa o backup atual da nuvem
+    // 1. Puxa o backup atual da nuvem para mesclar alterações remotas se houver
     const pullRes = await fetch("/api/sync/pull", {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -385,7 +516,6 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
     if (pullRes.ok) {
       const pullJson = await pullRes.json();
       if (pullJson.payload) {
-        // Mescla com a base local
         await restoreDatabase(pullJson.payload, "merge");
         if (pullJson.savedAt) {
           setLastSyncTime(pullJson.savedAt);
@@ -393,11 +523,20 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
         }
       }
     } else if (pullRes.status === 401) {
-      desconectarConta();
+      const errData = await pullRes.json().catch(() => ({}));
+      if (errData.error === "SESSION_REVOKED") {
+        await limparDadosLocaisCompletos();
+        sessionRevokedSignal.value = {
+          revoked: true,
+          newDevice: errData.newDevice || "Outro dispositivo",
+        };
+        return { ok: false, error: "Sessão desconectada porque foi acessada em outro aparelho." };
+      }
+      await desconectarConta(false);
       return { ok: false, error: "Sua sessão expirou. Por favor, entre novamente." };
     }
 
-    // 2. Extrai a base local consolidada (que agora contém tanto o que estava na nuvem quanto alterações locais)
+    // 2. Extrai a base local consolidada
     const payload = await dumpDatabase();
 
     // 3. Envia o estado consolidado para a nuvem
@@ -412,6 +551,14 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
 
     if (!pushRes.ok) {
       const data = await pushRes.json().catch(() => ({}));
+      if (pushRes.status === 401 && data.error === "SESSION_REVOKED") {
+        await limparDadosLocaisCompletos();
+        sessionRevokedSignal.value = {
+          revoked: true,
+          newDevice: data.newDevice || "Outro dispositivo",
+        };
+        return { ok: false, error: "Sessão desconectada porque foi acessada em outro aparelho." };
+      }
       throw new Error(data.error || `Erro do servidor HTTP ${pushRes.status}`);
     }
 
@@ -430,9 +577,12 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
 }
 
 /**
- * Puxa e mescla o backup salvo na nuvem com a base deste aparelho.
+ * Puxa os dados salvos na nuvem e restaura no banco local.
  */
-export async function puxarBackupNuvem(_mostrarAviso = true): Promise<{ ok: boolean; error?: string; totalImportados?: number }> {
+export async function puxarBackupNuvem(
+  _mostrarAviso = true,
+  strategy: "merge" | "overwrite" = "overwrite",
+): Promise<{ ok: boolean; error?: string; totalImportados?: number }> {
   const token = getToken();
   if (!token) return { ok: false, error: "Não autenticado." };
 
@@ -446,7 +596,15 @@ export async function puxarBackupNuvem(_mostrarAviso = true): Promise<{ ok: bool
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       if (res.status === 401) {
-        desconectarConta();
+        if (data.error === "SESSION_REVOKED") {
+          await limparDadosLocaisCompletos();
+          sessionRevokedSignal.value = {
+            revoked: true,
+            newDevice: data.newDevice || "Outro dispositivo",
+          };
+          return { ok: false, error: "Sessão desconectada em outro aparelho." };
+        }
+        await desconectarConta(false);
         return { ok: false, error: "Sessão expirada." };
       }
       throw new Error(data.error || `Erro HTTP ${res.status}`);
@@ -454,15 +612,16 @@ export async function puxarBackupNuvem(_mostrarAviso = true): Promise<{ ok: bool
     const json = await res.json();
 
     if (json.payload) {
-      const { totalImportados } = await restoreDatabase(json.payload, "merge");
+      const { totalImportados } = await restoreDatabase(json.payload, strategy);
+      await loadState();
       cloudSyncStatus.value = "salvo";
       const savedAt = json.savedAt || Date.now();
       setLastSyncTime(savedAt);
       cloudUltimoBackup.value = new Date(savedAt);
       return { ok: true, totalImportados };
     } else {
-      // Primeira vez nesta conta: envia a base atual para a nuvem
-      return await sincronizarInteligente();
+      cloudSyncStatus.value = "salvo";
+      return { ok: true, totalImportados: 0 };
     }
   } catch (err) {
     console.error("Falha ao puxar da nuvem:", err);

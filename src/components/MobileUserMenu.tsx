@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Icon } from "./Icon.tsx";
+import { confirmarAcao } from "./ModalConfirm.tsx";
 import { toast } from "./Toast.tsx";
 import {
   cloudSyncStatus,
@@ -202,10 +203,17 @@ export function MobileUserMenu({ onOpenAuth }: MobileUserMenuProps) {
               <button
                 type="button"
                 class="user-menu-item user-menu-item--danger"
-                onClick={() => {
+                onClick={async () => {
                   setAberto(false);
-                  desconectarConta();
-                  toast.info("Conta desconectada deste aparelho.");
+                  const ok = await confirmarAcao({
+                    titulo: "Desconectar Conta",
+                    mensagem: "Deseja sair da conta neste aparelho? Seus dados locais serão limpos com segurança deste dispositivo.",
+                    rotuloConfirmar: "Sair e Limpar",
+                    tipo: "warning",
+                  });
+                  if (ok) {
+                    await desconectarConta(true);
+                  }
                 }}
               >
                 <div class="user-menu-item-left">

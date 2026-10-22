@@ -9,6 +9,7 @@ import { toast } from "../components/Toast.tsx";
 import { dumpDatabase, restoreDatabase } from "../data/backup.ts";
 import { atualizarNomePerfil, cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem, puxarBackupNuvem } from "../data/cloudSync.ts";
 import { conectarGoogleDrive, desconectarGoogleDrive, googleUser, realizarBackupDrive, restaurarDoDrive, syncStatus, ultimoBackup } from "../data/driveSync.ts";
+import { getInactivityTimeout, inactivityTimeoutSignal, lockScreenNow, setInactivityTimeout } from "../data/inactivityGuard.ts";
 import { anos, categorias, contas, empresas, projecoes } from "../data/repo.ts";
 import { calcularBaseProjecoes, calcularValorVinculado } from "../data/calc.ts";
 import { seedExemplo } from "../data/seed.ts";
@@ -633,67 +634,108 @@ export function Ajustes() {
 
             <div class="stack" style="gap:var(--sp-3);">
               {cloudUser.value ? (
-                <div style="display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:var(--r-md);padding:14px;background:var(--surface);flex-wrap:wrap;gap:12px;">
-                  <div>
-                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                      <i class="dot" style="background:var(--in);" />
-                      <b style="font-size:var(--fs-sm);color:var(--text);">
-                        {cloudUser.value.nome ? `${cloudUser.value.nome} (${cloudUser.value.email})` : cloudUser.value.email}
-                      </b>
-                      <span class="badge badge--in">Nuvem Ativa</span>
+                <>
+                  <div style="display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:var(--r-md);padding:14px;background:var(--surface);flex-wrap:wrap;gap:12px;">
+                    <div>
+                      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <i class="dot" style="background:var(--in);" />
+                        <b style="font-size:var(--fs-sm);color:var(--text);">
+                          {cloudUser.value.nome ? `${cloudUser.value.nome} (${cloudUser.value.email})` : cloudUser.value.email}
+                        </b>
+                        <span class="badge badge--in">Nuvem Ativa</span>
+                        <button
+                          type="button"
+                          class="btn btn--ghost"
+                          style="font-size:0.7rem;padding:2px 8px;min-height:22px;gap:4px;"
+                          onClick={() => setModalEditarNomePerfil(cloudUser.value?.nome || "")}
+                          title="Alterar seu nome salvo"
+                        >
+                          <Icon name="pencil" style="width:12px;height:12px;" /> Alterar nome
+                        </button>
+                      </div>
+                      <div class="muted" style="font-size:var(--fs-xs);margin-top:4px;">
+                        {cloudUltimoBackup.value ? (
+                          <>Último backup em nuvem: {cloudUltimoBackup.value.toLocaleDateString("pt-BR")} às {cloudUltimoBackup.value.toLocaleTimeString("pt-BR")}</>
+                        ) : (
+                          "Sincronização contínua ativada."
+                        )}
+                      </div>
+                    </div>
+
+                    <div style="display:flex;gap:6px;align-items:center;">
                       <button
                         type="button"
-                        class="btn btn--ghost"
-                        style="font-size:0.7rem;padding:2px 8px;min-height:22px;gap:4px;"
-                        onClick={() => setModalEditarNomePerfil(cloudUser.value?.nome || "")}
-                        title="Alterar seu nome salvo"
+                        class="btn btn--secondary"
+                        style="font-size:var(--fs-xs);min-height:34px;"
+                        onClick={async () => {
+                          const res = await enviarBackupNuvem();
+                          if (res.ok) toast.success("Backup em nuvem sincronizado com sucesso!");
+                          else toast.error(res.error || "Não foi possível sincronizar agora.");
+                        }}
                       >
-                        <Icon name="pencil" style="width:12px;height:12px;" /> Alterar nome
+                        <Icon name="cloud" /> Sincronizar Agora
                       </button>
-                    </div>
-                    <div class="muted" style="font-size:var(--fs-xs);margin-top:4px;">
-                      {cloudUltimoBackup.value ? (
-                        <>Último backup em nuvem: {cloudUltimoBackup.value.toLocaleDateString("pt-BR")} às {cloudUltimoBackup.value.toLocaleTimeString("pt-BR")}</>
-                      ) : (
-                        "Sincronização contínua ativada."
-                      )}
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--danger"
+                        style="font-size:var(--fs-xs);min-height:34px;"
+                        onClick={async () => {
+                          const ok = await confirmarAcao({
+                            titulo: "Desconectar Conta",
+                            mensagem: "Deseja sair da conta neste aparelho? Para proteger suas finanças e evitar contaminação com outras contas, todos os dados locais deste dispositivo serão limpos. Seus dados continuam salvos na nuvem.",
+                            rotuloConfirmar: "Sair e Limpar Dados",
+                            tipo: "warning",
+                          });
+                          if (ok) {
+                            await desconectarConta(true);
+                          }
+                        }}
+                      >
+                        Sair e Limpar
+                      </button>
                     </div>
                   </div>
 
-                  <div style="display:flex;gap:6px;align-items:center;">
-                    <button
-                      type="button"
-                      class="btn btn--secondary"
-                      style="font-size:var(--fs-xs);min-height:34px;"
-                      onClick={async () => {
-                        const res = await enviarBackupNuvem();
-                        if (res.ok) toast.success("Backup em nuvem sincronizado com sucesso!");
-                        else toast.error(res.error || "Não foi possível sincronizar agora.");
-                      }}
-                    >
-                      <Icon name="cloud" /> Sincronizar Agora
-                    </button>
-                    <button
-                      type="button"
-                      class="btn btn--ghost btn--danger"
-                      style="font-size:var(--fs-xs);min-height:34px;"
-                      onClick={async () => {
-                        const ok = await confirmarAcao({
-                          titulo: "Desconectar Conta",
-                          mensagem: "Deseja sair da conta neste aparelho? Seus dados locais serão preservados.",
-                          rotuloConfirmar: "Sair da Conta",
-                          tipo: "warning",
-                        });
-                        if (ok) {
-                          desconectarConta();
-                          toast.info("Você saiu da conta.");
-                        }
-                      }}
-                    >
-                      Sair
-                    </button>
+                  {/* Configuração de Bloqueio por Inatividade */}
+                  <div style="margin-top:var(--sp-1);padding-top:var(--sp-2);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                    <div>
+                      <div style="font-weight:600;font-size:var(--fs-xs);color:var(--text);display:flex;align-items:center;gap:6px;">
+                        <Icon name="lock" style="width:14px;height:14px;" /> Bloqueio Automático por Inatividade
+                      </div>
+                      <div class="muted" style="font-size:0.7rem;margin-top:2px;">
+                        Sincroniza automaticamente e protege sua tela caso fique sem mexer no sistema.
+                      </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <select
+                        class="input"
+                        style="font-size:var(--fs-xs);min-height:32px;padding:2px 8px;"
+                        value={inactivityTimeoutSignal.value}
+                        onChange={(e) => {
+                          const val = Number(e.currentTarget.value);
+                          setInactivityTimeout(val);
+                          toast.info(val === 0 ? "Bloqueio por inatividade desativado." : `Bloqueio definido para ${val >= 60 ? `${val / 60} min` : `${val}s`}.`);
+                        }}
+                      >
+                        <option value={10}>10 segundos (Máxima proteção / Teste)</option>
+                        <option value={30}>30 segundos</option>
+                        <option value={60}>1 minuto</option>
+                        <option value={300}>5 minutos</option>
+                        <option value={900}>15 minutos</option>
+                        <option value={0}>Desativado</option>
+                      </select>
+                      <button
+                        type="button"
+                        class="btn btn--secondary"
+                        style="font-size:var(--fs-xs);min-height:32px;"
+                        title="Bloquear a tela agora para testar a proteção"
+                        onClick={() => lockScreenNow()}
+                      >
+                        <Icon name="lock" /> Bloquear Agora
+                      </button>
+                    </div>
                   </div>
-                </div>
+                </>
               ) : (
                 <div style="display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:var(--r-md);padding:16px;background:var(--surface);flex-wrap:wrap;gap:12px;">
                   <div>

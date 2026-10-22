@@ -1,4 +1,26 @@
-import { db } from "./db.ts";
+import { db, isRestoring, setRestoring } from "./db.ts";
+
+export { isRestoring, setRestoring };
+
+/**
+ * Limpa completamente todas as tabelas locais do IndexedDB (Dexie).
+ * Desativa os hooks de mudança para evitar disparos indevidos de sincronização.
+ */
+export async function limparBancoLocal(): Promise<void> {
+  setRestoring(true);
+  try {
+    await db.transaction("rw", db.tables, async () => {
+      for (const t of db.tables) {
+        // deno-lint-ignore no-explicit-any
+        await (t as any).clear();
+      }
+    });
+  } finally {
+    setTimeout(() => {
+      setRestoring(false);
+    }, 120);
+  }
+}
 
 export interface BackupPayload {
   version: number;
@@ -50,14 +72,12 @@ export async function dumpDatabase(): Promise<BackupPayload> {
   };
 }
 
-export let isRestoring = false;
-
 /**
  * Restaura e mescla o backup no banco local.
  * Utiliza a estratégia de Last-Write-Wins (LWW) baseada no campo `updatedAt`.
  */
 export async function restoreDatabase(payload: BackupPayload, strategy: "merge" | "overwrite" = "merge"): Promise<{ totalImportados: number }> {
-  isRestoring = true;
+  setRestoring(true);
   let count = 0;
 
   try {
@@ -131,8 +151,8 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
   } finally {
     // Pequeno delay para garantir que transações assíncronas do Dexie terminem antes de liberar os hooks
     setTimeout(() => {
-      isRestoring = false;
-    }, 100);
+      setRestoring(false);
+    }, 120);
   }
 
   return { totalImportados: count };

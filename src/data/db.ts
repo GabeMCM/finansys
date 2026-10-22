@@ -46,11 +46,32 @@ export class FinansysDB extends Dexie {
 
 export const db = new FinansysDB();
 
+export let isRestoring = false;
+
+export function setRestoring(val: boolean) {
+  isRestoring = val;
+}
+
 /** Notifica (debounced na etapa 9) que houve alteração — gancho para o backup automático. */
 export const changes = new EventTarget();
 for (const t of db.tables) {
   if (t.name === "settings") continue;
-  t.hook("creating", () => void queueMicrotask(() => changes.dispatchEvent(new Event("change"))));
-  t.hook("updating", () => void queueMicrotask(() => changes.dispatchEvent(new Event("change"))));
-  t.hook("deleting", () => void queueMicrotask(() => changes.dispatchEvent(new Event("change"))));
+  t.hook("creating", () => {
+    if (isRestoring) return;
+    queueMicrotask(() => {
+      if (!isRestoring) changes.dispatchEvent(new Event("change"));
+    });
+  });
+  t.hook("updating", () => {
+    if (isRestoring) return;
+    queueMicrotask(() => {
+      if (!isRestoring) changes.dispatchEvent(new Event("change"));
+    });
+  });
+  t.hook("deleting", () => {
+    if (isRestoring) return;
+    queueMicrotask(() => {
+      if (!isRestoring) changes.dispatchEvent(new Event("change"));
+    });
+  });
 }

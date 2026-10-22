@@ -4,7 +4,9 @@ import { CustomSelect } from "./CustomSelect.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
 import { MobileUserMenu } from "./MobileUserMenu.tsx";
 import { ModalAuth } from "./ModalAuth.tsx";
+import { ModalBloqueioInatividade } from "./ModalBloqueioInatividade.tsx";
 import { ModalConfirm } from "./ModalConfirm.tsx";
+import { ModalSessionRevoked } from "./ModalSessionRevoked.tsx";
 import { ToastContainer } from "./Toast.tsx";
 import { useLive } from "../data/useLive.ts";
 import { anos, empresas } from "../data/repo.ts";
@@ -207,6 +209,12 @@ export function AppShell({ route, children }: { route: string; children: Compone
 
       {/* Modal de Autenticação / Boas-vindas Inicial */}
       <ModalAuth isOpen={authModalAberta} onClose={() => setAuthModalAberta(false)} />
+
+      {/* Bloqueio de Tela por Inatividade */}
+      <ModalBloqueioInatividade />
+
+      {/* Aviso de Sessão Desconectada por Outro Aparelho */}
+      <ModalSessionRevoked onReconectar={() => setAuthModalAberta(true)} />
 
       {/* Diálogo Moderno de Confirmação Global */}
       <ModalConfirm />

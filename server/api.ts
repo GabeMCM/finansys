@@ -61,6 +61,19 @@ function notifySyncUpdate(email: string, savedAt: number, senderId?: string) {
   }
 }
 
+function notifySessionRevoked(email: string, newDevice?: string) {
+  const subs = sseSubscribers.get(email);
+  if (!subs || subs.size === 0) return;
+  const msg = new TextEncoder().encode(`data: ${JSON.stringify({ type: "session_revoked", reason: "dispositivo_conectado", newDevice })}\n\n`);
+  for (const controller of subs) {
+    try {
+      controller.enqueue(msg);
+    } catch (_err) {
+      subs.delete(controller);
+    }
+  }
+}
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -172,13 +185,37 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
   try {
     const kv = await getKv();
 
-  // Helper para ler token do header
-  const getAuthUser = async (): Promise<string | null> => {
+  // Helper para ler token do header e verificar revogação
+  const getAuth = async (): Promise<
+    | { ok: true; email: string; token: string }
+    | { ok: false; status: number; error: string; reason?: string; newDevice?: string; message?: string }
+  > => {
     const auth = req.headers.get("Authorization");
-    if (!auth || !auth.startsWith("Bearer ")) return null;
+    if (!auth || !auth.startsWith("Bearer ")) {
+      return { ok: false, status: 401, error: "Não autenticado." };
+    }
     const token = auth.slice(7).trim();
+
+    // Verifica se o token foi revogado por conexão em outro aparelho
+    const revoked = await kv.get(["revoked_sessions", token]);
+    if (revoked.value) {
+      const r = revoked.value as { reason?: string; newDevice?: string };
+      return {
+        ok: false,
+        status: 401,
+        error: "SESSION_REVOKED",
+        reason: r.reason,
+        newDevice: r.newDevice,
+        message: "Esta sessão foi desconectada porque a conta foi conectada em outro aparelho.",
+      };
+    }
+
     const session = await kv.get(["sessions", token]);
-    return (session.value as { email: string })?.email || null;
+    if (!session.value) {
+      return { ok: false, status: 401, error: "Sessão inválida ou expirada." };
+    }
+
+    return { ok: true, email: (session.value as { email: string }).email, token };
   };
 
   // 1. GET /api/auth/lookup (Reconhece se o e-mail já existe e retorna o nome cadastrado)
@@ -195,12 +232,15 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     return json({ exists: true, email, nome: user.nome || "" });
   }
 
-  // 2. POST /api/auth (Login ou Registro unificado com email e senha)
+  // 2. POST /api/auth (Login ou Registro com controle de sessão única por aparelho)
   if (url.pathname === "/api/auth" && req.method === "POST") {
     try {
       const body = await req.json();
       const email = String(body.email || "").trim().toLowerCase();
       const password = String(body.password || "").trim();
+      const deviceId = String(body.deviceId || "").trim() || "unknown";
+      const deviceName = String(body.deviceName || "").trim() || "Outro Dispositivo";
+      const confirmTakeover = Boolean(body.confirmTakeover);
 
       if (!email || !email.includes("@")) {
         return json({ error: "E-mail inválido." }, 400);
@@ -216,17 +256,16 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
       };
 
       const userEntry = await kv.get(["users", email]);
+      let isNew = false;
+      let nome = "";
 
       if (!userEntry.value) {
         // Cria nova conta com nome
-        const nome = nomeRecebido || extractName(email);
+        isNew = true;
+        nome = nomeRecebido || extractName(email);
         const salt = crypto.randomUUID();
         const hash = await hashPassword(password, salt);
         await kv.set(["users", email], { email, nome, salt, hash, createdAt: Date.now() });
-
-        const token = crypto.randomUUID();
-        await kv.set(["sessions", token], { email, createdAt: Date.now() });
-        return json({ ok: true, isNew: true, token, email, nome });
       } else {
         // Usuário existente: valida senha
         const user = userEntry.value as { salt: string; hash: string; nome?: string };
@@ -235,8 +274,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           return json({ error: "Senha incorreta para este e-mail." }, 401);
         }
 
-        // Se o usuário já possuía nome cadastrado, PRESERVA o nome cadastrado
-        let nome = user.nome;
+        nome = user.nome || "";
         if (nomeRecebido && nomeRecebido !== user.nome) {
           nome = nomeRecebido;
           await kv.set(["users", email], { ...user, nome });
@@ -244,66 +282,144 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           nome = nomeRecebido || extractName(email);
           await kv.set(["users", email], { ...user, nome });
         }
-
-        const token = crypto.randomUUID();
-        await kv.set(["sessions", token], { email, createdAt: Date.now() });
-        return json({ ok: true, isNew: false, token, email, nome });
       }
+
+      // Verifica se já existe sessão ativa para esta conta em outro dispositivo
+      const activeEntry = await kv.get(["active_session", email]);
+      if (activeEntry.value) {
+        const active = activeEntry.value as { deviceId: string; deviceName: string; token: string; lastActive: number };
+        if (active.deviceId && active.deviceId !== deviceId) {
+          if (!confirmTakeover) {
+            return json({
+              ok: false,
+              requiresTakeoverConfirm: true,
+              activeDeviceName: active.deviceName || "Outro dispositivo",
+              lastActive: active.lastActive,
+              message: `Esta conta já está conectada em ${active.deviceName || "outro aparelho"}. Se continuar, a sessão naquele aparelho será desconectada e os dados salvos serão trazidos para cá.`,
+            });
+          }
+
+          // Takeover confirmado pelo usuário: revoga a sessão anterior
+          const oldToken = active.token;
+          if (oldToken) {
+            await kv.delete(["sessions", oldToken]);
+            await kv.set(["revoked_sessions", oldToken], {
+              revokedAt: Date.now(),
+              reason: "dispositivo_conectado",
+              newDevice: deviceName,
+            });
+          }
+
+          // Notifica o aparelho anterior em tempo real
+          notifySessionRevoked(email, deviceName);
+          try {
+            await kv.set(["session_revocations", email], {
+              revokedToken: oldToken,
+              newDevice: deviceName,
+              timestamp: Date.now(),
+            });
+          } catch (_e) {
+            // ignore
+          }
+        }
+      }
+
+      // Registra a nova sessão ativa
+      const token = crypto.randomUUID();
+      await kv.set(["sessions", token], { email, deviceId, createdAt: Date.now() });
+      await kv.set(["active_session", email], {
+        deviceId,
+        deviceName,
+        token,
+        lastActive: Date.now(),
+      });
+
+      return json({ ok: true, isNew, token, email, nome });
     } catch (err) {
       return json({ error: String(err) }, 500);
     }
   }
 
-  // 3. GET /api/auth/me (Validação de sessão ativa)
-  if (url.pathname === "/api/auth/me" && req.method === "GET") {
-    const email = await getAuthUser();
-    if (!email) return json({ error: "Não autenticado." }, 401);
-    const userEntry = await kv.get(["users", email]);
-    const nome = (userEntry.value as { nome?: string })?.nome || email.split("@")[0];
-    return json({ email, nome });
+  // 3. POST /api/auth/logout (Desconecta sessão deste aparelho)
+  if (url.pathname === "/api/auth/logout" && req.method === "POST") {
+    const auth = req.headers.get("Authorization");
+    if (auth && auth.startsWith("Bearer ")) {
+      const token = auth.slice(7).trim();
+      const session = await kv.get(["sessions", token]);
+      if (session.value) {
+        const email = (session.value as { email: string }).email;
+        await kv.delete(["sessions", token]);
+        const active = await kv.get(["active_session", email]);
+        if (active.value && (active.value as any).token === token) {
+          await kv.delete(["active_session", email]);
+        }
+      }
+    }
+    return json({ ok: true });
   }
 
-  // 4. POST /api/auth/profile (Atualiza o nome do usuário autenticado)
+  // 4. GET /api/auth/me (Validação de sessão ativa)
+  if (url.pathname === "/api/auth/me" && req.method === "GET") {
+    const auth = await getAuth();
+    if (!auth.ok) {
+      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+    }
+    const userEntry = await kv.get(["users", auth.email]);
+    const nome = (userEntry.value as { nome?: string })?.nome || auth.email.split("@")[0];
+    return json({ email: auth.email, nome });
+  }
+
+  // 5. POST /api/auth/profile (Atualiza o nome do usuário autenticado)
   if (url.pathname === "/api/auth/profile" && req.method === "POST") {
-    const email = await getAuthUser();
-    if (!email) return json({ error: "Não autenticado." }, 401);
+    const auth = await getAuth();
+    if (!auth.ok) {
+      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+    }
     try {
       const body = await req.json();
       const novoNome = String(body.nome || "").trim();
       if (!novoNome) return json({ error: "O nome não pode ser vazio." }, 400);
 
-      const userEntry = await kv.get(["users", email]);
+      const userEntry = await kv.get(["users", auth.email]);
       if (!userEntry.value) return json({ error: "Usuário não encontrado." }, 404);
 
       const user = userEntry.value as { salt: string; hash: string; nome?: string };
-      await kv.set(["users", email], { ...user, nome: novoNome });
-      return json({ ok: true, email, nome: novoNome });
+      await kv.set(["users", auth.email], { ...user, nome: novoNome });
+      return json({ ok: true, email: auth.email, nome: novoNome });
     } catch (err) {
       return json({ error: String(err) }, 500);
     }
   }
 
-  // 3. POST /api/sync/push (Salva backup em nuvem com chunking seguro e notifica dispositivos)
+  // 6. POST /api/sync/push (Salva backup em nuvem e atualiza atividade)
   if (url.pathname === "/api/sync/push" && req.method === "POST") {
-    const email = await getAuthUser();
-    if (!email) return json({ error: "Não autenticado." }, 401);
+    const auth = await getAuth();
+    if (!auth.ok) {
+      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+    }
 
     try {
       const body = await req.json();
       if (!body.payload) return json({ error: "Payload vazio." }, 400);
 
       const savedAt = Date.now();
-      await saveBackupKv(kv, email, body.payload, savedAt);
+      await saveBackupKv(kv, auth.email, body.payload, savedAt);
 
-      // Notifica todos os nós e instâncias do Deno KV distribuído
+      // Atualiza timestamp de atividade na sessão
+      const active = await kv.get(["active_session", auth.email]);
+      if (active.value) {
+        await kv.set(["active_session", auth.email], { ...active.value, lastActive: savedAt });
+      }
+
+      // Notifica nós distribuídos
       try {
-        await kv.set(["sync_updates", email], { savedAt, senderId: body.clientId });
+        await kv.set(["sync_updates", auth.email], { savedAt, senderId: body.clientId });
       } catch (_e) {
         // ignore
       }
 
-      // Notifica todos os dispositivos conectados à mesma conta via SSE local
-      notifySyncUpdate(email, savedAt, body.clientId);
+      // Notifica SSE local
+      notifySyncUpdate(auth.email, savedAt, body.clientId);
 
       return json({ ok: true, savedAt });
     } catch (err) {
@@ -312,13 +428,15 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     }
   }
 
-  // 4. GET /api/sync/pull (Recupera último backup em nuvem)
+  // 7. GET /api/sync/pull (Recupera último backup em nuvem)
   if (url.pathname === "/api/sync/pull" && req.method === "GET") {
-    const email = await getAuthUser();
-    if (!email) return json({ error: "Não autenticado." }, 401);
+    const auth = await getAuth();
+    if (!auth.ok) {
+      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+    }
 
     try {
-      const backup = await getBackupKv(kv, email);
+      const backup = await getBackupKv(kv, auth.email);
       if (!backup) {
         return json({ payload: null, savedAt: null });
       }
@@ -329,13 +447,15 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     }
   }
 
-  // 5. GET /api/sync/status (Verificação rápida e leve de atualização na nuvem)
+  // 8. GET /api/sync/status (Verificação rápida e leve de atualização na nuvem)
   if (url.pathname === "/api/sync/status" && req.method === "GET") {
-    const email = await getAuthUser();
-    if (!email) return json({ error: "Não autenticado." }, 401);
+    const auth = await getAuth();
+    if (!auth.ok) {
+      return json({ error: auth.error, reason: auth.reason, newDevice: auth.newDevice, message: auth.message }, auth.status);
+    }
 
     try {
-      const metaEntry = await kv.get(["backups", email, "meta"]);
+      const metaEntry = await kv.get(["backups", auth.email, "meta"]);
       const savedAt = (metaEntry.value as { savedAt?: number })?.savedAt || null;
       return json({ savedAt });
     } catch (_err) {
@@ -343,7 +463,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     }
   }
 
-  // 6. GET /api/sync/events (Canal SSE com Deno KV watch distribuído)
+  // 9. GET /api/sync/events (Canal SSE com Deno KV watch distribuído e detecção de revogação)
   if (url.pathname === "/api/sync/events" && req.method === "GET") {
     let token = url.searchParams.get("token");
     if (!token) {
@@ -351,6 +471,13 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
       if (auth && auth.startsWith("Bearer ")) token = auth.slice(7).trim();
     }
     if (!token) return json({ error: "Token não fornecido." }, 401);
+
+    // Verifica se a sessão foi previamente revogada
+    const revoked = await kv.get(["revoked_sessions", token]);
+    if (revoked.value) {
+      const r = revoked.value as { reason?: string; newDevice?: string };
+      return json({ error: "SESSION_REVOKED", reason: r.reason, newDevice: r.newDevice }, 401);
+    }
 
     const session = await kv.get(["sessions", token]);
     const email = (session.value as { email: string })?.email;
@@ -362,26 +489,42 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
 
     const body = new ReadableStream({
       async start(controller) {
+        streamController = controller;
+
+        // Registra assinante SSE local
+        if (!sseSubscribers.has(email)) {
+          sseSubscribers.set(email, new Set());
+        }
+        sseSubscribers.get(email)!.add(controller);
+
         // Ping inicial
         controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "connected", email })}\n\n`));
 
-        // Inicia escuta nativa do Deno KV watch (propaga entre todas as instâncias do Deno Deploy)
-        let hasKvWatch = false;
+        // Inicia escuta nativa do Deno KV watch (propaga entre nós do Deno KV)
         try {
           if (typeof kv.watch === "function") {
-            const watcher = kv.watch([["sync_updates", email]]);
+            const watcher = kv.watch([["sync_updates", email], ["session_revocations", email]]);
             kvWatcherStream = watcher;
-            hasKvWatch = true;
             const reader = watcher.getReader();
             (async () => {
               try {
                 while (true) {
                   const { value, done } = await reader.read();
                   if (done) break;
-                  const entry = value?.[0];
-                  if (entry && entry.value) {
-                    const data = entry.value as { savedAt: number; senderId?: string };
+
+                  // 1. Atualizações de backup
+                  const syncEntry = value?.[0];
+                  if (syncEntry && syncEntry.value) {
+                    const data = syncEntry.value as { savedAt: number; senderId?: string };
                     const msg = new TextEncoder().encode(`data: ${JSON.stringify({ type: "sync_updated", savedAt: data.savedAt, senderId: data.senderId })}\n\n`);
+                    controller.enqueue(msg);
+                  }
+
+                  // 2. Revogação de sessão por login em outro aparelho
+                  const revEntry = value?.[1];
+                  if (revEntry && revEntry.value) {
+                    const data = revEntry.value as { newDevice?: string };
+                    const msg = new TextEncoder().encode(`data: ${JSON.stringify({ type: "session_revoked", reason: "dispositivo_conectado", newDevice: data.newDevice })}\n\n`);
                     controller.enqueue(msg);
                   }
                 }
@@ -394,14 +537,6 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           }
         } catch (_err) {
           console.warn("[Finansys] kv.watch não disponível:", _err);
-        }
-
-        // Fallback local caso kv.watch não esteja disponível no ambiente
-        if (!hasKvWatch) {
-          if (!sseSubscribers.has(email)) {
-            sseSubscribers.set(email, new Set());
-          }
-          sseSubscribers.get(email)!.add(controller);
         }
       },
       cancel() {

@@ -4,6 +4,7 @@
     "build": "deno run -A npm:vite build",
     "preview": "deno run -A --unstable-kv npm:vite preview",
     "start": "deno run -A --unstable-kv server.ts",
+    "test": "deno test -A --unstable-kv",
     "check": "deno check src/main.tsx"
   },
   "deploy": {
