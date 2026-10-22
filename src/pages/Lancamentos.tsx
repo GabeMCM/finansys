@@ -13,8 +13,8 @@ import { RepeticaoSelector, type TipoRepeticaoReal } from "../components/lancame
 import { ResumoPainel } from "../components/lancamento/ResumoPainel.tsx";
 import { ValorCalculadoEditor } from "../components/lancamento/ValorCalculadoEditor.tsx";
 import { calcularBaseLancamentos, calcularPendencias, calcularValorVinculado, type ProjecaoPendente } from "../data/calc.ts";
-import { anos, categorias, contas, lancamentos, projecoes } from "../data/repo.ts";
-import { type Conta, type Lancamento, type Natureza, NATUREZAS, type RegraVinculo, SINAL } from "../data/types.ts";
+import { anos, categorias, contas, lancamentos, projecoes, reservaMovimentos, reservas } from "../data/repo.ts";
+import { type Conta, type Lancamento, type Natureza, NATUREZAS, type RegraVinculo, type Reserva, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { money, MONTHS, signed } from "../lib/format.ts";
 import { calcularFormulaLancamentos, extrairVariaveis } from "../lib/formula.ts";
@@ -60,13 +60,14 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     if (!empId) return null;
     const ano = await anos.find(empId, anoNum);
     if (!ano) return null;
-    const [cs, ls, cats, ps] = await Promise.all([
+    const [cs, ls, cats, ps, resList] = await Promise.all([
       contas.byEmpresa(empId),
       lancamentos.byAno(ano.id),
       categorias.byEmpresa(empId),
       projecoes.byAno(ano.id),
+      reservas.byEmpresa(empId),
     ]);
-    return { ano, cs, ls, cats, ps };
+    return { ano, cs, ls, cats, ps, resList };
   }, [empId, anoNum], null);
 
   useEffect(() => {
@@ -98,9 +99,10 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     );
   }
 
-  const { ano, cs, ls, cats, ps } = dados;
+  const { ano, cs, ls, cats, ps, resList } = dados;
   const contaMap = new Map<string, Conta>(cs.map((c) => [c.id, c]));
   const catMap = new Map<string, string>(cats.map((c) => [c.id, c.nome]));
+  const reservaMap = new Map<string, string>(resList.map((r) => [r.id, r.nome]));
 
   const getValorProjetadoContaMes = (contaId: string, dataStr: string): number => {
     if (!contaId || !dataStr) return 0;
@@ -191,6 +193,12 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     const [, mesStr] = modalLanc.data.split("-");
     const mesCalculado = parseInt(mesStr, 10) - 1;
 
+    const cConta = contaMap.get(modalLanc.contaId);
+    const nat = cConta?.natureza || modalLanc.natureza;
+    const tipoRes = modalLanc.reservaId
+      ? (nat === "saida" || nat === "pagar" ? "aporte" : "resgate")
+      : undefined;
+
     if (modalLanc.id) {
       await lancamentos.update(modalLanc.id, {
         contaId: modalLanc.contaId,
@@ -199,7 +207,41 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         valor: centavos,
         descricao: modalLanc.descricao?.trim() || "",
         obs: modalLanc.obs?.trim() || undefined,
+        reservaId: modalLanc.reservaId || undefined,
+        tipoReserva: tipoRes,
       });
+
+      // Sincroniza movimento na carteira de reservas
+      const movVinculado = await reservaMovimentos.byLancamento(modalLanc.id);
+      if (modalLanc.reservaId && tipoRes) {
+        if (movVinculado) {
+          await reservaMovimentos.update(movVinculado.id, {
+            reservaId: modalLanc.reservaId,
+            tipo: tipoRes,
+            valor: centavos,
+            data: modalLanc.data,
+            mes: mesCalculado,
+            contaId: modalLanc.contaId,
+            obs: modalLanc.descricao || modalLanc.obs,
+          });
+        } else {
+          await reservaMovimentos.create({
+            empresaId: empId,
+            anoId: ano.id,
+            reservaId: modalLanc.reservaId,
+            tipo: tipoRes,
+            valor: centavos,
+            data: modalLanc.data,
+            mes: mesCalculado,
+            contaId: modalLanc.contaId,
+            obs: modalLanc.descricao || modalLanc.obs,
+            lancamentoId: modalLanc.id,
+          });
+        }
+      } else if (movVinculado) {
+        await reservaMovimentos.remove(movVinculado.id);
+      }
+
       toast.success("Lançamento atualizado com sucesso!");
       setModalLanc(null);
       return;
@@ -214,7 +256,24 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         valor: centavos,
         descricao: modalLanc.descricao?.trim() || "",
         obs: modalLanc.obs?.trim() || undefined,
+        reservaId: modalLanc.reservaId || undefined,
+        tipoReserva: tipoRes,
       });
+
+      if (modalLanc.reservaId && tipoRes) {
+        await reservaMovimentos.create({
+          empresaId: empId,
+          anoId: ano.id,
+          reservaId: modalLanc.reservaId,
+          tipo: tipoRes,
+          valor: centavos,
+          data: modalLanc.data,
+          mes: mesCalculado,
+          contaId: modalLanc.contaId,
+          obs: modalLanc.descricao || modalLanc.obs,
+          lancamentoId: createdLanc.id,
+        });
+      }
 
       // Verificação proativa de regras de vínculo ou fórmulas que apontam para esta conta ou sua categoria
       const cOrigem = contaMap.get(modalLanc.contaId);
@@ -343,7 +402,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           anoAlvoId = anoTarget.id;
         }
 
-        await lancamentos.create({
+        const createdRep = await lancamentos.create({
           anoId: anoAlvoId,
           contaId: modalLanc.contaId,
           data: dataFormatada,
@@ -354,7 +413,24 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           recorrenciaId,
           parcela: i,
           totalParcelas: totalRepeticoes,
+          reservaId: modalLanc.reservaId || undefined,
+          tipoReserva: tipoRes,
         });
+
+        if (modalLanc.reservaId && tipoRes) {
+          await reservaMovimentos.create({
+            empresaId: empId,
+            anoId: anoAlvoId,
+            reservaId: modalLanc.reservaId,
+            tipo: tipoRes,
+            valor: valorParcela,
+            data: dataFormatada,
+            mes: targetMonth,
+            contaId: modalLanc.contaId,
+            obs: modalLanc.descricao || modalLanc.obs,
+            lancamentoId: createdRep.id,
+          });
+        }
       }
 
       if (tipoRepeticao === "parcelado") {
@@ -592,6 +668,8 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         });
         if (excluirTodas) {
           for (const item of serie) {
+            const mov = await reservaMovimentos.byLancamento(item.id);
+            if (mov) await reservaMovimentos.remove(mov.id);
             await lancamentos.remove(item.id);
           }
           toast.success(`${serie.length} parcelas da série excluídas com sucesso.`);
@@ -606,6 +684,8 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
       tipo: "danger",
     });
     if (ok) {
+      const mov = await reservaMovimentos.byLancamento(l.id);
+      if (mov) await reservaMovimentos.remove(mov.id);
       await lancamentos.remove(l.id);
       toast.success("Lançamento excluído com sucesso.");
     }
@@ -886,6 +966,15 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                                 <Icon name="calendar" style="width:11px;height:11px;" /> {l.parcela}/{l.totalParcelas}
                               </span>
                             ) : null}
+                            {l.reservaId && reservaMap.get(l.reservaId) && (
+                              <span
+                                class="badge badge--neutral"
+                                style="font-size:0.68rem;padding:0 6px;color:var(--primary);border-color:color-mix(in srgb, var(--primary) 30%, transparent);"
+                                title={`Vinculado à Reserva: ${reservaMap.get(l.reservaId)}`}
+                              >
+                                <Icon name="wallet" style="width:11px;height:11px;" /> {reservaMap.get(l.reservaId)}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -990,6 +1079,15 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                               {l.parcela}/{l.totalParcelas}
                             </span>
                           ) : null}
+                          {l.reservaId && reservaMap.get(l.reservaId) && (
+                            <span
+                              class="badge badge--neutral"
+                              style="font-size:0.65rem;padding:0 5px;color:var(--primary);border-color:color-mix(in srgb, var(--primary) 30%, transparent);"
+                              title={`Vinculado à Reserva: ${reservaMap.get(l.reservaId)}`}
+                            >
+                              <Icon name="wallet" style="width:10px;height:10px;" /> {reservaMap.get(l.reservaId)}
+                            </span>
+                          )}
                         </div>
                         {l.obs && (
                           <div class="muted" style="font-size:0.7rem;font-style:italic;">
@@ -1330,7 +1428,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           {/* Seção 4: Detalhes Adicionais (Recolhível) */}
           <Disclosure
             title="Detalhes Adicionais"
-            defaultOpen={Boolean(modalLanc?.descricao || modalLanc?.obs)}
+            defaultOpen={Boolean(modalLanc?.descricao || modalLanc?.obs || modalLanc?.reservaId)}
           >
             <div class="form-group">
               <label class="form-label" for="lanc-desc">Descrição / Fornecedor / Favorecido</label>
@@ -1342,6 +1440,62 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                 onInput={(e) => setModalLanc({ ...modalLanc, descricao: (e.currentTarget as HTMLInputElement).value })}
               />
             </div>
+
+            {/* Vínculo com Reserva / Caixinha */}
+            {resList.length > 0 && (
+              <div
+                class="form-group"
+                style="background: var(--surface-soft); padding: var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--border);"
+              >
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 6px;">
+                  <span style="font-size: var(--fs-xs); font-weight: 700; color: var(--text); display:flex; align-items:center; gap:6px;">
+                    <Icon name="wallet" style="width:14px; height:14px; color:var(--primary);" />
+                    {natAtualModal === "saida" || natAtualModal === "pagar"
+                      ? "Destinar para Reserva / Caixinha?"
+                      : "Origem: Resgate de Reserva / Caixinha?"}
+                  </span>
+                  {modalLanc?.reservaId && (
+                    <button
+                      type="button"
+                      class="btn btn--ghost btn--sm"
+                      style="font-size: 11px; padding: 1px 6px; height: 22px; color: var(--out);"
+                      onClick={() => setModalLanc({ ...modalLanc, reservaId: undefined, tipoReserva: undefined })}
+                    >
+                      Remover vínculo
+                    </button>
+                  )}
+                </div>
+
+                <select
+                  class="input"
+                  style="font-size: var(--fs-xs);"
+                  value={modalLanc?.reservaId || ""}
+                  onChange={(e) => {
+                    const val = (e.target as HTMLSelectElement).value;
+                    const tipoRes = natAtualModal === "saida" || natAtualModal === "pagar" ? "aporte" : "resgate";
+                    setModalLanc({
+                      ...modalLanc,
+                      reservaId: val || undefined,
+                      tipoReserva: val ? tipoRes : undefined,
+                    });
+                  }}
+                >
+                  <option value="">Nenhuma reserva (apenas movimentação operacional normal)</option>
+                  {resList.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.nome}
+                    </option>
+                  ))}
+                </select>
+                <span style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block;">
+                  {modalLanc?.reservaId
+                    ? natAtualModal === "saida" || natAtualModal === "pagar"
+                      ? "✓ O valor sairá do caixa diário e será registrado como Aplicação na reserva escolhida."
+                      : "✓ O valor entrará no caixa diário e será registrado como Resgate da reserva para recompor o saldo."
+                    : "ℹ️ Opcional: selecione caso esta movimentação envolva uma de suas caixinhas patrimoniais."}
+                </span>
+              </div>
+            )}
 
             <div class="form-group" style="margin-bottom:0;">
               <label class="form-label" for="lanc-obs">Observação Adicional (Obs)</label>

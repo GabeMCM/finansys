@@ -71,6 +71,8 @@ export interface Projecao extends Base {
   vinculoOrigemId?: string;
   parcela?: number;
   totalParcelas?: number;
+  reservaId?: string;
+  tipoReserva?: "aporte" | "resgate";
 }
 
 export interface Lancamento extends Base {
@@ -86,6 +88,48 @@ export interface Lancamento extends Base {
   totalParcelas?: number;
   vinculoLancamentoOrigemId?: string;
   vinculoDescricao?: string;
+  reservaId?: string;
+  tipoReserva?: "aporte" | "resgate";
+}
+
+/* ==========================================================
+   Investimentos & Reservas Patrimoniais
+   ========================================================== */
+
+export interface Reserva extends Base {
+  empresaId: string;
+  nome: string;                  // Ex: "Reserva de Emergência", "CDB Liquidez Diária", "Expansão 2027"
+  descricao?: string;             // Ex: "6 meses de despesas fixas"
+  cor?: string;                   // "emerald", "blue", "violet", "amber", "rose"
+  metaCentavos?: number;          // Meta financeira opcional em centavos
+  saldoInicialCentavos?: number;  // Saldo inicial preexistente (banca inicial da reserva)
+  ativa: boolean;
+}
+
+export type TipoMovimentoReserva = "aporte" | "resgate" | "rendimento";
+
+export interface ReservaMovimento extends Base {
+  empresaId: string;
+  anoId: string;
+  reservaId: string;
+  tipo: TipoMovimentoReserva;
+  data: string;                   // YYYY-MM-DD
+  mes: number;                    // 0-11
+  valor: number;                  // Centavos (sempre positivo)
+  obs?: string;
+  lancamentoId?: string;          // Vínculo com lançamento no caixa operacional (se houver)
+  contaId?: string;               // Conta operacional de onde saiu ou para onde foi o dinheiro
+}
+
+export interface ReservaProjecao extends Base {
+  empresaId: string;
+  anoId: string;
+  reservaId: string;
+  mes: number;                    // 0-11
+  valorAporte: number;            // Centavos planejados para guardar no mês
+  valorResgate: number;           // Centavos planejados para resgatar no mês
+  valorRendimento: number;        // Rendimento estimado no mês
+  obs?: string;
 }
 
 export interface Setting {

@@ -1,4 +1,15 @@
-import { type Conta, type Lancamento, type Natureza, NATUREZAS, type Projecao, type RegraVinculo, SINAL } from "./types.ts";
+import {
+  type Conta,
+  type Lancamento,
+  type Natureza,
+  NATUREZAS,
+  type Projecao,
+  type RegraVinculo,
+  type Reserva,
+  type ReservaMovimento,
+  type ReservaProjecao,
+  SINAL,
+} from "./types.ts";
 
 /** Matriz [natureza][mes] em centavos. */
 export type PorNatureza = Record<Natureza, number[]>;
@@ -253,5 +264,140 @@ export function calcularPendencias(
     }
     return a.mes - b.mes;
   });
+}
+
+/* ==========================================================
+   Cálculo Consolidado de Investimentos & Reservas
+   ========================================================== */
+
+export interface ResumoReserva {
+  reserva: Reserva;
+  saldoInicial: number;
+  totalAportesReal: number;
+  totalResgatesReal: number;
+  totalRendimentosReal: number;
+  saldoAtualReal: number;
+
+  totalAportesProj: number;
+  totalResgatesProj: number;
+  totalRendimentosProj: number;
+  saldoFinalProj: number;
+
+  evolucaoMensalReal: number[]; // Saldo acumulado mês a mês (0..11)
+  evolucaoMensalProj: number[]; // Saldo acumulado mês a mês (0..11)
+  progressoMetaPct?: number;   // Calculado caso metaCentavos > 0
+}
+
+export interface ResumoCarteira {
+  totalPatrimonioReal: number;
+  totalPatrimonioProj: number;
+  totalAportadoAnoReal: number;
+  totalAportadoAnoProj: number;
+  totalResgatadoAnoReal: number;
+  totalResgatadoAnoProj: number;
+  totalRendimentoAnoReal: number;
+  totalRendimentoAnoProj: number;
+  reservas: ResumoReserva[];
+}
+
+export function calcularCarteiraReservas(
+  reservas: Reserva[],
+  movimentos: ReservaMovimento[],
+  projecoes: ReservaProjecao[],
+  mesReferencia = 11,
+): ResumoCarteira {
+  const mesRefClamped = Math.max(0, Math.min(11, mesReferencia));
+
+  const resumos: ResumoReserva[] = reservas.map((reserva) => {
+    const saldoInicial = reserva.saldoInicialCentavos || 0;
+
+    // Projeções
+    const projsDaReserva = projecoes.filter((p) => p.reservaId === reserva.id);
+    let runningProj = saldoInicial;
+    const evolucaoMensalProj: number[] = [];
+    let totalAportesProj = 0;
+    let totalResgatesProj = 0;
+    let totalRendimentosProj = 0;
+
+    for (let m = 0; m < 12; m++) {
+      const p = projsDaReserva.find((item) => item.mes === m);
+      const ap = p?.valorAporte || 0;
+      const resg = p?.valorResgate || 0;
+      const rend = p?.valorRendimento || 0;
+
+      totalAportesProj += ap;
+      totalResgatesProj += resg;
+      totalRendimentosProj += rend;
+
+      runningProj = runningProj + ap + rend - resg;
+      evolucaoMensalProj.push(runningProj);
+    }
+    const saldoFinalProj = evolucaoMensalProj[11];
+
+    // Movimentações Reais
+    const movsDaReserva = movimentos.filter((m) => m.reservaId === reserva.id);
+    let runningReal = saldoInicial;
+    const evolucaoMensalReal: number[] = [];
+    let totalAportesReal = 0;
+    let totalResgatesReal = 0;
+    let totalRendimentosReal = 0;
+
+    for (let m = 0; m < 12; m++) {
+      const movsMes = movsDaReserva.filter((item) => item.mes === m);
+      let apMes = 0;
+      let resgMes = 0;
+      let rendMes = 0;
+
+      for (const mov of movsMes) {
+        if (mov.tipo === "aporte") apMes += mov.valor;
+        else if (mov.tipo === "resgate") resgMes += mov.valor;
+        else if (mov.tipo === "rendimento") rendMes += mov.valor;
+      }
+
+      totalAportesReal += apMes;
+      totalResgatesReal += resgMes;
+      totalRendimentosReal += rendMes;
+
+      runningReal = runningReal + apMes + rendMes - resgMes;
+      evolucaoMensalReal.push(runningReal);
+    }
+
+    const saldoAtualReal = evolucaoMensalReal[mesRefClamped];
+
+    let progressoMetaPct: number | undefined;
+    if (reserva.metaCentavos && reserva.metaCentavos > 0) {
+      progressoMetaPct = Math.round((saldoAtualReal / reserva.metaCentavos) * 100);
+    }
+
+    return {
+      reserva,
+      saldoInicial,
+      totalAportesReal,
+      totalResgatesReal,
+      totalRendimentosReal,
+      saldoAtualReal,
+
+      totalAportesProj,
+      totalResgatesProj,
+      totalRendimentosProj,
+      saldoFinalProj,
+
+      evolucaoMensalReal,
+      evolucaoMensalProj,
+      progressoMetaPct,
+    };
+  });
+
+  return {
+    totalPatrimonioReal: resumos.reduce((sum, r) => sum + r.saldoAtualReal, 0),
+    totalPatrimonioProj: resumos.reduce((sum, r) => sum + r.saldoFinalProj, 0),
+    totalAportadoAnoReal: resumos.reduce((sum, r) => sum + r.totalAportesReal, 0),
+    totalAportadoAnoProj: resumos.reduce((sum, r) => sum + r.totalAportesProj, 0),
+    totalResgatadoAnoReal: resumos.reduce((sum, r) => sum + r.totalResgatesReal, 0),
+    totalResgatadoAnoProj: resumos.reduce((sum, r) => sum + r.totalResgatesProj, 0),
+    totalRendimentoAnoReal: resumos.reduce((sum, r) => sum + r.totalRendimentosReal, 0),
+    totalRendimentoAnoProj: resumos.reduce((sum, r) => sum + r.totalRendimentosProj, 0),
+    reservas: resumos,
+  };
 }
 

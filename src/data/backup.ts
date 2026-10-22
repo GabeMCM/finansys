@@ -11,6 +11,9 @@ export interface BackupPayload {
     contas: unknown[];
     projecoes: unknown[];
     lancamentos: unknown[];
+    reservas?: unknown[];
+    reservaMovimentos?: unknown[];
+    reservaProjecoes?: unknown[];
   };
 }
 
@@ -18,17 +21,20 @@ export interface BackupPayload {
  * Serializa todo o banco de dados em um payload JSON.
  */
 export async function dumpDatabase(): Promise<BackupPayload> {
-  const [empresas, anos, categorias, contas, projecoes, lancamentos] = await Promise.all([
+  const [empresas, anos, categorias, contas, projecoes, lancamentos, reservas, reservaMovimentos, reservaProjecoes] = await Promise.all([
     db.empresas.toArray(),
     db.anos.toArray(),
     db.categorias.toArray(),
     db.contas.toArray(),
     db.projecoes.toArray(),
     db.lancamentos.toArray(),
+    db.reservas.toArray(),
+    db.reservaMovimentos.toArray(),
+    db.reservaProjecoes.toArray(),
   ]);
 
   return {
-    version: 1,
+    version: 2,
     exportedAt: Date.now(),
     data: {
       empresas,
@@ -37,6 +43,9 @@ export async function dumpDatabase(): Promise<BackupPayload> {
       contas,
       projecoes,
       lancamentos,
+      reservas,
+      reservaMovimentos,
+      reservaProjecoes,
     },
   };
 }
@@ -52,15 +61,31 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
   let count = 0;
 
   try {
-    await db.transaction("rw", [db.empresas, db.anos, db.categorias, db.contas, db.projecoes, db.lancamentos], async () => {
-      const tabelas = [
-        { t: db.empresas, itens: payload.data.empresas },
-        { t: db.anos, itens: payload.data.anos },
-        { t: db.categorias, itens: payload.data.categorias },
-        { t: db.contas, itens: payload.data.contas },
-        { t: db.projecoes, itens: payload.data.projecoes },
-        { t: db.lancamentos, itens: payload.data.lancamentos },
-      ];
+    await db.transaction(
+      "rw",
+      [
+        db.empresas,
+        db.anos,
+        db.categorias,
+        db.contas,
+        db.projecoes,
+        db.lancamentos,
+        db.reservas,
+        db.reservaMovimentos,
+        db.reservaProjecoes,
+      ],
+      async () => {
+        const tabelas = [
+          { t: db.empresas, itens: payload.data.empresas },
+          { t: db.anos, itens: payload.data.anos },
+          { t: db.categorias, itens: payload.data.categorias },
+          { t: db.contas, itens: payload.data.contas },
+          { t: db.projecoes, itens: payload.data.projecoes },
+          { t: db.lancamentos, itens: payload.data.lancamentos },
+          { t: db.reservas, itens: payload.data.reservas },
+          { t: db.reservaMovimentos, itens: payload.data.reservaMovimentos },
+          { t: db.reservaProjecoes, itens: payload.data.reservaProjecoes },
+        ];
 
       for (const { t, itens } of tabelas) {
         if (!Array.isArray(itens)) continue;

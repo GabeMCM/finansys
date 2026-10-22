@@ -1,6 +1,6 @@
 import { Icon } from "../components/Icon.tsx";
-import { calcular } from "../data/calc.ts";
-import { anos, categorias, contas, empresas, lancamentos, projecoes } from "../data/repo.ts";
+import { calcular, calcularCarteiraReservas } from "../data/calc.ts";
+import { anos, categorias, contas, empresas, lancamentos, projecoes, reservaMovimentos, reservaProjecoes, reservas } from "../data/repo.ts";
 import { seedExemplo } from "../data/seed.ts";
 import { NATUREZAS } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
@@ -37,13 +37,16 @@ export function Dashboard() {
     if (!empId) return null;
     const [emp, ano] = await Promise.all([empresas.get(empId), anos.find(empId, anoNum)]);
     if (!emp || !ano) return { emp, ano: undefined } as const;
-    const [cs, ps, ls, cats] = await Promise.all([
+    const [cs, ps, ls, cats, resList, movList, projResList] = await Promise.all([
       contas.byEmpresa(empId),
       projecoes.byAno(ano.id),
       lancamentos.byAno(ano.id),
       categorias.byEmpresa(empId),
+      reservas.byEmpresa(empId),
+      reservaMovimentos.byAno(ano.id),
+      reservaProjecoes.byAno(ano.id),
     ]);
-    return { emp, ano, cs, ps, ls, cats } as const;
+    return { emp, ano, cs, ps, ls, cats, resList, movList, projResList } as const;
   }, [empId, anoNum], undefined);
 
   if (dados === undefined) return null; // carregando
@@ -58,7 +61,7 @@ export function Dashboard() {
     );
   }
 
-  const { ano, cs, ps, ls, cats } = dados;
+  const { ano, cs, ps, ls, cats, resList, movList, projResList } = dados;
   const hoje = new Date();
   const mesRef = ano.ano < hoje.getFullYear() ? 11 : ano.ano > hoje.getFullYear() ? -1 : hoje.getMonth();
   const r = calcular(ano.bancaInicial, cs, ps, ls, mesRef);
@@ -67,6 +70,10 @@ export function Dashboard() {
   const saldoProj = r.saldoProj[idx];
   const desvio = saldoReal - saldoProj;
   const max = Math.max(1, ...r.resultadoProj.map(Math.abs), ...r.resultadoReal.map(Math.abs));
+
+  const carteira = calcularCarteiraReservas(resList, movList, projResList, idx);
+  const totalReservasReal = carteira.totalPatrimonioReal;
+  const patrimonioConsolidado = saldoReal + totalReservasReal;
 
   const contaNome = new Map(cs.map((c) => [c.id, c]));
   const recentes = [...ls].sort((a, b) => b.data.localeCompare(a.data) || b.createdAt - a.createdAt).slice(0, 6);
@@ -108,6 +115,20 @@ export function Dashboard() {
             <div class="hero__row num">
               <div><span>Projetado </span>{money(saldoProj)}</div>
               <div><span>Desvio </span><b>{signed(desvio)}</b></div>
+              {resList.length > 0 && (
+                <>
+                  <div>
+                    <span>Reservas </span>
+                    <a href="#/investimentos" style="color:inherit;text-decoration:underline;">
+                      {money(totalReservasReal)}
+                    </a>
+                  </div>
+                  <div>
+                    <span>Patrimônio Total </span>
+                    <b>{money(patrimonioConsolidado)}</b>
+                  </div>
+                </>
+              )}
               <div><span>Banca inicial </span>{money(ano.bancaInicial)}</div>
             </div>
           </section>

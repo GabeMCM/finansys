@@ -1,6 +1,18 @@
 import type { EntityTable } from "dexie";
 import { db } from "./db.ts";
-import type { Ano, Base, Categoria, Conta, Empresa, Lancamento, Natureza, Projecao } from "./types.ts";
+import type {
+  Ano,
+  Base,
+  Categoria,
+  Conta,
+  Empresa,
+  Lancamento,
+  Natureza,
+  Projecao,
+  Reserva,
+  ReservaMovimento,
+  ReservaProjecao,
+} from "./types.ts";
 
 type New<T extends Base> = Omit<T, keyof Base>;
 
@@ -20,6 +32,10 @@ function repo<T extends Base>(table: EntityTable<T, "id">) {
       await table.update(id as any, { ...patch, updatedAt: Date.now() } as any);
     },
     async remove(id: string) {
+      // deno-lint-ignore no-explicit-any
+      await table.update(id as any, { deletedAt: Date.now(), updatedAt: Date.now() } as any);
+    },
+    async delete(id: string) {
       // deno-lint-ignore no-explicit-any
       await table.update(id as any, { deletedAt: Date.now(), updatedAt: Date.now() } as any);
     },
@@ -81,6 +97,54 @@ export const lancamentos = {
     db.lancamentos.where({ anoId, mes }).filter(alive).reverse().sortBy("data"),
   byRecorrencia: (recorrenciaId: string) =>
     db.lancamentos.filter((l) => l.recorrenciaId === recorrenciaId && alive(l)).toArray(),
+};
+
+export const reservas = {
+  ...repo<Reserva>(db.reservas),
+  byEmpresa: (empresaId: string) =>
+    db.reservas.where({ empresaId }).filter(alive).sortBy("nome"),
+};
+
+export const reservaMovimentos = {
+  ...repo<ReservaMovimento>(db.reservaMovimentos),
+  byEmpresa: (empresaId: string) =>
+    db.reservaMovimentos.where({ empresaId }).filter(alive).reverse().sortBy("data"),
+  byAno: (anoId: string) =>
+    db.reservaMovimentos.where({ anoId }).filter(alive).reverse().sortBy("data"),
+  byReserva: (reservaId: string) =>
+    db.reservaMovimentos.where({ reservaId }).filter(alive).reverse().sortBy("data"),
+  byLancamento: (lancamentoId: string) =>
+    db.reservaMovimentos.filter((m) => m.lancamentoId === lancamentoId && alive(m)).first(),
+};
+
+export const reservaProjecoes = {
+  ...repo<ReservaProjecao>(db.reservaProjecoes),
+  byAno: (anoId: string) =>
+    db.reservaProjecoes.where({ anoId }).filter(alive).toArray(),
+  byReserva: (reservaId: string) =>
+    db.reservaProjecoes.where({ reservaId }).filter(alive).toArray(),
+  async set(
+    empresaId: string,
+    anoId: string,
+    reservaId: string,
+    mes: number,
+    valores: { valorAporte?: number; valorResgate?: number; valorRendimento?: number; obs?: string },
+  ) {
+    const cur = await db.reservaProjecoes.where({ anoId, reservaId, mes }).filter(alive).first();
+    if (cur) {
+      return reservaProjecoes.update(cur.id, valores);
+    }
+    return reservaProjecoes.create({
+      empresaId,
+      anoId,
+      reservaId,
+      mes,
+      valorAporte: valores.valorAporte ?? 0,
+      valorResgate: valores.valorResgate ?? 0,
+      valorRendimento: valores.valorRendimento ?? 0,
+      obs: valores.obs,
+    });
+  },
 };
 
 export const settings = {

@@ -2,7 +2,7 @@ import { useState } from "preact/hooks";
 import { Icon } from "../components/Icon.tsx";
 import { ModalReplicacao } from "../components/ModalReplicacao.tsx";
 import { db } from "../data/db.ts";
-import { anos, categorias, contas, empresas } from "../data/repo.ts";
+import { anos, categorias, contas, empresas, reservas } from "../data/repo.ts";
 import { type Ano, type Conta, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { labelCpfCnpj, money, signed } from "../lib/format.ts";
@@ -34,14 +34,16 @@ export function Relatorios() {
     if (!emp || todosAnos.length === 0) return null;
 
     const anoIds = todosAnos.map((a) => a.id);
-    const [cs, cats, ps, ls] = await Promise.all([
+    const [cs, cats, ps, ls, resList, movList] = await Promise.all([
       contas.byEmpresa(empId),
       categorias.byEmpresa(empId),
       db.projecoes.where("anoId").anyOf(anoIds).filter((p) => !p.deletedAt).toArray(),
       db.lancamentos.where("anoId").anyOf(anoIds).filter((l) => !l.deletedAt).toArray(),
+      reservas.byEmpresa(empId),
+      db.reservaMovimentos.where("empresaId").equals(empId).filter((m) => !m.deletedAt).toArray(),
     ]);
 
-    return { emp, todosAnos, cs, cats, ps, ls };
+    return { emp, todosAnos, cs, cats, ps, ls, resList, movList };
   }, [empId], null);
 
   if (!empId) {
@@ -64,7 +66,7 @@ export function Relatorios() {
     );
   }
 
-  const { emp, todosAnos, cs, cats, ps, ls } = dados;
+  const { emp, todosAnos, cs, cats, ps, ls, resList, movList } = dados;
   const anoIdParaAnoNum = new Map<string, number>(todosAnos.map((a) => [a.id, a.ano]));
   const catMap = new Map<string, string>(cats.map((c) => [c.id, c.nome]));
   const contaMap = new Map<string, Conta>(cs.map((c) => [c.id, c]));
@@ -152,6 +154,25 @@ export function Relatorios() {
   const saldoFinalProj = saldoInicialPeriodo + resultadoLiqProj;
   const desvioSaldoFinal = saldoFinalReal - saldoFinalProj;
 
+  // 6. Investimentos e Reservas Patrimoniais no Período
+  const movsPeriodoRes = movList.filter((m) => m.data >= dInicio && m.data <= dFim);
+  const totAportesResReal = movsPeriodoRes.filter((m) => m.tipo === "aporte").reduce((s, m) => s + m.valor, 0);
+  const totResgatesResReal = movsPeriodoRes.filter((m) => m.tipo === "resgate").reduce((s, m) => s + m.valor, 0);
+  const totRendimentosResReal = movsPeriodoRes.filter((m) => m.tipo === "rendimento").reduce((s, m) => s + m.valor, 0);
+
+  let totalReservasAteFim = 0;
+  for (const r of resList) {
+    const inicial = r.saldoInicialCentavos || 0;
+    const movsAteFim = movList.filter((m) => m.reservaId === r.id && m.data <= dFim);
+    let saldo = inicial;
+    for (const m of movsAteFim) {
+      if (m.tipo === "aporte" || m.tipo === "rendimento") saldo += m.valor;
+      else if (m.tipo === "resgate") saldo -= m.valor;
+    }
+    totalReservasAteFim += saldo;
+  }
+  const patrimonioConsolidadoReal = saldoFinalReal + totalReservasAteFim;
+
   // Presets rápidos de intervalo
   const aplicarPreset = (tipo: string) => {
     setPresetAtivo(tipo);
@@ -219,6 +240,10 @@ export function Relatorios() {
     csv += `Total Saídas;;;${(totSaidasProj / 100).toFixed(2).replace(".", ",")};${(totSaidasReal / 100).toFixed(2).replace(".", ",")}\n`;
     csv += `Resultado Líquido;;;${(resultadoLiqProj / 100).toFixed(2).replace(".", ",")};${(resultadoLiqReal / 100).toFixed(2).replace(".", ",")}\n`;
     csv += `Saldo Final em Conta;;;${(saldoFinalProj / 100).toFixed(2).replace(".", ",")};${(saldoFinalReal / 100).toFixed(2).replace(".", ",")}\n`;
+    if (resList.length > 0) {
+      csv += `Alocado em Investimentos & Reservas;;;;${(totalReservasAteFim / 100).toFixed(2).replace(".", ",")}\n`;
+      csv += `Patrimônio Líquido Consolidado;;;;${(patrimonioConsolidadoReal / 100).toFixed(2).replace(".", ",")}\n`;
+    }
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -254,6 +279,8 @@ export function Relatorios() {
         saidasReal: totSaidasReal,
         saldoFinalProj,
         saldoFinalReal,
+        reservasReal: totalReservasAteFim,
+        patrimonioConsolidado: patrimonioConsolidadoReal,
       },
     };
     const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
@@ -425,7 +452,7 @@ export function Relatorios() {
           </div>
 
           {/* Quadro de Saldo e Conciliação */}
-          <div class="grid grid--2" style="margin-top:var(--sp-3);">
+          <div style="margin-top:var(--sp-3); display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-3);">
             <div class="stat" style="background:var(--surface-solid);display:flex;flex-direction:column;justify-content:space-between;">
               <div>
                 <div class="stat__label">Saldo Inicial do Período</div>
@@ -440,7 +467,7 @@ export function Relatorios() {
 
             <div class="stat" style="background:var(--surface-solid);display:flex;flex-direction:column;justify-content:space-between;">
               <div>
-                <div class="stat__label">Saldo Final em Conta (Realizado)</div>
+                <div class="stat__label">Saldo Final em Conta (Operacional)</div>
                 <div class="stat__value num" style="color:var(--text);font-weight:800;">
                   {money(saldoFinalReal)}
                 </div>
@@ -472,8 +499,91 @@ export function Relatorios() {
                 </div>
               </div>
             </div>
+
+            {resList.length > 0 && (
+              <div
+                class="stat"
+                style="background:var(--surface-solid);display:flex;flex-direction:column;justify-content:space-between;border-left:4px solid var(--primary);"
+              >
+                <div>
+                  <div class="stat__label" style="color:var(--primary);font-weight:700;">
+                    <Icon name="wallet" /> Patrimônio Líquido Consolidado
+                  </div>
+                  <div class="stat__value num" style="color:var(--primary);font-weight:800;">
+                    {money(patrimonioConsolidadoReal)}
+                  </div>
+                  <div class="stat__sub">Caixa Operacional + Investimentos & Reservas</div>
+                </div>
+
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px;font-size:var(--fs-xs);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span class="muted">Saldo Operacional:</span>
+                    <span class="num" style="font-weight:600;">{money(saldoFinalReal)}</span>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span class="muted">Alocado em Reservas:</span>
+                    <span class="num" style="font-weight:600;color:var(--in);">{money(totalReservasAteFim)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
+
+        {/* Bloco de Investimentos & Reservas no Período */}
+        {resList.length > 0 && (
+          <section class="card">
+            <div class="card__head" style="margin-bottom: var(--sp-2);">
+              <h2 class="card__title" style="display:flex; align-items:center; gap:8px;">
+                <Icon name="wallet" /> Movimentação de Investimentos & Reservas no Período
+              </h2>
+              <a href="#/investimentos" class="btn btn--ghost no-print" style="font-size:var(--fs-xs);height:32px;">
+                Ver Carteira <Icon name="chevron" style="transform:rotate(-90deg);" />
+              </a>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--sp-3); padding: var(--sp-2) 0;">
+              <div class="stat" style="background:var(--surface-solid);">
+                <div class="stat__label" style="color:var(--in);">
+                  (+) Aplicado / Guardado
+                </div>
+                <div class="stat__value num" style="color:var(--in);">
+                  {money(totAportesResReal)}
+                </div>
+                <div class="stat__sub">Recursos alocados nas reservas</div>
+              </div>
+
+              <div class="stat" style="background:var(--surface-solid);">
+                <div class="stat__label" style="color:var(--aporte);">
+                  (−) Resgatado para o Caixa
+                </div>
+                <div class="stat__value num" style="color:var(--aporte);">
+                  {money(totResgatesResReal)}
+                </div>
+                <div class="stat__sub">Liquidez retornada para a operação</div>
+              </div>
+
+              <div class="stat" style="background:var(--surface-solid);">
+                <div class="stat__label" style="color:#8b5cf6;">
+                  (+) Rendimentos Acumulados
+                </div>
+                <div class="stat__value num" style="color:#8b5cf6;">
+                  {money(totRendimentosResReal)}
+                </div>
+                <div class="stat__sub">Juros, CDI e dividendos gerados</div>
+              </div>
+
+              <div class="stat" style="background:var(--surface-solid);">
+                <div class="stat__label" style="color:var(--primary);">
+                  Saldo Total em Reservas
+                </div>
+                <div class="stat__value num" style="color:var(--primary);font-weight:800;">
+                  {money(totalReservasAteFim)}
+                </div>
+                <div class="stat__sub">Posição acumulada em {formatarDataBR(dataFim)}</div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Resumo de Entradas vs Saídas */}
         <div class="grid grid--2">

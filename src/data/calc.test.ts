@@ -1,6 +1,13 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { calcular, calcularBaseLancamentos, calcularBaseProjecoes, calcularPendencias, calcularValorVinculado } from "./calc.ts";
-import type { Conta, Lancamento, Projecao } from "./types.ts";
+import {
+  calcular,
+  calcularBaseLancamentos,
+  calcularBaseProjecoes,
+  calcularCarteiraReservas,
+  calcularPendencias,
+  calcularValorVinculado,
+} from "./calc.ts";
+import type { Conta, Lancamento, Projecao, Reserva, ReservaMovimento, ReservaProjecao } from "./types.ts";
 
 const base = { createdAt: 0, updatedAt: 0 };
 const conta = (id: string, natureza: Conta["natureza"]): Conta =>
@@ -113,4 +120,71 @@ Deno.test("calcularPendencias identifica vencidas e a vencer com precisao", () =
   assertEquals(pendNet.status, "a_vencer");
   assertEquals(pendNet.valorPendente, 200_00);
 });
+
+Deno.test("calcularCarteiraReservas consolida aportes, resgates, rendimentos e metas", () => {
+  const r1: Reserva = {
+    ...base,
+    id: "r1",
+    empresaId: "e",
+    nome: "Reserva de Emergência",
+    metaCentavos: 10_000_00, // Meta R$ 10.000
+    saldoInicialCentavos: 2_000_00, // Saldo inicial R$ 2.000
+    ativa: true,
+  };
+
+  const r2: Reserva = {
+    ...base,
+    id: "r2",
+    empresaId: "e",
+    nome: "Expansão Futura",
+    // Sem meta
+    saldoInicialCentavos: 0,
+    ativa: true,
+  };
+
+  // Projeções para r1
+  const projs: ReservaProjecao[] = [
+    { ...base, id: "p1", empresaId: "e", anoId: "a", reservaId: "r1", mes: 0, valorAporte: 1_000_00, valorResgate: 0, valorRendimento: 20_00 },
+    { ...base, id: "p2", empresaId: "e", anoId: "a", reservaId: "r1", mes: 1, valorAporte: 1_000_00, valorResgate: 500_00, valorRendimento: 30_00 },
+  ];
+
+  // Movimentos reais para r1
+  const movs: ReservaMovimento[] = [
+    { ...base, id: "m1", empresaId: "e", anoId: "a", reservaId: "r1", tipo: "aporte", data: "2026-01-15", mes: 0, valor: 1_000_00 },
+    { ...base, id: "m2", empresaId: "e", anoId: "a", reservaId: "r1", tipo: "rendimento", data: "2026-01-31", mes: 0, valor: 25_00 },
+    { ...base, id: "m3", empresaId: "e", anoId: "a", reservaId: "r1", tipo: "resgate", data: "2026-02-10", mes: 1, valor: 400_00 },
+  ];
+
+  const carteira = calcularCarteiraReservas([r1, r2], movs, projs, 1);
+
+  // Resumo de r1
+  const resumoR1 = carteira.reservas.find((r) => r.reserva.id === "r1")!;
+  assertEquals(resumoR1.saldoInicial, 2_000_00);
+  assertEquals(resumoR1.totalAportesReal, 1_000_00);
+  assertEquals(resumoR1.totalRendimentosReal, 25_00);
+  assertEquals(resumoR1.totalResgatesReal, 400_00);
+
+  // Evolução Real Mês 0: 2000 + 1000 + 25 = 3025
+  // Evolução Real Mês 1: 3025 - 400 = 2625
+  assertEquals(resumoR1.evolucaoMensalReal[0], 3025_00);
+  assertEquals(resumoR1.evolucaoMensalReal[1], 2625_00);
+  assertEquals(resumoR1.saldoAtualReal, 2625_00); // mês ref = 1
+
+  // Meta de r1: 2625 / 10000 = 26%
+  assertEquals(resumoR1.progressoMetaPct, 26);
+
+  // Evolução Proj Mês 0: 2000 + 1000 + 20 = 3020
+  // Evolução Proj Mês 1: 3020 + 1000 + 30 - 500 = 3550
+  assertEquals(resumoR1.evolucaoMensalProj[0], 3020_00);
+  assertEquals(resumoR1.evolucaoMensalProj[1], 3550_00);
+  assertEquals(resumoR1.saldoFinalProj, 3550_00); // sem mais projs nos outros meses
+
+  // Total da Carteira
+  assertEquals(carteira.totalPatrimonioReal, 2625_00);
+  assertEquals(carteira.totalPatrimonioProj, 3550_00);
+  assertEquals(carteira.totalAportadoAnoReal, 1_000_00);
+  assertEquals(carteira.totalResgatadoAnoReal, 400_00);
+  assertEquals(carteira.totalRendimentoAnoReal, 25_00);
+});
+
 
