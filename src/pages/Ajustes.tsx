@@ -859,7 +859,12 @@ export function Ajustes() {
                 {/* Google Drive Avançado */}
                 <div style="border-top:1px solid var(--border);padding-top:var(--sp-3);">
                   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-2);">
-                    <div style="font-weight:600;font-size:var(--fs-sm);">Google Drive (appDataFolder)</div>
+                    <div>
+                      <div style="font-weight:600;font-size:var(--fs-sm);">Google Drive (Pasta "Finansys" no Meu Drive)</div>
+                      <div class="muted" style="font-size:var(--fs-xs);">
+                        Salva o arquivo <code>finansys_backup.json</code> dentro de uma pasta visível no seu Google Drive.
+                      </div>
+                    </div>
                     <span class={`badge ${syncStatus.value === "salvo" ? "badge--in" : ""}`}>
                       {googleUser.value ? "Conectado" : "Desconectado"}
                     </span>
@@ -867,10 +872,13 @@ export function Ajustes() {
 
                   {googleUser.value ? (
                     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface);border-radius:var(--r-md);border:1px solid var(--border);">
-                      <div class="muted" style="font-size:var(--fs-xs);">{googleUser.value.email}</div>
+                      <div>
+                        <div style="font-weight:600;font-size:var(--fs-xs);">{googleUser.value.name || "Conta Google"}</div>
+                        <div class="muted" style="font-size:var(--fs-xs);">{googleUser.value.email}</div>
+                      </div>
                       <div style="display:flex;gap:6px;">
                         <button type="button" class="btn btn--secondary" style="font-size:var(--fs-xs);min-height:30px;" onClick={() => void realizarBackupDrive()}>
-                          Backup no Drive
+                          <Icon name="cloud" /> Fazer Backup Agora
                         </button>
                         <button type="button" class="btn btn--danger" style="font-size:var(--fs-xs);min-height:30px;" onClick={desconectarGoogleDrive}>
                           Desconectar
@@ -879,9 +887,13 @@ export function Ajustes() {
                     </div>
                   ) : (
                     <div class="stack" style="gap:var(--sp-2);">
+                      <p class="muted" style="font-size:var(--fs-xs);margin:0;">
+                        Para vincular seu Google Drive diretamente pelo navegador, a Google exige um <b>Google Client ID</b> (OAuth 2.0). 
+                        Se você não possui um Client ID, utilize a <b>Nuvem do Finansys</b> (acima) ou o <b>Backup em Arquivo (.json)</b> (abaixo).
+                      </p>
                       <input
                         class="input"
-                        placeholder="Google Client ID (opcional)"
+                        placeholder="Google Client ID (ex: 123456...apps.googleusercontent.com)"
                         defaultValue={localStorage.getItem("g_client_id") || ""}
                         onBlur={(e) => localStorage.setItem("g_client_id", e.currentTarget.value.trim())}
                         style="font-size:var(--fs-xs);"

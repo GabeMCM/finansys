@@ -69,7 +69,7 @@ export async function conectarGoogleDrive(clientId: string): Promise<boolean> {
 
       const client = google.accounts.oauth2.initTokenClient({
         client_id: clientId,
-        scope: "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+        scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
         // deno-lint-ignore no-explicit-any
         callback: async (response: any) => {
           if (response.error) {
@@ -125,7 +125,45 @@ export async function desconectarGoogleDrive() {
 }
 
 /**
- * Envia o backup completo da base para a pasta appDataFolder do Google Drive.
+ * Localiza ou cria a pasta visível "Finansys" na raiz do Meu Drive.
+ */
+async function obterOuCriarPastaFinansys(token: string): Promise<string> {
+  const query = encodeURIComponent("name = 'Finansys' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+  const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`;
+  const searchRes = await fetch(searchUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (searchRes.ok) {
+    const data = await searchRes.json();
+    if (data.files && data.files.length > 0) {
+      return data.files[0].id;
+    }
+  }
+
+  // Cria a pasta Finansys visível na raiz
+  const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: "Finansys",
+      mimeType: "application/vnd.google-apps.folder",
+    }),
+  });
+
+  if (!createRes.ok) {
+    throw new Error("Não foi possível criar a pasta Finansys no Google Drive.");
+  }
+
+  const created = await createRes.json();
+  return created.id;
+}
+
+/**
+ * Envia o backup completo da base para a pasta visível Finansys do Google Drive.
  */
 export async function realizarBackupDrive(): Promise<boolean> {
   if (!tokenInMemory || !navigator.onLine) {
@@ -147,10 +185,12 @@ export async function realizarBackupDrive(): Promise<boolean> {
       return false;
     }
 
-    const content = JSON.stringify(payload);
+    const content = JSON.stringify(payload, null, 2);
+    const folderId = await obterOuCriarPastaFinansys(tokenInMemory);
 
-    // 1. Procura se o arquivo já existe na appDataFolder
-    const listUrl = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_FILE_NAME}'&fields=files(id,name)`;
+    // 1. Procura se o arquivo já existe na pasta Finansys
+    const fileQuery = encodeURIComponent(`'${folderId}' in parents and name = '${DRIVE_FILE_NAME}' and trashed = false`);
+    const listUrl = `https://www.googleapis.com/drive/v3/files?q=${fileQuery}&fields=files(id,name)`;
     const listRes = await fetch(listUrl, {
       headers: { Authorization: `Bearer ${tokenInMemory}` },
     });
@@ -167,7 +207,7 @@ export async function realizarBackupDrive(): Promise<boolean> {
     const listData = await listRes.json();
     const existingFile = listData.files?.[0];
 
-    // 2. Se já existe, atualiza via PATCH; se não, cria via POST
+    // 2. Se já existe, atualiza via PATCH; se não, cria via POST multipart
     if (existingFile) {
       const updateUrl = `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`;
       const updateRes = await fetch(updateUrl, {
@@ -182,7 +222,7 @@ export async function realizarBackupDrive(): Promise<boolean> {
     } else {
       const metadata = {
         name: DRIVE_FILE_NAME,
-        parents: ["appDataFolder"],
+        parents: [folderId],
       };
 
       const boundary = "-------314159265358979323846";
@@ -221,23 +261,48 @@ export async function realizarBackupDrive(): Promise<boolean> {
 }
 
 /**
- * Busca e restaura o backup da appDataFolder do Google Drive com merge Last-Write-Wins.
+ * Busca e restaura o backup da pasta Finansys do Google Drive.
  */
 export async function restaurarDoDrive(): Promise<boolean> {
   if (!tokenInMemory || !navigator.onLine) return false;
 
   try {
-    const listUrl = `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_FILE_NAME}'&fields=files(id,name,modifiedTime)`;
-    const listRes = await fetch(listUrl, {
+    let existingFile: { id: string; modifiedTime?: string } | null = null;
+
+    // 1. Procura na pasta visível Finansys
+    const folderQuery = encodeURIComponent("name = 'Finansys' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+    const folderRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${folderQuery}&fields=files(id)`, {
       headers: { Authorization: `Bearer ${tokenInMemory}` },
     });
 
-    if (!listRes.ok) return false;
-    const listData = await listRes.json();
-    const existingFile = listData.files?.[0];
+    if (folderRes.ok) {
+      const folderData = await folderRes.json();
+      const folderId = folderData.files?.[0]?.id;
+      if (folderId) {
+        const fileQuery = encodeURIComponent(`'${folderId}' in parents and name = '${DRIVE_FILE_NAME}' and trashed = false`);
+        const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${fileQuery}&fields=files(id,name,modifiedTime)`, {
+          headers: { Authorization: `Bearer ${tokenInMemory}` },
+        });
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          existingFile = listData.files?.[0] || null;
+        }
+      }
+    }
+
+    // 2. Fallback de compatibilidade: procura na appDataFolder caso venha de versão antiga
+    if (!existingFile) {
+      const appDataRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_FILE_NAME}'&fields=files(id,name,modifiedTime)`,
+        { headers: { Authorization: `Bearer ${tokenInMemory}` } }
+      );
+      if (appDataRes.ok) {
+        const appData = await appDataRes.json();
+        existingFile = appData.files?.[0] || null;
+      }
+    }
 
     if (!existingFile) {
-      // Primeiro acesso com esta conta, nenhum backup remoto ainda
       console.log("[Google Drive] Nenhum arquivo de backup encontrado no Google Drive.");
       syncStatus.value = "salvo";
       return true;
@@ -265,3 +330,4 @@ export async function restaurarDoDrive(): Promise<boolean> {
   }
   return false;
 }
+
