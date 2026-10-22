@@ -3,4 +3,5 @@ node_modules
 .direnv
 .vite
 .envrc
+.env
 dist
