@@ -11,7 +11,6 @@ import { ToastContainer } from "./Toast.tsx";
 import { useLive } from "../data/useLive.ts";
 import { anos, empresas } from "../data/repo.ts";
 import { cloudSyncStatus, cloudUltimoBackup, cloudUser } from "../data/cloudSync.ts";
-import { googleUser, syncStatus, ultimoBackup } from "../data/driveSync.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
 
 export const NAV: { href: string; label: string; icon: IconName }[] = [
@@ -140,10 +139,9 @@ export function AppShell({ route, children }: { route: string; children: Compone
 
             {/* Status do Backup em Nuvem */}
             {(() => {
-              const isCloud = Boolean(cloudUser.value);
-              const status = isCloud ? cloudSyncStatus.value : syncStatus.value;
-              const ultimo = isCloud ? cloudUltimoBackup.value : ultimoBackup.value;
-              const email = isCloud ? cloudUser.value?.email : googleUser.value?.email;
+              const status = cloudSyncStatus.value;
+              const ultimo = cloudUltimoBackup.value;
+              const email = cloudUser.value?.email;
 
               return (
                 <a

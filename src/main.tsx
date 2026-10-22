@@ -9,7 +9,6 @@ import { Placeholder } from "./pages/Placeholder.tsx";
 import { Projecoes } from "./pages/Projecoes.tsx";
 import { Relatorios } from "./pages/Relatorios.tsx";
 import { initCloudSync } from "./data/cloudSync.ts";
-import { initDriveSync } from "./data/driveSync.ts";
 import { initInactivityGuard } from "./data/inactivityGuard.ts";
 import { loadState } from "./state.ts";
 import "./styles/tokens.css";
@@ -35,7 +34,6 @@ function App() {
 
 loadState().finally(() => {
   initCloudSync();
-  initDriveSync();
   initInactivityGuard();
   render(<App />, document.getElementById("app")!);
 });

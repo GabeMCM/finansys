@@ -23,7 +23,7 @@ self.addEventListener("activate", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
-  // Não intercepta chamadas para APIs externas como Google Drive ou BCB
+  // Não intercepta chamadas para APIs externas como Banco Central (BCB)
   if (!e.request.url.startsWith(self.location.origin)) return;
 
   e.respondWith(

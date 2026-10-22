@@ -130,4 +130,13 @@ Deno.test("API Auth & Sync: suporte multi-dispositivo seguro e proteção de bac
   const dataCheck = await resPullCheck?.json();
   assertEquals(dataCheck.payload.data.empresas.length, 1);
   assertEquals(dataCheck.payload.data.lancamentos.length, 1);
+
+  // 7. Limpeza automática da base de teste
+  try {
+    const { getDb } = await import("./api.ts");
+    const db = await getDb();
+    await db.dropDatabase();
+  } catch (_e) {
+    // ignore
+  }
 });

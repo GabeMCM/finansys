@@ -9,7 +9,6 @@ import {
   desconectarConta,
   sincronizarInteligente,
 } from "../data/cloudSync.ts";
-import { googleUser, syncStatus, ultimoBackup } from "../data/driveSync.ts";
 import { applyTheme, theme } from "../state.ts";
 
 interface MobileUserMenuProps {
@@ -44,9 +43,8 @@ export function MobileUserMenu({ onOpenAuth }: MobileUserMenuProps) {
   }, [aberto]);
 
   const user = cloudUser.value;
-  const isCloud = Boolean(user);
-  const status = isCloud ? cloudSyncStatus.value : syncStatus.value;
-  const ultimo = isCloud ? cloudUltimoBackup.value : ultimoBackup.value;
+  const status = cloudSyncStatus.value;
+  const ultimo = cloudUltimoBackup.value;
   const isSyncing = status === "salvando";
 
   const inicial = user?.nome

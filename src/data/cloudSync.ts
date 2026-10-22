@@ -2,7 +2,6 @@ import { signal } from "@preact/signals";
 import { toast } from "../components/Toast.tsx";
 import { dumpDatabase, isRestoring, limparBancoLocal, restoreDatabase } from "./backup.ts";
 import { db, changes } from "./db.ts";
-import { googleUser, syncStatus, ultimoBackup } from "./driveSync.ts";
 import { resetInactivityTimer } from "./inactivityGuard.ts";
 import { anoAtivo, empresaAtiva, loadState } from "../state.ts";
 
@@ -459,20 +458,13 @@ export async function limparDadosLocaisCompletos(): Promise<void> {
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(LAST_SYNC_KEY);
   localStorage.removeItem("finansys_auth_prompted");
-  localStorage.removeItem("g_drive_access_token");
-  localStorage.removeItem("g_drive_user");
 
   // 3. Reseta os estados da nuvem
   cloudUser.value = null;
   cloudSyncStatus.value = "desconectado";
   cloudUltimoBackup.value = null;
 
-  // 4. Reseta os estados do Google Drive
-  googleUser.value = null;
-  syncStatus.value = "desconectado";
-  ultimoBackup.value = null;
-
-  // 5. Reseta seleção de empresa e ano
+  // 4. Reseta seleção de empresa e ano
   empresaAtiva.value = null;
   anoAtivo.value = new Date().getFullYear();
 

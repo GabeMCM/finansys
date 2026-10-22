@@ -44,7 +44,8 @@ export async function getDb(): Promise<Db> {
 
       _mongoClient = new MongoClient(uri);
       await _mongoClient.connect();
-      const database = _mongoClient.db("finansys");
+      const dbName = Deno.env.get("DENO_TESTING") === "true" ? "finansys_test" : "finansys";
+      const database = _mongoClient.db(dbName);
 
       // Índices de alta performance e integridade
       try {

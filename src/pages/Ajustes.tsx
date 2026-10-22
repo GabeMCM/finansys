@@ -8,7 +8,6 @@ import { ModalReplicacao } from "../components/ModalReplicacao.tsx";
 import { toast } from "../components/Toast.tsx";
 import { dumpDatabase, restoreDatabase } from "../data/backup.ts";
 import { atualizarNomePerfil, cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem, puxarBackupNuvem } from "../data/cloudSync.ts";
-import { conectarGoogleDrive, desconectarGoogleDrive, googleUser, realizarBackupDrive, restaurarDoDrive, syncStatus, ultimoBackup } from "../data/driveSync.ts";
 import { getInactivityTimeout, inactivityTimeoutSignal, lockScreenNow, setInactivityTimeout } from "../data/inactivityGuard.ts";
 import { anos, categorias, contas, empresas, projecoes } from "../data/repo.ts";
 import { calcularBaseProjecoes, calcularValorVinculado } from "../data/calc.ts";
@@ -37,7 +36,6 @@ export function Ajustes() {
 
   // Estado de Autenticação / Finansys Cloud Vault
   const [modalAuthAberto, setModalAuthAberto] = useState(false);
-  const [mostrarDrive, setMostrarDrive] = useState(false);
   const [modalEditarNomePerfil, setModalEditarNomePerfil] = useState<string | null>(null);
 
   // Live data
@@ -776,146 +774,6 @@ export function Ajustes() {
                 </div>
               )}
             </div>
-          </section>
-
-          {/* ================= OUTRAS OPÇÕES DE BACKUP (RECOLHÍVEL) ================= */}
-          <section class="card">
-            <div class="card__head">
-              <div>
-                <h2 class="card__title">Opções Manuais & Google Drive</h2>
-                <p class="muted" style="font-size:var(--fs-xs);">
-                  Exportação manual em arquivo (.json) ou integração direta com Google Drive.
-                </p>
-              </div>
-              <button
-                type="button"
-                class="btn btn--ghost"
-                style="font-size:var(--fs-xs);min-height:30px;"
-                onClick={() => setMostrarDrive(!mostrarDrive)}
-              >
-                {mostrarDrive ? "Ocultar" : "Mostrar Opções"} <Icon name="chevron" />
-              </button>
-            </div>
-
-            {mostrarDrive && (
-              <div class="stack" style="gap:var(--sp-4);padding-top:var(--sp-2);">
-                {/* Backup Local em Arquivo */}
-                <div style="border-top:1px solid var(--border);padding-top:var(--sp-3);">
-                  <div style="font-weight:600;font-size:var(--fs-sm);margin-bottom:var(--sp-2);">
-                    Cópia de Segurança Local (.json)
-                  </div>
-                  <div style="display:flex;gap:var(--sp-2);flex-wrap:wrap;">
-                    <button
-                      type="button"
-                      class="btn btn--secondary"
-                      onClick={async () => {
-                        const dump = await dumpDatabase();
-                        const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `finansys-backup-${new Date().toISOString().slice(0, 10)}.json`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                    >
-                      <Icon name="download" /> Baixar Arquivo de Backup
-                    </button>
-
-                    <label class="btn btn--secondary" style="cursor:pointer;">
-                      <Icon name="plus" /> Restaurar de Arquivo (.json)
-                      <input
-                        type="file"
-                        accept=".json,application/json"
-                        style="display:none;"
-                        onChange={(e) => {
-                          const file = e.currentTarget.files?.[0];
-                          if (!file) return;
-                          const reader = new FileReader();
-                          reader.onload = async () => {
-                            try {
-                              const parsed = JSON.parse(reader.result as string);
-                              const ok = await confirmarAcao({
-                                titulo: "Restaurar Backup",
-                                mensagem: "Restaurar dados do arquivo selecionado? Isso mesclará as empresas, contas e lançamentos com os dados atuais.",
-                                rotuloConfirmar: "Restaurar Dados",
-                                tipo: "primary",
-                              });
-                              if (ok) {
-                                const res = await restoreDatabase(parsed, "merge");
-                                toast.success(`Sucesso! ${res.totalImportados} registros mesclados.`);
-                              }
-                            } catch (err) {
-                              toast.error("Erro ao ler arquivo: " + String(err));
-                            }
-                          };
-                          reader.readAsText(file);
-                        }}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                {/* Google Drive Avançado */}
-                <div style="border-top:1px solid var(--border);padding-top:var(--sp-3);">
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--sp-2);">
-                    <div>
-                      <div style="font-weight:600;font-size:var(--fs-sm);">Google Drive (Pasta "Finansys" no Meu Drive)</div>
-                      <div class="muted" style="font-size:var(--fs-xs);">
-                        Salva o arquivo <code>finansys_backup.json</code> dentro de uma pasta visível no seu Google Drive.
-                      </div>
-                    </div>
-                    <span class={`badge ${syncStatus.value === "salvo" ? "badge--in" : ""}`}>
-                      {googleUser.value ? "Conectado" : "Desconectado"}
-                    </span>
-                  </div>
-
-                  {googleUser.value ? (
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--surface);border-radius:var(--r-md);border:1px solid var(--border);">
-                      <div>
-                        <div style="font-weight:600;font-size:var(--fs-xs);">{googleUser.value.name || "Conta Google"}</div>
-                        <div class="muted" style="font-size:var(--fs-xs);">{googleUser.value.email}</div>
-                      </div>
-                      <div style="display:flex;gap:6px;">
-                        <button type="button" class="btn btn--secondary" style="font-size:var(--fs-xs);min-height:30px;" onClick={() => void realizarBackupDrive()}>
-                          <Icon name="cloud" /> Fazer Backup Agora
-                        </button>
-                        <button type="button" class="btn btn--danger" style="font-size:var(--fs-xs);min-height:30px;" onClick={desconectarGoogleDrive}>
-                          Desconectar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div class="stack" style="gap:var(--sp-2);">
-                      <p class="muted" style="font-size:var(--fs-xs);margin:0;">
-                        Para vincular seu Google Drive diretamente pelo navegador, a Google exige um <b>Google Client ID</b> (OAuth 2.0). 
-                        Se você não possui um Client ID, utilize a <b>Nuvem do Finansys</b> (acima) ou o <b>Backup em Arquivo (.json)</b> (abaixo).
-                      </p>
-                      <input
-                        class="input"
-                        placeholder="Google Client ID (ex: 123456...apps.googleusercontent.com)"
-                        defaultValue={localStorage.getItem("g_client_id") || ""}
-                        onBlur={(e) => localStorage.setItem("g_client_id", e.currentTarget.value.trim())}
-                        style="font-size:var(--fs-xs);"
-                      />
-                      <button
-                        type="button"
-                        class="btn btn--secondary"
-                        onClick={async () => {
-                          const cid = localStorage.getItem("g_client_id") || prompt("Informe seu Google Client ID:") || "";
-                          if (cid) {
-                            localStorage.setItem("g_client_id", cid.trim());
-                            await conectarGoogleDrive(cid.trim());
-                          }
-                        }}
-                      >
-                        <Icon name="cloud" /> Conectar via Google Drive
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </section>
 
           {/* Seção Backup em Arquivo Local */}
