@@ -364,129 +364,135 @@ export function Investimentos() {
               </div>
             ) : (
               /* Visualização em Lista / Tabela */
-              <div class="table-wrap">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th style="text-align:left; min-width:200px;">Reserva / Caixinha</th>
-                      <th style="text-align:right;">Saldo Inicial</th>
-                      <th style="text-align:right;">Aportes (+)</th>
-                      <th style="text-align:right;">Resgates (−)</th>
-                      <th style="text-align:right;">Rendimentos (+)</th>
-                      <th style="text-align:right; min-width:130px;">Saldo Atual</th>
-                      <th style="text-align:left; min-width:130px;">Meta / Progresso</th>
-                      <th style="text-align:center; min-width:140px;">Ações Rápidas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {carteira.reservas.map((resumo) => {
-                      const r = resumo.reserva;
-                      const corHex = CORES_PALETA_MAP[r.cor || "emerald"] || CORES_PALETA_MAP.emerald;
-                      const meta = r.metaCentavos || 0;
-                      const progresso = resumo.progressoMetaPct !== undefined ? resumo.progressoMetaPct : null;
+              <div>
+                <div class="matriz-scroll-hint only-mobile" style="margin-bottom:var(--sp-2);">
+                  <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
+                  <span>Deslize horizontalmente para ver valores e ações</span>
+                </div>
+                <div class="table-wrap table-wrap--mobile-bleed">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th class="col-reserva" style="text-align:left;">Reserva / Caixinha</th>
+                        <th style="text-align:right;">Saldo Inicial</th>
+                        <th style="text-align:right;">Aportes (+)</th>
+                        <th style="text-align:right;">Resgates (−)</th>
+                        <th style="text-align:right;">Rendimentos (+)</th>
+                        <th style="text-align:right; min-width:110px;">Saldo Atual</th>
+                        <th style="text-align:left; min-width:110px;">Meta / Progresso</th>
+                        <th style="text-align:center; min-width:130px;">Ações Rápidas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {carteira.reservas.map((resumo) => {
+                        const r = resumo.reserva;
+                        const corHex = CORES_PALETA_MAP[r.cor || "emerald"] || CORES_PALETA_MAP.emerald;
+                        const meta = r.metaCentavos || 0;
+                        const progresso = resumo.progressoMetaPct !== undefined ? resumo.progressoMetaPct : null;
 
-                      return (
-                        <tr key={r.id}>
-                          <td>
-                            <div style="display:flex; align-items:center; gap:8px;">
-                              <span style={`width:10px; height:10px; border-radius:50%; background:${corHex}; flex-shrink:0;`} />
-                              <div>
-                                <strong style="color:var(--text); display:block;">{r.nome}</strong>
-                                {r.descricao && (
-                                  <span class="muted" style="font-size:var(--fs-xs); display:block;">{r.descricao}</span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td class="num muted" style="text-align:right;">
-                            {money(resumo.saldoInicial)}
-                          </td>
-                          <td class="num tone-in" style="text-align:right; font-weight:600;">
-                            {money(resumo.totalAportesReal)}
-                          </td>
-                          <td class="num tone-aporte" style="text-align:right; font-weight:600;">
-                            {money(resumo.totalResgatesReal)}
-                          </td>
-                          <td class="num tone-rendimento" style="text-align:right; font-weight:600;">
-                            {money(resumo.totalRendimentosReal)}
-                          </td>
-                          <td class="num" style="text-align:right; font-weight:800; font-size:var(--fs-md); color:var(--text);">
-                            {money(resumo.saldoAtualReal)}
-                          </td>
-                          <td>
-                            {meta > 0 ? (
-                              <div style="min-width:110px;">
-                                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
-                                  <span class="muted">{money(meta)}</span>
-                                  <strong style={`color:${progresso! >= 100 ? "var(--in)" : "var(--primary)"};`}>
-                                    {progresso}%
-                                  </strong>
-                                </div>
-                                <div class="progress" style="height:5px;">
-                                  <i style={`width:${Math.min(100, Math.max(0, progresso!))}%; background:${progresso! >= 100 ? "var(--in)" : corHex};`} />
+                        return (
+                          <tr key={r.id}>
+                            <td class="col-reserva">
+                              <div style="display:flex; align-items:center; gap:6px;">
+                                <span style={`width:8px; height:8px; border-radius:50%; background:${corHex}; flex-shrink:0;`} />
+                                <div style="min-width:0;">
+                                  <strong class="reserva-nome" style="color:var(--text); display:block;" title={r.nome}>{r.nome}</strong>
+                                  {r.descricao && (
+                                    <span class="muted hide-mobile" style="font-size:var(--fs-xs); display:block;">{r.descricao}</span>
+                                  )}
                                 </div>
                               </div>
-                            ) : (
-                              <span class="muted" style="font-size:11px; font-style:italic;">Livre</span>
-                            )}
-                          </td>
-                          <td style="text-align:center;">
-                            <div style="display:inline-flex; align-items:center; gap:4px;">
-                              <button
-                                type="button"
-                                class="btn btn--secondary btn--sm"
-                                style="padding:2px 8px; font-size:11px; min-height:26px;"
-                                onClick={() => setModalMovimento({ reservaId: r.id, tipo: "aporte" })}
-                                title="Novo Aporte nesta reserva"
-                              >
-                                <Icon name="arrowDown" style="width:11px; height:11px; color:var(--in);" /> Aporte
-                              </button>
-                              <button
-                                type="button"
-                                class="btn btn--secondary btn--sm"
-                                style="padding:2px 8px; font-size:11px; min-height:26px;"
-                                onClick={() => setModalMovimento({ reservaId: r.id, tipo: "resgate" })}
-                                title="Novo Resgate desta reserva"
-                              >
-                                <Icon name="arrowUp" style="width:11px; height:11px; color:var(--aporte);" /> Resgate
-                              </button>
-                              <button
-                                type="button"
-                                class="btn btn--ghost btn--icon"
-                                style="width:26px; height:26px; min-height:26px;"
-                                title="Editar Reserva"
-                                onClick={() => setModalReservaAberta(r)}
-                              >
-                                <Icon name="pencil" style="width:13px; height:13px;" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td style="font-weight:700;">Total da Carteira</td>
-                      <td class="num muted" style="text-align:right;">
-                        {money(carteira.reservas.reduce((s, r) => s + r.saldoInicial, 0))}
-                      </td>
-                      <td class="num tone-in" style="text-align:right; font-weight:700;">
-                        {money(carteira.totalAportadoAnoReal)}
-                      </td>
-                      <td class="num tone-aporte" style="text-align:right; font-weight:700;">
-                        {money(carteira.totalResgatadoAnoReal)}
-                      </td>
-                      <td class="num tone-rendimento" style="text-align:right; font-weight:700;">
-                        {money(carteira.totalRendimentoAnoReal)}
-                      </td>
-                      <td class="num" style="text-align:right; font-weight:800; font-size:var(--fs-md); color:var(--primary);">
-                        {money(carteira.totalPatrimonioReal)}
-                      </td>
-                      <td colSpan={2}></td>
-                    </tr>
-                  </tfoot>
-                </table>
+                            </td>
+                            <td class="num muted" style="text-align:right;">
+                              {money(resumo.saldoInicial)}
+                            </td>
+                            <td class="num tone-in" style="text-align:right; font-weight:600;">
+                              {money(resumo.totalAportesReal)}
+                            </td>
+                            <td class="num tone-aporte" style="text-align:right; font-weight:600;">
+                              {money(resumo.totalResgatesReal)}
+                            </td>
+                            <td class="num tone-rendimento" style="text-align:right; font-weight:600;">
+                              {money(resumo.totalRendimentosReal)}
+                            </td>
+                            <td class="num" style="text-align:right; font-weight:800; font-size:var(--fs-md); color:var(--text);">
+                              {money(resumo.saldoAtualReal)}
+                            </td>
+                            <td>
+                              {meta > 0 ? (
+                                <div style="min-width:110px;">
+                                  <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
+                                    <span class="muted">{money(meta)}</span>
+                                    <strong style={`color:${progresso! >= 100 ? "var(--in)" : "var(--primary)"};`}>
+                                      {progresso}%
+                                    </strong>
+                                  </div>
+                                  <div class="progress" style="height:5px;">
+                                    <i style={`width:${Math.min(100, Math.max(0, progresso!))}%; background:${progresso! >= 100 ? "var(--in)" : corHex};`} />
+                                  </div>
+                                </div>
+                              ) : (
+                                <span class="muted" style="font-size:11px; font-style:italic;">Livre</span>
+                              )}
+                            </td>
+                            <td style="text-align:center;">
+                              <div style="display:inline-flex; align-items:center; gap:4px;">
+                                <button
+                                  type="button"
+                                  class="btn btn--secondary btn--sm"
+                                  style="padding:2px 8px; font-size:11px; min-height:26px;"
+                                  onClick={() => setModalMovimento({ reservaId: r.id, tipo: "aporte" })}
+                                  title="Novo Aporte nesta reserva"
+                                >
+                                  <Icon name="arrowDown" style="width:11px; height:11px; color:var(--in);" /> Aporte
+                                </button>
+                                <button
+                                  type="button"
+                                  class="btn btn--secondary btn--sm"
+                                  style="padding:2px 8px; font-size:11px; min-height:26px;"
+                                  onClick={() => setModalMovimento({ reservaId: r.id, tipo: "resgate" })}
+                                  title="Novo Resgate desta reserva"
+                                >
+                                  <Icon name="arrowUp" style="width:11px; height:11px; color:var(--aporte);" /> Resgate
+                                </button>
+                                <button
+                                  type="button"
+                                  class="btn btn--ghost btn--icon"
+                                  style="width:26px; height:26px; min-height:26px;"
+                                  title="Editar Reserva"
+                                  onClick={() => setModalReservaAberta(r)}
+                                >
+                                  <Icon name="pencil" style="width:13px; height:13px;" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td class="col-reserva" style="font-weight:700;">Total da Carteira</td>
+                        <td class="num muted" style="text-align:right;">
+                          {money(carteira.reservas.reduce((s, r) => s + r.saldoInicial, 0))}
+                        </td>
+                        <td class="num tone-in" style="text-align:right; font-weight:700;">
+                          {money(carteira.totalAportadoAnoReal)}
+                        </td>
+                        <td class="num tone-aporte" style="text-align:right; font-weight:700;">
+                          {money(carteira.totalResgatadoAnoReal)}
+                        </td>
+                        <td class="num tone-rendimento" style="text-align:right; font-weight:700;">
+                          {money(carteira.totalRendimentoAnoReal)}
+                        </td>
+                        <td class="num" style="text-align:right; font-weight:800; font-size:var(--fs-md); color:var(--primary);">
+                          {money(carteira.totalPatrimonioReal)}
+                        </td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             )}
           </div>
@@ -494,7 +500,7 @@ export function Investimentos() {
 
         {/* Bloco Inferior: Abas de Extrato e Evolução Mensal */}
         {resList.length > 0 && (
-          <section class="card" style="margin-top: var(--sp-2);">
+          <section class="card card--table" style="margin-top: var(--sp-2);">
             {/* Header com Alternância de Abas e Filtros no Padrão Finansys */}
             <div
               style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: var(--sp-3); border-bottom: 1px solid var(--border); padding-bottom: var(--sp-3);"
@@ -631,86 +637,92 @@ export function Investimentos() {
 
             {/* ABA 2: Evolução Mensal (Projeção × Real) via Data Table */}
             {abaInferior === "evolucao" && (
-              <div class="table-wrap">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th style="min-width: 130px;">Mês</th>
-                      <th style="color: var(--in);">Aportes (Real / Proj)</th>
-                      <th style="color: var(--aporte);">Resgates (Real / Proj)</th>
-                      <th style="color: var(--rendimento);">Rendimento (Real / Proj)</th>
-                      <th style="color: var(--primary);">Saldo Acumulado (Real / Proj)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {MONTHS.map((mNome, mIdx) => {
-                      const isAtual = mIdx === mesAtual;
+              <div>
+                <div class="matriz-scroll-hint only-mobile" style="margin-bottom:var(--sp-2);">
+                  <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
+                  <span>Deslize horizontalmente para ver projeção e realizado</span>
+                </div>
+                <div class="table-wrap table-wrap--mobile-bleed">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th class="col-mes-card" style="text-align:left;">Mês</th>
+                        <th style="color: var(--in); text-align:right;">Aportes (Real / Proj)</th>
+                        <th style="color: var(--aporte); text-align:right;">Resgates (Real / Proj)</th>
+                        <th style="color: var(--rendimento); text-align:right;">Rendimento (Real / Proj)</th>
+                        <th style="color: var(--primary); text-align:right;">Saldo Acumulado (Real / Proj)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {MONTHS.map((mNome, mIdx) => {
+                        const isAtual = mIdx === mesAtual;
 
-                      // Se houver filtro por reserva específica ou consolidado
-                      const reservasAlvo =
-                        filtroReservaId === "todas"
-                          ? carteira.reservas
-                          : carteira.reservas.filter((r) => r.reserva.id === filtroReservaId);
+                        // Se houver filtro por reserva específica ou consolidado
+                        const reservasAlvo =
+                          filtroReservaId === "todas"
+                            ? carteira.reservas
+                            : carteira.reservas.filter((r) => r.reserva.id === filtroReservaId);
 
-                      let apReal = 0;
-                      let apProj = 0;
-                      let resgReal = 0;
-                      let resgProj = 0;
-                      let rendReal = 0;
-                      let rendProj = 0;
-                      let saldoReal = 0;
-                      let saldoProj = 0;
+                        let apReal = 0;
+                        let apProj = 0;
+                        let resgReal = 0;
+                        let resgProj = 0;
+                        let rendReal = 0;
+                        let rendProj = 0;
+                        let saldoReal = 0;
+                        let saldoProj = 0;
 
-                      for (const r of reservasAlvo) {
-                        saldoReal += r.evolucaoMensalReal[mIdx];
-                        saldoProj += r.evolucaoMensalProj[mIdx];
+                        for (const r of reservasAlvo) {
+                          saldoReal += r.evolucaoMensalReal[mIdx];
+                          saldoProj += r.evolucaoMensalProj[mIdx];
 
-                        // Movimentos do mês
-                        const movs = movList.filter((m) => m.reservaId === r.reserva.id && m.mes === mIdx);
-                        for (const m of movs) {
-                          if (m.tipo === "aporte") apReal += m.valor;
-                          else if (m.tipo === "resgate") resgReal += m.valor;
-                          else if (m.tipo === "rendimento") rendReal += m.valor;
+                          // Movimentos do mês
+                          const movs = movList.filter((m) => m.reservaId === r.reserva.id && m.mes === mIdx);
+                          for (const m of movs) {
+                            if (m.tipo === "aporte") apReal += m.valor;
+                            else if (m.tipo === "resgate") resgReal += m.valor;
+                            else if (m.tipo === "rendimento") rendReal += m.valor;
+                          }
+
+                          // Projeções do mês
+                          const p = projList.find((item) => item.reservaId === r.reserva.id && item.mes === mIdx);
+                          if (p) {
+                            apProj += p.valorAporte;
+                            resgProj += p.valorResgate;
+                            rendProj += p.valorRendimento;
+                          }
                         }
 
-                        // Projeções do mês
-                        const p = projList.find((item) => item.reservaId === r.reserva.id && item.mes === mIdx);
-                        if (p) {
-                          apProj += p.valorAporte;
-                          resgProj += p.valorResgate;
-                          rendProj += p.valorRendimento;
-                        }
-                      }
-
-                      return (
-                        <tr key={mIdx}>
-                          <td class={isAtual ? "is-current-month" : ""}>
-                            <div style="display:flex; align-items:center; gap:6px;">
-                              <span>{mNome}</span>
-                              {isAtual && <span class="badge badge--in" style="font-size: 0.65rem;">Atual</span>}
-                            </div>
-                          </td>
-                          <td class={isAtual ? "is-current-month" : ""}>
-                            <span style="color: var(--in); font-weight: 600;">{money(apReal)}</span>
-                            <span style="color: var(--text-faint); margin-left: 6px;">/ {money(apProj)}</span>
-                          </td>
-                          <td class={isAtual ? "is-current-month" : ""}>
-                            <span style="color: var(--aporte); font-weight: 600;">{money(resgReal)}</span>
-                            <span style="color: var(--text-faint); margin-left: 6px;">/ {money(resgProj)}</span>
-                          </td>
-                          <td class={isAtual ? "is-current-month" : ""}>
-                            <span style="color: var(--rendimento); font-weight: 600;">{money(rendReal)}</span>
-                            <span style="color: var(--text-faint); margin-left: 6px;">/ {money(rendProj)}</span>
-                          </td>
-                          <td class={isAtual ? "is-current-month" : ""}>
-                            <span style="color: var(--primary); font-weight: 700;">{money(saldoReal)}</span>
-                            <span style="color: var(--text-faint); margin-left: 6px;">/ {money(saldoProj)}</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                        return (
+                          <tr key={mIdx}>
+                            <td class={`col-mes-card ${isAtual ? "is-current-month" : ""}`}>
+                              <div style="display:flex; align-items:center; gap:4px;">
+                                <span>{mNome}</span>
+                                {isAtual && <span class="badge badge--in hide-mobile" style="font-size: 0.65rem;">Atual</span>}
+                              </div>
+                            </td>
+                            <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
+                              <span style="color: var(--in); font-weight: 600;">{money(apReal)}</span>
+                              <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(apProj)}</span>
+                            </td>
+                            <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
+                              <span style="color: var(--aporte); font-weight: 600;">{money(resgReal)}</span>
+                              <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(resgProj)}</span>
+                            </td>
+                            <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
+                              <span style="color: var(--rendimento); font-weight: 600;">{money(rendReal)}</span>
+                              <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(rendProj)}</span>
+                            </td>
+                            <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
+                              <span style="color: var(--primary); font-weight: 700;">{money(saldoReal)}</span>
+                              <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(saldoProj)}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </section>

@@ -665,7 +665,7 @@ export function Relatorios() {
 
         {/* Bloco de Posição das Contas Bancárias */}
         {bancoList.length > 0 && (
-          <section class="card">
+          <section class="card card--table">
             <div class="card__head" style="margin-bottom: var(--sp-2);">
               <h2 class="card__title" style="display:flex; align-items:center; gap:8px;">
                 <Icon name="bank" /> Posição das Contas Bancárias
@@ -717,12 +717,17 @@ export function Relatorios() {
               </div>
             </div>
 
+            <div class="matriz-scroll-hint only-mobile" style="margin-top:var(--sp-2);">
+              <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
+              <span>Deslize horizontalmente para ver entradas, saídas e saldos</span>
+            </div>
+
             {/* Detalhamento Individual por Conta Bancária */}
-            <div class="table-wrap" style="margin-top: var(--sp-3);">
+            <div class="table-wrap table-wrap--mobile-bleed" style="margin-top: var(--sp-2);">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th style="text-align:left;">Conta Bancária</th>
+                    <th class="col-banco" style="text-align:left;">Conta Bancária</th>
                     <th style="text-align:right;">Saldo Inicial</th>
                     <th style="text-align:right;" title="Entradas no período selecionado">Entradas (+)</th>
                     <th style="text-align:right;" title="Saídas no período selecionado">Saídas (−)</th>
@@ -741,11 +746,13 @@ export function Relatorios() {
 
                     return (
                       <tr key={b.id}>
-                        <td style="font-weight:600;display:flex;align-items:center;gap:8px;">
-                          <div class="list__icon" style="width:28px;height:28px;background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--r-sm);flex-shrink:0;">
-                            <Icon name="bank" style="width:14px;height:14px;color:var(--primary);" />
+                        <td class="col-banco" style="font-weight:600;">
+                          <div style="display:flex;align-items:center;gap:6px;min-width:0;">
+                            <div class="list__icon hide-mobile" style="width:24px;height:24px;background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--r-sm);flex-shrink:0;">
+                              <Icon name="bank" style="width:12px;height:12px;color:var(--primary);" />
+                            </div>
+                            <span class="banco-nome" title={b.nome}>{b.nome}</span>
                           </div>
-                          <span>{b.nome}</span>
                         </td>
                         <td class="num muted" style="text-align:right;">
                           {money(b.saldoInicialCentavos || 0)}
@@ -835,25 +842,30 @@ export function Relatorios() {
         </div>
 
         {/* Demonstrativo Detalhado por Conta */}
-        <section class="card">
+        <section class="card card--table">
           <div class="card__head">
             <h2 class="card__title">Demonstrativo por Conta ({linhasTabela.length} itens movimentados)</h2>
+          </div>
+
+          <div class="matriz-scroll-hint only-mobile" style="margin-bottom:var(--sp-2);">
+            <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
+            <span>Deslize horizontalmente para ver categoria, valores e execução</span>
           </div>
 
           {linhasTabela.length === 0 ? (
             <p class="muted">Nenhuma conta com projeção ou lançamento no período selecionado.</p>
           ) : (
-            <div class="table-wrap">
+            <div class="table-wrap table-wrap--mobile-bleed">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>Conta</th>
+                    <th class="col-conta-dem" style="text-align:left;">Conta</th>
                     <th>Categoria</th>
                     <th>Natureza</th>
-                    <th>Projetado</th>
-                    <th>Realizado</th>
-                    <th title="Diferença entre o Realizado e o Projetado">Diferença</th>
-                    <th>Execução</th>
+                    <th style="text-align:right;">Projetado</th>
+                    <th style="text-align:right;">Realizado</th>
+                    <th style="text-align:right;" title="Diferença entre o Realizado e o Projetado">Diferença</th>
+                    <th style="text-align:right;">Execução</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -862,24 +874,26 @@ export function Relatorios() {
                     const diffSinal = SINAL[l.conta.natureza] * l.diff;
                     return (
                       <tr key={l.conta.id}>
-                        <td style="font-weight:600;">{l.conta.nome}</td>
+                        <td class="col-conta-dem" style="font-weight:600;">
+                          <span class="conta-dem-nome" title={l.conta.nome}>{l.conta.nome}</span>
+                        </td>
                         <td class="muted">{l.categoriaNome}</td>
                         <td>
                           <span class={`badge badge--${meta.tone}`}>{meta.label}</span>
                         </td>
-                        <td class="num">{money(l.proj)}</td>
-                        <td class="num" style="font-weight:700;">{money(l.real)}</td>
-                        <td class={`num ${diffSinal >= 0 ? "tone-in" : "tone-out"}`}>
+                        <td class="num" style="text-align:right;">{money(l.proj)}</td>
+                        <td class="num" style="font-weight:700;text-align:right;">{money(l.real)}</td>
+                        <td class={`num ${diffSinal >= 0 ? "tone-in" : "tone-out"}`} style="text-align:right;">
                           {signed(l.diff)}
                         </td>
-                        <td class="num muted">{l.pct.toFixed(0)}%</td>
+                        <td class="num muted" style="text-align:right;">{l.pct.toFixed(0)}%</td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={3}>Resultado Líquido do Período</td>
+                    <td class="col-conta-dem" colSpan={3}>Resultado Líquido do Período</td>
                     <td class="num">{money(resultadoLiqProj)}</td>
                     <td class="num" style="font-weight:800;color:var(--text);">{money(resultadoLiqReal)}</td>
                     <td class={`num ${resultadoLiqReal - resultadoLiqProj >= 0 ? "tone-in" : "tone-out"}`}>
