@@ -14,16 +14,18 @@ import { cloudSyncStatus, cloudUltimoBackup, cloudUser } from "../data/cloudSync
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
 
 export const NAV: { href: string; label: string; icon: IconName }[] = [
-  { href: "/", label: "Início", icon: "home" },
+  { href: "/", label: "Início", icon: "chart" },
   { href: "/projecoes", label: "Projeções", icon: "grid" },
-  { href: "/lancamentos", label: "Lançamentos", icon: "list" },
+  { href: "/realizacoes", label: "Realizações", icon: "list" },
   { href: "/investimentos", label: "Investimentos", icon: "wallet" },
-  { href: "/relatorios", label: "Relatórios", icon: "chart" },
   { href: "/ajustes", label: "Ajustes", icon: "settings" },
 ];
 
-const isActive = (route: string, href: string) =>
-  href === "/" ? route === "/" : route.startsWith(href);
+const isActive = (route: string, href: string) => {
+  if (href === "/") return route === "/" || route.startsWith("/relatorios");
+  if (href === "/realizacoes") return route.startsWith("/realizacoes") || route.startsWith("/lancamentos");
+  return route.startsWith(href);
+};
 
 function ThemeToggle({ id }: { id: string }) {
   const dark = theme.value === "dark";
@@ -63,8 +65,8 @@ export function AppShell({ route, children }: { route: string; children: Compone
           </a>
         ))}
         <div class="sidebar__foot">
-          <a id="side-new" href="#/lancamentos/novo" class="btn btn--primary">
-            <Icon name="plus" /> Novo lançamento
+          <a id="side-new" href="#/realizacoes/novo" class="btn btn--primary">
+            <Icon name="plus" /> Nova realização
           </a>
         </div>
       </aside>
@@ -193,7 +195,7 @@ export function AppShell({ route, children }: { route: string; children: Compone
       </div>
 
       {/* Mobile */}
-      <a id="fab-new" href="#/lancamentos/novo" class="fab" aria-label="Novo lançamento">
+      <a id="fab-new" href="#/realizacoes/novo" class="fab" aria-label="Nova realização">
         <Icon name="plus" />
       </a>
       <nav class="bottomnav" aria-label="Navegação">

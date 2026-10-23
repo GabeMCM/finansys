@@ -91,11 +91,22 @@ export interface Lancamento extends Base {
   reservaId?: string;
   tipoReserva?: "aporte" | "resgate";
   bancoId?: string; // Vínculo com ContaBancaria (opcional)
+  formaPagamento?: string; // Ex: "PIX", "Boleto", "Cartão de Crédito" (opcional)
 }
 
 /* ==========================================================
-   Contas Bancárias (Bancos)
+   Contas Bancárias (Bancos) & Formas de Pagamento
    ========================================================== */
+
+export const FORMAS_PAGAMENTO_PADRAO = [
+  "PIX",
+  "Boleto",
+  "Cartão de Débito",
+  "Cartão de Crédito",
+  "Transferência",
+  "Dinheiro",
+  "Débito Automático",
+] as const;
 
 export interface ContaBancaria extends Base {
   empresaId: string;
@@ -105,6 +116,7 @@ export interface ContaBancaria extends Base {
   agencia?: string;              // Agência bancária (opcional)
   numeroConta?: string;          // Número da conta com dígito (opcional)
   bancoCodigo?: string;          // Código de compensação (ex: "260", "341")
+  formasPagamento?: string[];    // Formas de pagamento aceitas/disponíveis nesta conta (ex: ["PIX", "Boleto", "Cartão de Crédito"])
   ativa: boolean;
 }
 

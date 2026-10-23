@@ -20,6 +20,7 @@ export interface ResumoRealProps {
     realizadoSemEste: number;
   };
   bancoNome?: string;
+  formaPagamento?: string;
   descricao?: string;
   obs?: string;
 }
@@ -57,6 +58,7 @@ export function ResumoPainel(props: ResumoPainelProps) {
       dividirValor,
       tetoOrcamentario,
       bancoNome,
+      formaPagamento,
       descricao,
       obs,
     } = props;
@@ -184,6 +186,16 @@ export function ResumoPainel(props: ResumoPainelProps) {
             <strong style="display:inline-flex;align-items:center;gap:4px;">
               <Icon name="bank" style="width:12px;height:12px;color:var(--primary);" />
               <span>{bancoNome}</span>
+            </strong>
+          </div>
+        )}
+
+        {formaPagamento && (
+          <div class="summary-box__row">
+            <span>Forma de Pagto:</span>
+            <strong style="display:inline-flex;align-items:center;gap:4px;">
+              <Icon name="creditCard" style="width:12px;height:12px;color:var(--text-muted);" />
+              <span>{formaPagamento}</span>
             </strong>
           </div>
         )}

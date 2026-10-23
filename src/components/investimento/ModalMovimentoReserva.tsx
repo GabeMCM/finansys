@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import { CustomSelect } from "../CustomSelect.tsx";
 import { Icon } from "../Icon.tsx";
 import { Modal } from "../Modal.tsx";
 import { MoneyInput } from "../lancamento/MoneyInput.tsx";
@@ -294,22 +295,17 @@ export function ModalMovimentoReserva({
         <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3);">
           <div class="form-group" style="margin-bottom:0;">
             <label class="form-label" for="mov-reserva">Reserva / Caixinha *</label>
-            <div class="select-wrap">
-              <select
-                id="mov-reserva"
-                class="select"
-                value={reservaId}
-                onChange={(e) => setReservaId((e.target as HTMLSelectElement).value)}
-                required
-              >
-                {reservas.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.nome}
-                  </option>
-                ))}
-              </select>
-              <Icon name="chevron" class="icon" />
-            </div>
+            <CustomSelect
+              id="mov-reserva"
+              value={reservaId}
+              options={reservas.map((r) => ({
+                value: r.id,
+                label: r.nome,
+                icon: "wallet",
+              }))}
+              onChange={(val) => setReservaId(val)}
+              placeholder="Selecione a reserva..."
+            />
           </div>
 
           <div class="form-group" style="margin-bottom:0;">
@@ -339,24 +335,22 @@ export function ModalMovimentoReserva({
                 </span>
               </span>
             </label>
-            <div class="select-wrap">
-              <select
-                id="mov-banco"
-                class="select"
-                value={bancoId}
-                onChange={(e) => setBancoId((e.target as HTMLSelectElement).value)}
-              >
-                <option value="">Nenhum banco selecionado</option>
-                {contasBancarias
+            <CustomSelect
+              id="mov-banco"
+              value={bancoId}
+              options={[
+                { value: "", label: "Nenhum banco selecionado" },
+                ...contasBancarias
                   .filter((b) => b.ativa !== false)
-                  .map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.nome}
-                    </option>
-                  ))}
-              </select>
-              <Icon name="chevron" class="icon" />
-            </div>
+                  .map((b) => ({
+                    value: b.id,
+                    label: b.nome,
+                    icon: "bank" as const,
+                  })),
+              ]}
+              onChange={(val) => setBancoId(val)}
+              placeholder="Selecione a conta bancária..."
+            />
           </div>
         )}
 
@@ -376,24 +370,22 @@ export function ModalMovimentoReserva({
                   </span>
                 </span>
               </label>
-              <div class="select-wrap">
-                <select
-                  id="mov-conta"
-                  class="select"
-                  value={contaId}
-                  onChange={(e) => setContaId((e.target as HTMLSelectElement).value)}
-                >
-                  <option value="">Nenhuma / Ajuste Direto na Reserva (Não mexe no Caixa Diário)</option>
-                  {contas
+              <CustomSelect
+                id="mov-conta"
+                value={contaId}
+                options={[
+                  { value: "", label: "Nenhuma (Ajuste Direto na Reserva)" },
+                  ...contas
                     .filter((c) => c.ativa !== false)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nome} ({c.natureza})
-                      </option>
-                    ))}
-                </select>
-                <Icon name="chevron" class="icon" />
-              </div>
+                    .map((c) => ({
+                      value: c.id,
+                      label: `${c.nome} (${c.natureza})`,
+                      icon: "grid" as const,
+                    })),
+                ]}
+                onChange={(val) => setContaId(val)}
+                placeholder="Selecione a conta operacional..."
+              />
               <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-top: 6px; display: block;">
                 {contaId
                   ? tipo === "aporte"

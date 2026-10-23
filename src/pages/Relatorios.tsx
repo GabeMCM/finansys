@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Icon } from "../components/Icon.tsx";
 import { ModalReplicacao } from "../components/ModalReplicacao.tsx";
 import { calcularPosicaoBancos } from "../data/calc.ts";
@@ -20,11 +20,34 @@ export function Relatorios() {
   const empId = empresaAtiva.value;
   const anoNum = anoAtivo.value;
 
-  // Estado do filtro com intervalo livre de datas
+  // Data atual
+  const hoje = new Date();
+  const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  const anoHoje = hoje.getFullYear();
+
+  // Estado do filtro com intervalo livre de datas: por padrão do início do ano até o dia atual
   const [dataInicio, setDataInicio] = useState<string>(`${anoNum}-01-01`);
-  const [dataFim, setDataFim] = useState<string>(`${anoNum}-12-31`);
-  const [presetAtivo, setPresetAtivo] = useState<string>("ano");
+  const [dataFim, setDataFim] = useState<string>(() => {
+    if (anoNum === anoHoje) return hojeStr;
+    if (anoNum < anoHoje) return `${anoNum}-12-31`;
+    return `${anoNum}-01-01`;
+  });
+  const [presetAtivo, setPresetAtivo] = useState<string>(() => {
+    return anoNum === anoHoje ? "ano_ate_hoje" : "ano";
+  });
   const [modalRepAberto, setModalRepAberto] = useState<boolean>(false);
+
+  // Sincroniza as datas quando o ano ativo mudar
+  useEffect(() => {
+    setDataInicio(`${anoNum}-01-01`);
+    if (anoNum === anoHoje) {
+      setDataFim(hojeStr);
+      setPresetAtivo("ano_ate_hoje");
+    } else {
+      setDataFim(`${anoNum}-12-31`);
+      setPresetAtivo("ano");
+    }
+  }, [anoNum]);
 
   const dados = useLive(async () => {
     if (!empId) return null;
@@ -186,7 +209,14 @@ export function Relatorios() {
     setPresetAtivo(tipo);
     const hoje = new Date();
 
-    if (tipo === "mes_atual") {
+    if (tipo === "ano_ate_hoje") {
+      setDataInicio(`${anoNum}-01-01`);
+      if (anoNum === anoHoje) {
+        setDataFim(hojeStr);
+      } else {
+        setDataFim(`${anoNum}-12-31`);
+      }
+    } else if (tipo === "mes_atual") {
       const y = hoje.getFullYear();
       const m = hoje.getMonth() + 1;
       const ultimoDia = new Date(y, m, 0).getDate();
@@ -342,8 +372,8 @@ export function Relatorios() {
     <>
       <div class="page-head no-print">
         <div>
-          <h1>Relatórios & Exportação</h1>
-          <p>Demonstrativo Projetado × Real por período personalizado</p>
+          <h1>Visão Geral & Relatório Financeiro</h1>
+          <p>Demonstrativo Projetado × Real por período personalizado de {emp.nome}</p>
         </div>
 
         <div class="relatorios-header-actions" style="display:flex;gap:var(--sp-2);flex-wrap:wrap;">
@@ -413,6 +443,13 @@ export function Relatorios() {
           <div class="date-presets-scroll" aria-label="Atalhos de período">
             <button
               type="button"
+              class={`date-preset-chip ${presetAtivo === "ano_ate_hoje" ? "is-active" : ""}`}
+              onClick={() => aplicarPreset("ano_ate_hoje")}
+            >
+              Ano {anoNum} até Hoje
+            </button>
+            <button
+              type="button"
               class={`date-preset-chip ${presetAtivo === "mes_atual" ? "is-active" : ""}`}
               onClick={() => aplicarPreset("mes_atual")}
             >
@@ -430,7 +467,7 @@ export function Relatorios() {
               class={`date-preset-chip ${presetAtivo === "ano" ? "is-active" : ""}`}
               onClick={() => aplicarPreset("ano")}
             >
-              Ano {anoNum}
+              Ano {anoNum} Todo
             </button>
             <button
               type="button"

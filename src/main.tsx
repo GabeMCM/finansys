@@ -2,7 +2,6 @@ import { render } from "preact";
 import { AppShell } from "./components/AppShell.tsx";
 import { useRoute } from "./lib/router.ts";
 import { Ajustes } from "./pages/Ajustes.tsx";
-import { Dashboard } from "./pages/Dashboard.tsx";
 import { Investimentos } from "./pages/Investimentos.tsx";
 import { Lancamentos } from "./pages/Lancamentos.tsx";
 import { Placeholder } from "./pages/Placeholder.tsx";
@@ -20,12 +19,11 @@ function App() {
   const route = useRoute();
 
   let page;
-  if (route === "/") page = <Dashboard />;
+  if (route === "/" || route.startsWith("/relatorios")) page = <Relatorios />;
   else if (route.startsWith("/projecoes")) page = <Projecoes />;
-  else if (route === "/lancamentos/novo") page = <Lancamentos openNewOnMount={true} />;
-  else if (route.startsWith("/lancamentos")) page = <Lancamentos />;
+  else if (route === "/realizacoes/novo" || route === "/lancamentos/novo") page = <Lancamentos openNewOnMount={true} />;
+  else if (route.startsWith("/realizacoes") || route.startsWith("/lancamentos")) page = <Lancamentos />;
   else if (route.startsWith("/investimentos")) page = <Investimentos />;
-  else if (route.startsWith("/relatorios")) page = <Relatorios />;
   else if (route.startsWith("/ajustes")) page = <Ajustes />;
   else page = <Placeholder title="Página não encontrada" desc={route} icon="home" etapa={1} />;
 

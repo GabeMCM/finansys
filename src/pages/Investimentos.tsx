@@ -35,9 +35,17 @@ export function Investimentos() {
   const [modalProjecaoReserva, setModalProjecaoReserva] = useState<Reserva | null>(null);
 
   // Filtros e Visualização
+  const [modoVisao, setModoVisao] = useState<"cards" | "lista">(() => {
+    return (localStorage.getItem("finansys_investimentos_visao") as "cards" | "lista") || "cards";
+  });
   const [abaInferior, setAbaInferior] = useState<"extrato" | "evolucao">("extrato");
   const [filtroReservaId, setFiltroReservaId] = useState<string>("todas");
   const [filtroMes, setFiltroMes] = useState<number | "todos">("todos");
+
+  const trocarModoVisao = (novo: "cards" | "lista") => {
+    setModoVisao(novo);
+    localStorage.setItem("finansys_investimentos_visao", novo);
+  };
 
   const dados = useLive(async () => {
     if (!empId) return null;
@@ -203,138 +211,284 @@ export function Investimentos() {
           </section>
         )}
 
-        {/* Grade de Cards de Reservas */}
+        {/* Reservas & Caixinhas (Visualização Cards ou Lista) */}
         {resList.length > 0 && (
           <div>
-            <div class="card__head" style="margin-bottom: var(--sp-3);">
+            <div class="card__head" style="margin-bottom: var(--sp-3); flex-wrap:wrap; gap:8px;">
               <span class="card__title" style="display:flex; align-items:center; gap:8px;">
-                <Icon name="grid" /> Reservas & Caixinhas ({resList.length})
+                <Icon name={modoVisao === "cards" ? "grid" : "list"} /> Reservas & Caixinhas ({resList.length})
               </span>
+              <div class="tabs tabs--sm" style="margin:0; background:var(--surface); padding:2px; border-radius:var(--r-md); border:1px solid var(--border);">
+                <button
+                  type="button"
+                  class={`tab ${modoVisao === "cards" ? "is-active" : ""}`}
+                  style="padding:3px 10px; font-size:var(--fs-xs); min-height:26px;"
+                  onClick={() => trocarModoVisao("cards")}
+                >
+                  <Icon name="grid" style="width:12px; height:12px;" /> Cards
+                </button>
+                <button
+                  type="button"
+                  class={`tab ${modoVisao === "lista" ? "is-active" : ""}`}
+                  style="padding:3px 10px; font-size:var(--fs-xs); min-height:26px;"
+                  onClick={() => trocarModoVisao("lista")}
+                >
+                  <Icon name="list" style="width:12px; height:12px;" /> Lista
+                </button>
+              </div>
             </div>
 
-            <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--sp-3);">
-              {carteira.reservas.map((resumo) => {
-                const r = resumo.reserva;
-                const corHex = CORES_PALETA_MAP[r.cor || "emerald"] || CORES_PALETA_MAP.emerald;
-                const meta = r.metaCentavos || 0;
-                const progresso = resumo.progressoMetaPct !== undefined ? resumo.progressoMetaPct : null;
+            {modoVisao === "cards" ? (
+              <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--sp-3);">
+                {carteira.reservas.map((resumo) => {
+                  const r = resumo.reserva;
+                  const corHex = CORES_PALETA_MAP[r.cor || "emerald"] || CORES_PALETA_MAP.emerald;
+                  const meta = r.metaCentavos || 0;
+                  const progresso = resumo.progressoMetaPct !== undefined ? resumo.progressoMetaPct : null;
 
-                return (
-                  <div
-                    key={r.id}
-                    class="card"
-                    style={`border-top: 4px solid ${corHex}; display: flex; flex-direction: column; justify-content: space-between;`}
-                  >
-                    <div>
-                      {/* Topo do Card */}
-                      <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
-                        <div>
-                          <div style="display:flex; align-items:center; gap:6px;">
-                            <span
-                              style={`width: 10px; height: 10px; border-radius: 50%; background: ${corHex}; flex-shrink: 0;`}
-                            />
-                            <h3 style="font-size: var(--fs-md); font-weight: 700; margin: 0; color: var(--text);">
-                              {r.nome}
-                            </h3>
+                  return (
+                    <div
+                      key={r.id}
+                      class="card"
+                      style={`border-top: 4px solid ${corHex}; display: flex; flex-direction: column; justify-content: space-between;`}
+                    >
+                      <div>
+                        {/* Topo do Card */}
+                        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+                          <div>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                              <span
+                                style={`width: 10px; height: 10px; border-radius: 50%; background: ${corHex}; flex-shrink: 0;`}
+                              />
+                              <h3 style="font-size: var(--fs-md); font-weight: 700; margin: 0; color: var(--text);">
+                                {r.nome}
+                              </h3>
+                            </div>
+                            {r.descricao && (
+                              <p style="font-size: var(--fs-xs); color: var(--text-faint); margin-top: 2px;">
+                                {r.descricao}
+                              </p>
+                            )}
                           </div>
-                          {r.descricao && (
-                            <p style="font-size: var(--fs-xs); color: var(--text-faint); margin-top: 2px;">
-                              {r.descricao}
-                            </p>
-                          )}
+
+                          <button
+                            type="button"
+                            class="btn btn--ghost btn--icon"
+                            style="height: 32px; width: 32px;"
+                            title="Editar Reserva"
+                            onClick={() => setModalReservaAberta(r)}
+                          >
+                            <Icon name="pencil" style="width: 16px; height: 16px;" />
+                          </button>
                         </div>
 
-                        <button
-                          type="button"
-                          class="btn btn--ghost btn--icon"
-                          style="height: 32px; width: 32px;"
-                          title="Editar Reserva"
-                          onClick={() => setModalReservaAberta(r)}
-                        >
-                          <Icon name="pencil" style="width: 16px; height: 16px;" />
-                        </button>
+                        {/* Saldo da Reserva */}
+                        <div style="margin-top: var(--sp-3); margin-bottom: var(--sp-3);">
+                          <span style="font-size: var(--fs-xs); color: var(--text-muted); font-weight: 500;">
+                            Saldo Acumulado Atual
+                          </span>
+                          <div style="font-size: var(--fs-xl); font-weight: 800; color: var(--text); margin-top: 2px;">
+                            {money(resumo.saldoAtualReal)}
+                          </div>
+                        </div>
+
+                        {/* Progresso da Meta (Opcional) */}
+                        {meta > 0 ? (
+                          <div style="background: var(--surface-soft); padding: 8px 12px; border-radius: var(--r-md); margin-bottom: var(--sp-3);">
+                            <div style="display: flex; justify-content: space-between; font-size: var(--fs-xs); font-weight: 600; margin-bottom: 4px;">
+                              <span style="color: var(--text-muted);">
+                                Meta: {money(meta)}
+                              </span>
+                              <span style={`color: ${progresso! >= 100 ? "var(--in)" : "var(--primary)"};`}>
+                                {progresso}%
+                              </span>
+                            </div>
+                            <div class="progress">
+                              <i
+                                style={`width: ${Math.min(100, Math.max(0, progresso!))}%; background: ${
+                                  progresso! >= 100 ? "var(--in)" : corHex
+                                };`}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div style="font-size: var(--fs-xs); color: var(--text-faint); margin-bottom: var(--sp-3); font-style: italic;">
+                            Sem meta financeira definida (livre)
+                          </div>
+                        )}
                       </div>
 
-                      {/* Saldo da Reserva */}
-                      <div style="margin-top: var(--sp-3); margin-bottom: var(--sp-3);">
-                        <span style="font-size: var(--fs-xs); color: var(--text-muted); font-weight: 500;">
-                          Saldo Acumulado Atual
-                        </span>
-                        <div style="font-size: var(--fs-xl); font-weight: 800; color: var(--text); margin-top: 2px;">
-                          {money(resumo.saldoAtualReal)}
+                      {/* Ações Rápidas no Card */}
+                      <div style="display: flex; flex-direction: column; gap: 6px; padding-top: var(--sp-2); border-top: 1px solid var(--border);">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                          <button
+                            type="button"
+                            class="btn btn--sm"
+                            style="background: var(--in-soft); color: var(--in); border-color: transparent;"
+                            onClick={() => setModalMovimento({ reservaId: r.id, tipo: "aporte" })}
+                          >
+                            <Icon name="arrowDown" /> Aplicar
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn--sm"
+                            style="background: var(--aporte-soft); color: var(--aporte); border-color: transparent;"
+                            onClick={() => setModalMovimento({ reservaId: r.id, tipo: "resgate" })}
+                          >
+                            <Icon name="arrowUp" /> Resgatar
+                          </button>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                          <button
+                            type="button"
+                            class="btn btn--ghost btn--sm"
+                            style="border: 1px solid var(--border);"
+                            onClick={() => setModalMovimento({ reservaId: r.id, tipo: "rendimento" })}
+                          >
+                            <Icon name="sparkle" /> Rendimento
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn--ghost btn--sm"
+                            style="border: 1px solid var(--border);"
+                            onClick={() => setModalProjecaoReserva(r)}
+                          >
+                            <Icon name="calendar" /> Projetar
+                          </button>
                         </div>
                       </div>
-
-                      {/* Progresso da Meta (Opcional) */}
-                      {meta > 0 ? (
-                        <div style="background: var(--surface-soft); padding: 8px 12px; border-radius: var(--r-md); margin-bottom: var(--sp-3);">
-                          <div style="display: flex; justify-content: space-between; font-size: var(--fs-xs); font-weight: 600; margin-bottom: 4px;">
-                            <span style="color: var(--text-muted);">
-                              Meta: {money(meta)}
-                            </span>
-                            <span style={`color: ${progresso! >= 100 ? "var(--in)" : "var(--primary)"};`}>
-                              {progresso}%
-                            </span>
-                          </div>
-                          <div class="progress">
-                            <i
-                              style={`width: ${Math.min(100, Math.max(0, progresso!))}%; background: ${
-                                progresso! >= 100 ? "var(--in)" : corHex
-                              };`}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <div style="font-size: var(--fs-xs); color: var(--text-faint); margin-bottom: var(--sp-3); font-style: italic;">
-                          Sem meta financeira definida (livre)
-                        </div>
-                      )}
                     </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Visualização em Lista / Tabela */
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="text-align:left; min-width:200px;">Reserva / Caixinha</th>
+                      <th style="text-align:right;">Saldo Inicial</th>
+                      <th style="text-align:right;">Aportes (+)</th>
+                      <th style="text-align:right;">Resgates (−)</th>
+                      <th style="text-align:right;">Rendimentos (+)</th>
+                      <th style="text-align:right; min-width:130px;">Saldo Atual</th>
+                      <th style="text-align:left; min-width:130px;">Meta / Progresso</th>
+                      <th style="text-align:center; min-width:140px;">Ações Rápidas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {carteira.reservas.map((resumo) => {
+                      const r = resumo.reserva;
+                      const corHex = CORES_PALETA_MAP[r.cor || "emerald"] || CORES_PALETA_MAP.emerald;
+                      const meta = r.metaCentavos || 0;
+                      const progresso = resumo.progressoMetaPct !== undefined ? resumo.progressoMetaPct : null;
 
-                    {/* Ações Rápidas no Card */}
-                    <div style="display: flex; flex-direction: column; gap: 6px; padding-top: var(--sp-2); border-top: 1px solid var(--border);">
-                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-                        <button
-                          type="button"
-                          class="btn btn--sm"
-                          style="background: var(--in-soft); color: var(--in); border-color: transparent;"
-                          onClick={() => setModalMovimento({ reservaId: r.id, tipo: "aporte" })}
-                        >
-                          <Icon name="arrowDown" /> Aplicar
-                        </button>
-                        <button
-                          type="button"
-                          class="btn btn--sm"
-                          style="background: var(--aporte-soft); color: var(--aporte); border-color: transparent;"
-                          onClick={() => setModalMovimento({ reservaId: r.id, tipo: "resgate" })}
-                        >
-                          <Icon name="arrowUp" /> Resgatar
-                        </button>
-                      </div>
-
-                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-                        <button
-                          type="button"
-                          class="btn btn--ghost btn--sm"
-                          style="border: 1px solid var(--border);"
-                          onClick={() => setModalMovimento({ reservaId: r.id, tipo: "rendimento" })}
-                        >
-                          <Icon name="sparkle" /> Rendimento
-                        </button>
-                        <button
-                          type="button"
-                          class="btn btn--ghost btn--sm"
-                          style="border: 1px solid var(--border);"
-                          onClick={() => setModalProjecaoReserva(r)}
-                        >
-                          <Icon name="calendar" /> Projetar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                      return (
+                        <tr key={r.id}>
+                          <td>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                              <span style={`width:10px; height:10px; border-radius:50%; background:${corHex}; flex-shrink:0;`} />
+                              <div>
+                                <strong style="color:var(--text); display:block;">{r.nome}</strong>
+                                {r.descricao && (
+                                  <span class="muted" style="font-size:var(--fs-xs); display:block;">{r.descricao}</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td class="num muted" style="text-align:right;">
+                            {money(resumo.saldoInicial)}
+                          </td>
+                          <td class="num tone-in" style="text-align:right; font-weight:600;">
+                            {money(resumo.totalAportesReal)}
+                          </td>
+                          <td class="num tone-aporte" style="text-align:right; font-weight:600;">
+                            {money(resumo.totalResgatesReal)}
+                          </td>
+                          <td class="num tone-rendimento" style="text-align:right; font-weight:600;">
+                            {money(resumo.totalRendimentosReal)}
+                          </td>
+                          <td class="num" style="text-align:right; font-weight:800; font-size:var(--fs-md); color:var(--text);">
+                            {money(resumo.saldoAtualReal)}
+                          </td>
+                          <td>
+                            {meta > 0 ? (
+                              <div style="min-width:110px;">
+                                <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
+                                  <span class="muted">{money(meta)}</span>
+                                  <strong style={`color:${progresso! >= 100 ? "var(--in)" : "var(--primary)"};`}>
+                                    {progresso}%
+                                  </strong>
+                                </div>
+                                <div class="progress" style="height:5px;">
+                                  <i style={`width:${Math.min(100, Math.max(0, progresso!))}%; background:${progresso! >= 100 ? "var(--in)" : corHex};`} />
+                                </div>
+                              </div>
+                            ) : (
+                              <span class="muted" style="font-size:11px; font-style:italic;">Livre</span>
+                            )}
+                          </td>
+                          <td style="text-align:center;">
+                            <div style="display:inline-flex; align-items:center; gap:4px;">
+                              <button
+                                type="button"
+                                class="btn btn--secondary btn--sm"
+                                style="padding:2px 8px; font-size:11px; min-height:26px;"
+                                onClick={() => setModalMovimento({ reservaId: r.id, tipo: "aporte" })}
+                                title="Novo Aporte nesta reserva"
+                              >
+                                <Icon name="arrowDown" style="width:11px; height:11px; color:var(--in);" /> Aporte
+                              </button>
+                              <button
+                                type="button"
+                                class="btn btn--secondary btn--sm"
+                                style="padding:2px 8px; font-size:11px; min-height:26px;"
+                                onClick={() => setModalMovimento({ reservaId: r.id, tipo: "resgate" })}
+                                title="Novo Resgate desta reserva"
+                              >
+                                <Icon name="arrowUp" style="width:11px; height:11px; color:var(--aporte);" /> Resgate
+                              </button>
+                              <button
+                                type="button"
+                                class="btn btn--ghost btn--icon"
+                                style="width:26px; height:26px; min-height:26px;"
+                                title="Editar Reserva"
+                                onClick={() => setModalReservaAberta(r)}
+                              >
+                                <Icon name="pencil" style="width:13px; height:13px;" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td style="font-weight:700;">Total da Carteira</td>
+                      <td class="num muted" style="text-align:right;">
+                        {money(carteira.reservas.reduce((s, r) => s + r.saldoInicial, 0))}
+                      </td>
+                      <td class="num tone-in" style="text-align:right; font-weight:700;">
+                        {money(carteira.totalAportadoAnoReal)}
+                      </td>
+                      <td class="num tone-aporte" style="text-align:right; font-weight:700;">
+                        {money(carteira.totalResgatadoAnoReal)}
+                      </td>
+                      <td class="num tone-rendimento" style="text-align:right; font-weight:700;">
+                        {money(carteira.totalRendimentoAnoReal)}
+                      </td>
+                      <td class="num" style="text-align:right; font-weight:800; font-size:var(--fs-md); color:var(--primary);">
+                        {money(carteira.totalPatrimonioReal)}
+                      </td>
+                      <td colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

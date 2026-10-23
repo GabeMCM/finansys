@@ -13,7 +13,7 @@ import { getInactivityTimeout, inactivityTimeoutSignal, lockScreenNow, setInacti
 import { anos, categorias, contas, contasBancarias, empresas, projecoes } from "../data/repo.ts";
 import { calcularBaseProjecoes, calcularValorVinculado } from "../data/calc.ts";
 import { seedExemplo } from "../data/seed.ts";
-import { type Ano, type Categoria, type Conta, type ContaBancaria, type Empresa, type Natureza, NATUREZAS, type RegraVinculo, type ModoVinculo } from "../data/types.ts";
+import { type Ano, type Categoria, type Conta, type ContaBancaria, type Empresa, type Natureza, NATUREZAS, type RegraVinculo, type ModoVinculo, FORMAS_PAGAMENTO_PADRAO } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { formatCpfCnpj, labelCpfCnpj, money } from "../lib/format.ts";
 import { avaliarFormula, calcularFormulaProjecoes, extrairVariaveis } from "../lib/formula.ts";
@@ -21,7 +21,19 @@ import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
 
 export function Ajustes() {
-  const [tab, setTab] = useState<"empresas" | "anos" | "contas" | "bancos" | "sistema">("empresas");
+  // Cardlists retráteis (accordions)
+  const [secoesAbertas, setSecoesAbertas] = useState<Set<string>>(() => {
+    return new Set(["empresas", "anos", "bancos", "contas", "sistema"]);
+  });
+
+  const toggleSecao = (secao: string) => {
+    setSecoesAbertas((prev) => {
+      const next = new Set(prev);
+      if (next.has(secao)) next.delete(secao);
+      else next.add(secao);
+      return next;
+    });
+  };
 
   // Estados dos modais de Empresa
   const [modalEmpresa, setModalEmpresa] = useState<Partial<Empresa> | null>(null);
@@ -240,6 +252,10 @@ export function Ajustes() {
   const salvarBanco = async (e: Event) => {
     e.preventDefault();
     if (!empId || !modalBanco || !modalBanco.nome?.trim()) return;
+    const formas = modalBanco.formasPagamento && modalBanco.formasPagamento.length > 0
+      ? modalBanco.formasPagamento
+      : undefined;
+
     if (modalBanco.id) {
       await contasBancarias.update(modalBanco.id, {
         nome: modalBanco.nome.trim(),
@@ -247,6 +263,7 @@ export function Ajustes() {
         cor: modalBanco.cor || "emerald",
         agencia: modalBanco.agencia?.trim() || undefined,
         numeroConta: modalBanco.numeroConta?.trim() || undefined,
+        formasPagamento: formas,
         ativa: modalBanco.ativa !== false,
       });
       toast.success("Conta bancária atualizada com sucesso!");
@@ -258,6 +275,7 @@ export function Ajustes() {
         cor: modalBanco.cor || "emerald",
         agencia: modalBanco.agencia?.trim() || undefined,
         numeroConta: modalBanco.numeroConta?.trim() || undefined,
+        formasPagamento: formas,
         ativa: modalBanco.ativa !== false,
       });
       toast.success("Conta bancária cadastrada com sucesso!");
@@ -281,40 +299,71 @@ export function Ajustes() {
 
   return (
     <>
-      <div class="page-head">
+      <div class="page-head" style="flex-wrap:wrap;gap:12px;">
         <div>
           <h1>Ajustes</h1>
-          <p>Cadastros de empresas, anos fiscais e plano de contas</p>
+          <p>Cadastros de empresas, anos fiscais, contas bancárias e plano de contas</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button
+            type="button"
+            class="btn btn--secondary btn--sm"
+            onClick={() => {
+              if (secoesAbertas.size >= 5) {
+                setSecoesAbertas(new Set());
+              } else {
+                setSecoesAbertas(new Set(["empresas", "anos", "bancos", "contas", "sistema"]));
+              }
+            }}
+          >
+            {secoesAbertas.size >= 5 ? "Recolher Todos os Cards" : "Expandir Todos os Cards"}
+          </button>
         </div>
       </div>
 
-      <div class="tabs" style="margin-bottom: var(--sp-4);">
-        <button type="button" class={`tab ${tab === "empresas" ? "is-active" : ""}`} onClick={() => setTab("empresas")}>
-          <Icon name="building" /> Empresas
-        </button>
-        <button type="button" class={`tab ${tab === "anos" ? "is-active" : ""}`} onClick={() => setTab("anos")}>
-          <Icon name="calendar" /> Anos / Banca
-        </button>
-        <button type="button" class={`tab ${tab === "contas" ? "is-active" : ""}`} onClick={() => setTab("contas")}>
-          <Icon name="grid" /> Plano de Contas
-        </button>
-        <button type="button" class={`tab ${tab === "bancos" ? "is-active" : ""}`} onClick={() => setTab("bancos")}>
-          <Icon name="bank" /> Contas Bancárias
-        </button>
-        <button type="button" class={`tab ${tab === "sistema" ? "is-active" : ""}`} onClick={() => setTab("sistema")}>
-          <Icon name="settings" /> Preferências
-        </button>
-      </div>
-
-      {/* ================= ABA EMPRESAS ================= */}
-      {tab === "empresas" && (
-        <section class="card">
-          <div class="card__head">
-            <h2 class="card__title">Empresas Cadastradas</h2>
-            <button id="btn-nova-empresa" type="button" class="btn btn--primary" onClick={() => setModalEmpresa({ nome: "", cnpj: "", endereco: "" })}>
-              <Icon name="plus" /> Nova Empresa
-            </button>
+      <div class="stack" style="gap:var(--sp-4);margin-bottom:var(--sp-6);">
+        {/* ================= CARD RETRÁTIL: EMPRESAS ================= */}
+        <section class="card" style="padding:0;overflow:hidden;">
+          <div
+            class="card__head"
+            style="cursor:pointer;user-select:none;padding:var(--sp-3) var(--sp-4);background:var(--surface);"
+            onClick={() => toggleSecao("empresas")}
+          >
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="list__icon bg-in" style="width:34px;height:34px;border-radius:var(--r-md);display:grid;place-items:center;flex-shrink:0;">
+                <Icon name="building" style="width:16px;height:16px;" />
+              </div>
+              <div>
+                <h2 class="card__title" style="margin:0;display:flex;align-items:center;gap:8px;font-size:var(--fs-md);">
+                  <span>Empresas Cadastradas</span>
+                  <span class="badge badge--neutral" style="font-size:11px;">{listaEmpresas.length}</span>
+                </h2>
+                <p class="muted" style="font-size:var(--fs-xs);margin:0;">Organizações, filiais e seleção da empresa ativa</p>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button
+                id="btn-nova-empresa"
+                type="button"
+                class="btn btn--primary btn--sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setModalEmpresa({ nome: "", cnpj: "", endereco: "" });
+                }}
+              >
+                <Icon name="plus" /> Nova Empresa
+              </button>
+              <Icon
+                name="chevron"
+                style={`width:15px;height:15px;transition:transform 0.2s ease;color:var(--text-muted);${
+                  secoesAbertas.has("empresas") ? "transform:rotate(180deg);" : ""
+                }`}
+              />
+            </div>
           </div>
+
+          {secoesAbertas.has("empresas") && (
+            <div style="padding:var(--sp-3) var(--sp-4);border-top:1px solid var(--border);">
 
           {listaEmpresas.length === 0 ? (
             <p class="muted">Nenhuma empresa cadastrada ainda.</p>
@@ -382,28 +431,54 @@ export function Ajustes() {
               })}
             </div>
           )}
-        </section>
+        </div>
       )}
+    </section>
 
-      {/* ================= ABA ANOS E BANCA ================= */}
-      {tab === "anos" && (
-        <section class="card">
-          <div class="card__head">
-            <div>
-              <h2 class="card__title">Anos Fiscais & Banca Inicial</h2>
-              <p class="muted" style="font-size:var(--fs-xs);">Configuração para a empresa ativa</p>
+        {/* ================= CARD RETRÁTIL: ANOS FISCAIS ================= */}
+        <section class="card" style="padding:0;overflow:hidden;">
+          <div
+            class="card__head"
+            style="cursor:pointer;user-select:none;padding:var(--sp-3) var(--sp-4);background:var(--surface);"
+            onClick={() => toggleSecao("anos")}
+          >
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="list__icon bg-aporte" style="width:34px;height:34px;border-radius:var(--r-md);display:grid;place-items:center;flex-shrink:0;">
+                <Icon name="calendar" style="width:16px;height:16px;" />
+              </div>
+              <div>
+                <h2 class="card__title" style="margin:0;display:flex;align-items:center;gap:8px;font-size:var(--fs-md);">
+                  <span>Anos Fiscais & Banca Inicial</span>
+                  <span class="badge badge--neutral" style="font-size:11px;">{listaAnos.length}</span>
+                </h2>
+                <p class="muted" style="font-size:var(--fs-xs);margin:0;">Configuração de banca para {listaEmpresas.find((e) => e.id === empId)?.nome || "a empresa ativa"}</p>
+              </div>
             </div>
-            {empId && (
-              <button
-                id="btn-novo-ano"
-                type="button"
-                class="btn btn--primary"
-                onClick={() => setModalAno({ ano: new Date().getFullYear(), bancaInicial: 0 })}
-              >
-                <Icon name="plus" /> Abrir Ano
-              </button>
-            )}
+            <div style="display:flex;align-items:center;gap:8px;">
+              {empId && (
+                <button
+                  id="btn-novo-ano"
+                  type="button"
+                  class="btn btn--primary btn--sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setModalAno({ ano: new Date().getFullYear(), bancaInicial: 0 });
+                  }}
+                >
+                  <Icon name="plus" /> Abrir Ano
+                </button>
+              )}
+              <Icon
+                name="chevron"
+                style={`width:15px;height:15px;transition:transform 0.2s ease;color:var(--text-muted);${
+                  secoesAbertas.has("anos") ? "transform:rotate(180deg);" : ""
+                }`}
+              />
+            </div>
           </div>
+
+          {secoesAbertas.has("anos") && (
+            <div style="padding:var(--sp-3) var(--sp-4);border-top:1px solid var(--border);">
 
           {!empId ? (
             <p class="muted">Selecione ou cadastre uma empresa primeiro na aba Empresas.</p>
@@ -480,54 +555,74 @@ export function Ajustes() {
               })}
             </div>
           )}
-        </section>
+        </div>
       )}
+    </section>
 
-      {/* ================= ABA PLANO DE CONTAS ================= */}
-      {tab === "contas" && (
-        <div class="stack">
-          {/* Sub-tabs de natureza */}
-          <div class="tabs" style="overflow-x:auto;">
-            {NATUREZAS.map((nat) => {
-              const meta = NATURE_META[nat];
-              return (
-                <button
-                  type="button"
-                  key={nat}
-                  class={`tab ${natTab === nat ? "is-active" : ""}`}
-                  onClick={() => setNatTab(nat)}
-                >
-                  <Icon name={meta.icon} /> {meta.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <section class="card">
-            <div class="card__head">
-              <div>
-                <h2 class="card__title">{NATURE_META[natTab].label} — Categorias & Contas</h2>
-                <p class="muted" style="font-size:var(--fs-xs);">
-                  Estrutura de lançamentos para {NATURE_META[natTab].label.toLowerCase()}
-                </p>
+        {/* ================= CARD RETRÁTIL: PLANO DE CONTAS ================= */}
+        <section class="card" style="padding:0;overflow:hidden;">
+          <div
+            class="card__head"
+            style="cursor:pointer;user-select:none;padding:var(--sp-3) var(--sp-4);background:var(--surface);"
+            onClick={() => toggleSecao("contas")}
+          >
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div class="list__icon bg-out" style="width:34px;height:34px;border-radius:var(--r-md);display:grid;place-items:center;flex-shrink:0;">
+                <Icon name="grid" style="width:16px;height:16px;" />
               </div>
+              <div>
+                <h2 class="card__title" style="margin:0;display:flex;align-items:center;gap:8px;font-size:var(--fs-md);">
+                  <span>Plano de Contas (Categorias & Contas)</span>
+                  <span class="badge badge--neutral" style="font-size:11px;">{todasContasEmpresa.length} conta(s)</span>
+                </h2>
+                <p class="muted" style="font-size:var(--fs-xs);margin:0;">Estrutura de receitas, despesas, aportes e saídas patrimoniais</p>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
               {empId && (
-                <div style="display:flex;gap:6px;">
-                  <button type="button" class="btn btn--secondary" onClick={() => setModalCat({ nome: "" })}>
+                <div style="display:flex;gap:6px;" onClick={(e) => e.stopPropagation()}>
+                  <button type="button" class="btn btn--secondary btn--sm" onClick={() => setModalCat({ nome: "" })}>
                     <Icon name="plus" /> Categoria
                   </button>
                   {listaCats.length > 0 && (
                     <button
+                      id="btn-nova-conta"
                       type="button"
-                      class="btn btn--primary"
-                      onClick={() => setModalConta({ nome: "", categoriaId: listaCats[0]?.id, ativa: true })}
+                      class="btn btn--primary btn--sm"
+                      onClick={() => setModalConta({ nome: "", categoriaId: listaCats[0]?.id || "", ativa: true })}
                     >
                       <Icon name="plus" /> Conta
                     </button>
                   )}
                 </div>
               )}
+              <Icon
+                name="chevron"
+                style={`width:15px;height:15px;transition:transform 0.2s ease;color:var(--text-muted);${
+                  secoesAbertas.has("contas") ? "transform:rotate(180deg);" : ""
+                }`}
+              />
             </div>
+          </div>
+
+          {secoesAbertas.has("contas") && (
+            <div style="padding:var(--sp-3) var(--sp-4);border-top:1px solid var(--border);">
+              {/* Sub-tabs de natureza */}
+              <div class="tabs" style="overflow-x:auto;margin-bottom:var(--sp-3);">
+                {NATUREZAS.map((nat) => {
+                  const meta = NATURE_META[nat];
+                  return (
+                    <button
+                      type="button"
+                      key={nat}
+                      class={`tab ${natTab === nat ? "is-active" : ""}`}
+                      onClick={() => setNatTab(nat)}
+                    >
+                      <Icon name={meta.icon} /> {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
 
             {!empId ? (
               <p class="muted">Selecione ou cadastre uma empresa primeiro.</p>
@@ -650,36 +745,63 @@ export function Ajustes() {
                 })}
               </div>
             )}
-          </section>
-        </div>
-      )}
-
-      {/* ================= ABA CONTAS BANCÁRIAS ================= */}
-      {tab === "bancos" && (
-        <section class="card">
-          <div class="card__head">
-            <div>
-              <h2 class="card__title">Contas Bancárias ({listaEmpresas.find((e) => e.id === empId)?.nome || "Empresa"})</h2>
-              <p class="muted" style="font-size:var(--fs-xs);">Gerencie os bancos da empresa e seus saldos iniciais de abertura</p>
             </div>
-            {empId && (
-              <button
-                id="btn-nova-conta-bancaria"
-                type="button"
-                class="btn btn--primary"
-                onClick={() =>
-                  setModalBanco({
-                    nome: "",
-                    saldoInicialCentavos: 0,
-                    cor: "emerald",
-                    ativa: true,
-                  })
-                }
+          )}
+        </section>
+
+        {/* ================= CARD RETRÁTIL: CONTAS BANCÁRIAS ================= */}
+        <section class="card" style="padding:0;overflow:hidden;">
+          <div
+            class="card__head"
+            style="cursor:pointer;user-select:none;padding:var(--sp-3) var(--sp-4);background:var(--surface);"
+            onClick={() => toggleSecao("bancos")}
+          >
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div
+                class="list__icon"
+                style="width:34px;height:34px;border-radius:var(--r-md);display:grid;place-items:center;flex-shrink:0;background:color-mix(in srgb, var(--primary) 12%, transparent);color:var(--primary);"
               >
-                <Icon name="plus" /> Nova Conta Bancária
-              </button>
-            )}
+                <Icon name="bank" style="width:16px;height:16px;" />
+              </div>
+              <div>
+                <h2 class="card__title" style="margin:0;display:flex;align-items:center;gap:8px;font-size:var(--fs-md);">
+                  <span>Contas Bancárias & Formas de Pagamento</span>
+                  <span class="badge badge--neutral" style="font-size:11px;">{listaBancos.length}</span>
+                </h2>
+                <p class="muted" style="font-size:var(--fs-xs);margin:0;">Bancos da empresa, saldos iniciais e formas aceitas (PIX, Boleto, Cartões...)</p>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              {empId && (
+                <button
+                  id="btn-nova-conta-bancaria"
+                  type="button"
+                  class="btn btn--primary btn--sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setModalBanco({
+                      nome: "",
+                      saldoInicialCentavos: 0,
+                      cor: "emerald",
+                      formasPagamento: [...FORMAS_PAGAMENTO_PADRAO],
+                      ativa: true,
+                    });
+                  }}
+                >
+                  <Icon name="plus" /> Nova Conta Bancária
+                </button>
+              )}
+              <Icon
+                name="chevron"
+                style={`width:15px;height:15px;transition:transform 0.2s ease;color:var(--text-muted);${
+                  secoesAbertas.has("bancos") ? "transform:rotate(180deg);" : ""
+                }`}
+              />
+            </div>
           </div>
+
+          {secoesAbertas.has("bancos") && (
+            <div style="padding:var(--sp-3) var(--sp-4);border-top:1px solid var(--border);">
 
           {!empId ? (
             <p class="muted">Selecione ou cadastre uma empresa primeiro na aba Empresas.</p>
@@ -733,6 +855,15 @@ export function Ajustes() {
                       {b.agencia && <span>• Agência: {b.agencia}</span>}
                       {b.numeroConta && <span>• Conta: {b.numeroConta}</span>}
                     </div>
+                    {b.formasPagamento && b.formasPagamento.length > 0 && (
+                      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;">
+                        {b.formasPagamento.map((f) => (
+                          <span key={f} class="badge badge--neutral" style="font-size:10px;padding:0 5px;">
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div style="display:flex;gap:6px;align-items:center;">
                     <button
@@ -757,12 +888,43 @@ export function Ajustes() {
               ))}
             </div>
           )}
-        </section>
+        </div>
       )}
+    </section>
 
-      {/* ================= ABA PREFERÊNCIAS E SISTEMA ================= */}
-      {tab === "sistema" && (
-        <div class="stack" style="gap:var(--sp-4);">
+        {/* ================= CARD RETRÁTIL: PREFERÊNCIAS E SISTEMA ================= */}
+        <section class="card" style="padding:0;overflow:hidden;">
+          <div
+            class="card__head"
+            style="cursor:pointer;user-select:none;padding:var(--sp-3) var(--sp-4);background:var(--surface);"
+            onClick={() => toggleSecao("sistema")}
+          >
+            <div style="display:flex;align-items:center;gap:10px;">
+              <div
+                class="list__icon"
+                style="width:34px;height:34px;border-radius:var(--r-md);display:grid;place-items:center;flex-shrink:0;background:var(--primary-soft);color:var(--primary);"
+              >
+                <Icon name="settings" style="width:16px;height:16px;" />
+              </div>
+              <div>
+                <h2 class="card__title" style="margin:0;display:flex;align-items:center;gap:8px;font-size:var(--fs-md);">
+                  <span>Preferências, Nuvem & Backup</span>
+                </h2>
+                <p class="muted" style="font-size:var(--fs-xs);margin:0;">Finansys Cloud Vault, cópias locais, tema visual e segurança</p>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <Icon
+                name="chevron"
+                style={`width:15px;height:15px;transition:transform 0.2s ease;color:var(--text-muted);${
+                  secoesAbertas.has("sistema") ? "transform:rotate(180deg);" : ""
+                }`}
+              />
+            </div>
+          </div>
+
+          {secoesAbertas.has("sistema") && (
+            <div style="padding:var(--sp-3) var(--sp-4);border-top:1px solid var(--border);">
           {/* ================= SEÇÃO PRINCIPAL: FINANSYS CLOUD VAULT ================= */}
           <section class="card" style="border-color:var(--primary-soft);">
             <div class="card__head">
@@ -1056,6 +1218,8 @@ export function Ajustes() {
           </section>
         </div>
       )}
+    </section>
+  </div>
 
       {/* ================= MODAIS ================= */}
 
@@ -1771,6 +1935,39 @@ export function Ajustes() {
                   value={modalBanco.numeroConta || ""}
                   onInput={(e) => setModalBanco({ ...modalBanco, numeroConta: (e.target as HTMLInputElement).value })}
                 />
+              </div>
+            </div>
+
+            {/* Formas de Pagamento Disponíveis */}
+            <div class="form-group" style="margin-top:var(--sp-2);">
+              <label class="form-label" style="display:flex;align-items:center;gap:6px;font-size:var(--fs-xs);">
+                <Icon name="creditCard" style="width:13px;height:13px;color:var(--primary);" />
+                <span>Formas de Pagamento Aceitas neste Banco</span>
+              </label>
+              <p class="muted" style="font-size:var(--fs-xs);margin-top:-2px;margin-bottom:6px;">
+                Selecione as formas suportadas para sugerir automaticamente nas realizações:
+              </p>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                {FORMAS_PAGAMENTO_PADRAO.map((f) => {
+                  const ativas = modalBanco.formasPagamento || [];
+                  const isChecked = ativas.includes(f);
+                  return (
+                    <button
+                      type="button"
+                      key={f}
+                      class={`chip ${isChecked ? "is-active" : ""}`}
+                      style="font-size:11px;padding:3px 10px;cursor:pointer;"
+                      onClick={() => {
+                        const novas = isChecked
+                          ? ativas.filter((x) => x !== f)
+                          : [...ativas, f];
+                        setModalBanco({ ...modalBanco, formasPagamento: novas });
+                      }}
+                    >
+                      {isChecked ? "✓ " : "+ "}{f}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
