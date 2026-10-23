@@ -834,26 +834,30 @@ export function Projecoes() {
       ) : modoVisao === "grade" ? (
         /* ================= VISÃO MATRIZ ANUAL 12 MESES (DESKTOP-FIRST) ================= */
         <div class="stack">
-          <div class="table-wrap">
-            <table class="data-table">
+          <div class="matriz-scroll-hint only-mobile">
+            <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
+            <span>Deslize horizontalmente para navegar pelos 12 meses</span>
+          </div>
+          <div class="table-wrap table-wrap--matriz">
+            <table class="data-table data-table--matriz">
               <thead>
                 <tr>
-                  <th style="min-width:230px;">Conta / Categoria</th>
+                  <th class="col-conta">Conta / Categoria</th>
                   {MONTHS.map((m, idx) => {
                     const isMesAtual = idx === new Date().getMonth();
                     return (
                       <th
                         key={m}
-                        class={isMesAtual ? "is-current-month" : ""}
+                        class={`col-mes ${isMesAtual ? "is-current-month" : ""}`}
                         title={isMesAtual ? "Mês Atual" : undefined}
                       >
                         {m.toUpperCase()}
-                        {isMesAtual && <span style="display:block;font-size:0.55rem;opacity:0.8;">ATUAL</span>}
+                        {isMesAtual && <span class="badge-atual">ATUAL</span>}
                       </th>
                     );
                   })}
-                  <th style="background:var(--surface-solid);min-width:110px;font-weight:700;">Total Anual</th>
-                  <th style="background:var(--surface-solid);min-width:80px;text-align:center;">Ações</th>
+                  <th class="col-total">Total Anual</th>
+                  <th class="col-acoes">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -877,28 +881,28 @@ export function Projecoes() {
                       <Fragment key={`cat-group-${cat.id}`}>
                         {/* Linha Cabeçalho da Categoria com Subtotais dos 12 Meses */}
                         <tr key={`cat-${cat.id}`} class="category-row">
-                          <td>
-                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;">
+                          <td class="col-conta">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0;">
                               <div
-                                style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;min-width:0;"
+                                style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;min-width:0;flex:1;"
                                 onClick={() => toggleCategoria(cat.id)}
                               >
                                 <Icon
                                   name="chevron"
-                                  style={`width:14px;height:14px;flex-shrink:0;transition:transform 0.2s ease;${
+                                  style={`width:13px;height:13px;flex-shrink:0;transition:transform 0.2s ease;${
                                     isColapsada ? "transform:rotate(-90deg);" : ""
                                   }`}
                                 />
                                 <i class="dot" style={`background:var(--${NATURE_META[nat].tone});flex-shrink:0;`} />
-                                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{cat.nome}</span>
-                                <span class="muted" style="font-size:var(--fs-xs);font-weight:normal;flex-shrink:0;">
+                                <span class="cat-nome" style="font-weight:700;">{cat.nome}</span>
+                                <span class="muted cat-count" style="font-size:var(--fs-xs);font-weight:normal;flex-shrink:0;">
                                   ({contasDaCat.length})
                                 </span>
                               </div>
 
                               <button
                                 type="button"
-                                class="btn btn--ghost btn--icon"
+                                class="btn btn--ghost btn--icon col-conta__btn-add"
                                 style="min-height:22px;width:22px;flex-shrink:0;"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -918,7 +922,7 @@ export function Projecoes() {
                             return (
                               <td
                                 key={m}
-                                class={isMesAtual ? "is-current-month" : ""}
+                                class={`col-mes ${isMesAtual ? "is-current-month" : ""}`}
                                 style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;font-size:var(--fs-xs);"
                               >
                                 {subMes > 0 ? money(subMes) : <span class="muted" style="font-weight:normal;">—</span>}
@@ -927,10 +931,10 @@ export function Projecoes() {
                           })}
 
                           {/* Subtotal Anual da Categoria */}
-                          <td style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;background:var(--surface-soft);">
+                          <td class="col-total">
                             {money(totCatAno)}
                           </td>
-                          <td style="background:var(--surface-soft);text-align:center;">—</td>
+                          <td class="col-acoes">—</td>
                         </tr>
 
                         {/* Linhas das Contas pertencentes à Categoria */}
@@ -939,14 +943,14 @@ export function Projecoes() {
                             const totAno = totalContaAno(c.id);
                             return (
                               <tr key={c.id}>
-                                <td style="padding-left:28px;">
-                                  <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-                                    <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-                                      <span style="font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{c.nome}</span>
+                                <td class="col-conta col-conta--sub">
+                                  <div class="col-conta__inner">
+                                    <div style="display:flex;align-items:center;gap:4px;min-width:0;flex:1;">
+                                      <span class="conta-nome" title={c.nome}>{c.nome}</span>
                                       {c.vinculo && (
                                         <span
-                                          class="badge"
-                                          style="font-size:10px;padding:1px 5px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:3px;cursor:pointer;"
+                                          class="badge col-conta__badge-vinculo"
+                                          style="font-size:9px;padding:1px 4px;background:var(--primary-soft);color:var(--primary);display:inline-flex;align-items:center;gap:2px;cursor:pointer;flex-shrink:0;"
                                           onClick={() => recalcularContaIndividual(c)}
                                           title={
                                             c.vinculo.modo === "formula"
@@ -970,10 +974,11 @@ export function Projecoes() {
                                     </div>
                                     {getProj(c.id, mesAtivo).obs && (
                                       <span
+                                        class="col-conta__obs-icon"
                                         title={`Observação: ${getProj(c.id, mesAtivo).obs}`}
-                                        style="cursor:help;color:var(--primary);"
+                                        style="cursor:help;color:var(--primary);flex-shrink:0;"
                                       >
-                                        <Icon name="info" style="width:12px;height:12px;" />
+                                        <Icon name="info" style="width:11px;height:11px;" />
                                       </span>
                                     )}
                                   </div>
@@ -983,7 +988,7 @@ export function Projecoes() {
                                   const p = getProj(c.id, m);
                                   const isMesAtual = m === new Date().getMonth();
                                   return (
-                                    <td key={m} class={isMesAtual ? "is-current-month" : ""} style="position:relative;">
+                                    <td key={m} class={`col-mes ${isMesAtual ? "is-current-month" : ""}`} style="position:relative;">
                                       <div style="position:relative;display:inline-block;">
                                         <input
                                           type="number"
@@ -1026,11 +1031,11 @@ export function Projecoes() {
                                   );
                                 })}
 
-                                <td style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;">
-                                  {money(totAno)}
+                                <td class="col-total">
+                                  <span class={totAno > 0 ? `tone-${NATURE_META[nat].tone}` : ""}>{money(totAno)}</span>
                                 </td>
 
-                                <td style="text-align:center;padding:4px 6px;">
+                                <td class="col-acoes" style="text-align:center;padding:4px 6px;">
                                   <div style="display:inline-flex;align-items:center;gap:2px;">
                                     {c.vinculo && (
                                       <button
@@ -1098,19 +1103,19 @@ export function Projecoes() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td>TOTAL GERAL ({NATURE_META[nat].label.toUpperCase()})</td>
+                  <td class="col-conta">TOTAL GERAL ({NATURE_META[nat].label.toUpperCase()})</td>
                   {MONTHS.map((_, m) => {
                     const isMesAtual = m === new Date().getMonth();
                     return (
-                      <td key={m} class={isMesAtual ? "is-current-month" : ""}>
+                      <td key={m} class={`col-mes ${isMesAtual ? "is-current-month" : ""}`}>
                         {money(totalMes(m))}
                       </td>
                     );
                   })}
-                  <td style={`color:var(--${NATURE_META[nat].tone});font-size:var(--fs-sm);`}>
+                  <td class="col-total" style={`color:var(--${NATURE_META[nat].tone});font-size:var(--fs-sm);`}>
                     {money(totalGeralAno())}
                   </td>
-                  <td>—</td>
+                  <td class="col-acoes">—</td>
                 </tr>
               </tfoot>
             </table>

@@ -1753,6 +1753,145 @@
   font-weight: 600;
 }
 
+/* ---------- Matriz 12 Meses (Projeções e Realizações) ---------- */
+.card-matriz-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: 100%;
+}
+
+.matriz-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.matriz-toolbar__search {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  max-width: 380px;
+}
+
+.matriz-toolbar__tabs {
+  margin: 0;
+}
+
+.matriz-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.matriz-scroll-hint {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 4px 6px;
+}
+
+.table-wrap--matriz {
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table--matriz {
+  font-size: var(--fs-xs);
+}
+
+/* Colunas padronizadas da Matriz (Desktop) */
+.data-table--matriz .col-conta,
+.data-table--matriz th.col-conta,
+.data-table--matriz td.col-conta {
+  width: 220px;
+  min-width: 200px;
+  max-width: 280px;
+  text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--surface-solid);
+  z-index: 5;
+  border-right: 1px solid var(--border);
+  box-shadow: 2px 0 5px -2px rgba(0, 0, 0, 0.08);
+}
+
+.data-table--matriz th.col-conta {
+  z-index: 12;
+}
+
+.data-table--matriz tr.category-row .col-conta,
+.data-table--matriz tr.category-row td.col-conta {
+  background: var(--surface-soft);
+  z-index: 6;
+}
+
+.data-table--matriz tr:hover .col-conta,
+.data-table--matriz tr.category-row:hover .col-conta {
+  background: var(--surface-hover);
+}
+
+.data-table--matriz .col-conta--sub {
+  padding-left: 24px;
+}
+
+.data-table--matriz .col-conta__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.data-table--matriz .conta-nome {
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.data-table--matriz .col-mes {
+  min-width: 82px;
+  width: 82px;
+  text-align: right;
+  padding: 6px 6px;
+}
+
+.data-table--matriz th.col-mes {
+  text-align: center;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+}
+
+.data-table--matriz .col-total {
+  min-width: 105px;
+  width: 105px;
+  text-align: right;
+  font-weight: 700;
+  background: var(--surface-soft);
+}
+
+.data-table--matriz .col-acoes {
+  min-width: 60px;
+  width: 60px;
+  text-align: center;
+  background: var(--surface-soft);
+}
+
+.badge-atual {
+  display: block;
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+  line-height: 1;
+  margin-top: 2px;
+}
+
 /* ---------- Animações Auxiliares ---------- */
 @keyframes spin {
   to { transform: rotate(360deg); }
@@ -2250,6 +2389,141 @@
     min-height: 30px;
     width: 30px;
     padding: 0;
+  }
+
+  /* ---------- Matriz 12 Meses Mobile Otimizada ---------- */
+  .card-matriz-wrapper {
+    gap: var(--sp-2);
+  }
+
+  .matriz-toolbar {
+    gap: 8px;
+  }
+
+  .matriz-toolbar__search {
+    min-width: 100%;
+    max-width: 100%;
+  }
+
+  .matriz-scroll-hint {
+    display: inline-flex;
+    font-size: 0.68rem;
+    color: var(--primary);
+    font-weight: 600;
+    padding: 4px 8px;
+    background: var(--primary-soft);
+    border-radius: var(--r-sm);
+    margin-bottom: 2px;
+    align-self: flex-start;
+  }
+
+  /* Sangria de borda a borda: ganha 100% da largura da tela física */
+  .table-wrap--matriz {
+    margin-left: calc(var(--page-pad) * -1);
+    margin-right: calc(var(--page-pad) * -1);
+    width: calc(100% + var(--page-pad) * 2);
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .data-table--matriz {
+    font-size: 0.72rem;
+  }
+
+  /* Coluna Fixa de Conta/Categoria compactada e legível no Mobile */
+  .data-table--matriz th:first-child,
+  .data-table--matriz td:first-child,
+  .data-table--matriz .col-conta,
+  .data-table--matriz th.col-conta,
+  .data-table--matriz td.col-conta {
+    width: 105px !important;
+    min-width: 105px !important;
+    max-width: 105px !important;
+    padding: 6px 5px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    line-height: 1.25 !important;
+    font-size: 0.72rem !important;
+    box-shadow: 3px 0 8px -2px rgba(0, 0, 0, 0.22);
+  }
+
+  .data-table--matriz .col-conta--sub {
+    padding-left: 8px !important;
+  }
+
+  .data-table--matriz .col-conta__inner {
+    flex-wrap: wrap;
+    gap: 2px;
+  }
+
+  .data-table--matriz .conta-nome,
+  .data-table--matriz .cat-nome {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: normal !important;
+    line-height: 1.2;
+    font-size: 0.72rem;
+  }
+
+  .data-table--matriz .cat-count {
+    display: none !important;
+  }
+
+  .data-table--matriz .col-conta__btn-add {
+    display: none !important;
+  }
+
+  /* Colunas de Meses fluidas e compactas */
+  .data-table--matriz .col-mes,
+  .data-table--matriz th.col-mes,
+  .data-table--matriz td.col-mes {
+    min-width: 68px !important;
+    width: 68px !important;
+    padding: 4px 2px !important;
+    font-size: 0.68rem !important;
+    text-align: center !important;
+  }
+
+  .data-table--matriz th.col-mes {
+    padding: 6px 2px !important;
+    font-size: 0.64rem !important;
+  }
+
+  /* Inputs perfeitamente dimensionados dentro das células no Mobile */
+  .data-table--matriz .input-cell {
+    width: 62px !important;
+    min-width: 62px !important;
+    max-width: 62px !important;
+    padding: 3px 3px !important;
+    font-size: 0.72rem !important;
+    min-height: 28px !important;
+    height: 28px !important;
+  }
+
+  .data-table--matriz .col-total,
+  .data-table--matriz th.col-total,
+  .data-table--matriz td.col-total {
+    min-width: 78px !important;
+    width: 78px !important;
+    padding: 4px 4px !important;
+    font-size: 0.7rem !important;
+  }
+
+  .data-table--matriz .col-acoes,
+  .data-table--matriz th.col-acoes,
+  .data-table--matriz td.col-acoes {
+    min-width: 38px !important;
+    width: 38px !important;
+    padding: 4px 2px !important;
+  }
+
+  .data-table--matriz tfoot td {
+    font-size: 0.7rem !important;
+    padding: 6px 4px !important;
   }
 }
 

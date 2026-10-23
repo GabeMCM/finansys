@@ -960,335 +960,381 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         onIgnorar={abrirIgnorarProjecao}
       />
 
-      {/* Barra de Ferramentas e Extrato / Tabela */}
-      <section class="card">
-        <div class="card__head lancamentos-toolbar">
-          <div class="lancamentos-toolbar__search">
-            <input
-              type="search"
-              class="input"
-              placeholder="Buscar lançamento, conta ou observação..."
-              value={busca}
-              onInput={(e) => setBusca((e.currentTarget as HTMLInputElement).value)}
-              style="min-height:36px;font-size:var(--fs-xs);"
-            />
-          </div>
+      {modoVisao === "matriz" ? (
+        /* Modo Matriz 12 Meses (Lançar direto da Projeção) */
+        <section class="card-matriz-wrapper">
+          {/* Sub-toolbar da Matriz: Busca, Seletor de Natureza e Controles */}
+          <div class="matriz-toolbar">
+            <div class="matriz-toolbar__search">
+              <input
+                type="search"
+                class="input"
+                placeholder={`Buscar em ${NATURE_META[natMatriz].label}...`}
+                value={busca}
+                onInput={(e) => setBusca((e.currentTarget as HTMLInputElement).value)}
+                style="min-height:36px;font-size:var(--fs-xs);padding-left:32px;"
+              />
+              <Icon
+                name="list"
+                style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:13px;height:13px;color:var(--text-muted);pointer-events:none;"
+              />
+            </div>
 
-          <div class="lancamentos-toolbar__filters">
-            {/* Seletor de Natureza com badges de contagem */}
-            <div class="tabs tabs--sm lancamentos-toolbar__nat-tabs" style="margin:0;">
-              <button
-                type="button"
-                class={`tab ${natFiltro === "todas" ? "is-active" : ""}`}
-                style="padding:4px 8px;font-size:var(--fs-xs);"
-                onClick={() => setNatFiltro("todas")}
-              >
-                Todas ({filtrados.length})
-              </button>
+            <div class="tabs tabs--sm matriz-toolbar__tabs" style="margin:0;">
               {NATUREZAS.map((n) => {
                 const meta = NATURE_META[n];
-                const countNat = ls.filter((l) => {
-                  const c = contaMap.get(l.contaId);
-                  if (!c || c.natureza !== n) return false;
-                  if (mesFiltro !== "todos" && l.mes !== mesFiltro) return false;
-                  return true;
-                }).length;
+                const csDaNat = cs.filter((c) => c.natureza === n && c.ativa);
                 return (
                   <button
                     type="button"
                     key={n}
-                    class={`tab ${natFiltro === n ? "is-active" : ""}`}
-                    style="padding:4px 8px;font-size:var(--fs-xs);"
-                    onClick={() => setNatFiltro(n)}
+                    class={`tab ${natMatriz === n ? "is-active" : ""}`}
+                    style="padding:4px 10px;font-size:var(--fs-xs);"
+                    onClick={() => setNatMatriz(n)}
                   >
                     <i class="dot" style={`background:var(--${meta.tone});`} />
                     <span>{meta.label}</span>
-                    <span class="muted" style="font-size:10px;">({countNat})</span>
+                    <span class="muted" style="font-size:10px;">({csDaNat.length})</span>
                   </button>
                 );
               })}
             </div>
-          </div>
-        </div>
 
-        {modoVisao === "matriz" ? (
-          /* Modo Matriz 12 Meses (Lançar direto da Projeção) */
-          <div class="stack" style="padding:var(--sp-3);">
-            {/* Sub-toolbar da Matriz: Seletor de Natureza e Controles */}
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:var(--sp-2);">
-              <div class="tabs tabs--sm" style="margin:0;">
+            <div class="matriz-toolbar__actions">
+              {catsMatriz.length > 0 && (
+                <button
+                  type="button"
+                  class="btn btn--ghost btn--sm"
+                  style="font-size:var(--fs-xs);height:28px;"
+                  onClick={() => {
+                    if (catsColapsadasMatriz.size === catsMatriz.length) {
+                      setCatsColapsadasMatriz(new Set());
+                    } else {
+                      setCatsColapsadasMatriz(new Set(catsMatriz.map((c) => c.id)));
+                    }
+                  }}
+                >
+                  {catsColapsadasMatriz.size === catsMatriz.length ? "Expandir Todas" : "Recolher Todas"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div class="matriz-scroll-hint only-mobile">
+            <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
+            <span>Deslize horizontalmente para navegar pelos 12 meses</span>
+          </div>
+
+          {csMatriz.length === 0 && catsMatriz.length === 0 ? (
+            <div class="empty" style="padding:var(--sp-6) var(--sp-4);">
+              <Icon name="grid" />
+              <h2>Nenhuma conta em {NATURE_META[natMatriz].label}</h2>
+              <p>Cadastre contas e projeções para realizar diretamente na grade.</p>
+            </div>
+          ) : (
+            <div class="table-wrap table-wrap--matriz">
+              <table class="data-table data-table--matriz">
+                <thead>
+                  <tr>
+                    <th class="col-conta">Conta / Categoria</th>
+                    {MONTHS.map((m, idx) => {
+                      const isMesAtual = idx === new Date().getMonth();
+                      return (
+                        <th
+                          key={m}
+                          class={`col-mes ${isMesAtual ? "is-current-month" : ""}`}
+                          title={isMesAtual ? "Mês Atual" : undefined}
+                        >
+                          {m.toUpperCase()}
+                          {isMesAtual && <span class="badge-atual">ATUAL</span>}
+                        </th>
+                      );
+                    })}
+                    <th class="col-total">
+                      Total Realizado
+                    </th>
+                    <th class="col-acoes">Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {catsFiltradasMatriz.map((cat) => {
+                    const contasDaCat = csMatriz.filter((c) => {
+                      if (c.categoriaId !== cat.id) return false;
+                      if (!termoMatriz) return true;
+                      return c.nome.toLowerCase().includes(termoMatriz) || cat.nome.toLowerCase().includes(termoMatriz);
+                    });
+                    const isColapsada = catsColapsadasMatriz.has(cat.id);
+                    const subRealCatAno = contasDaCat.reduce((sum, c) => sum + ls.filter((l) => l.contaId === c.id).reduce((s, l) => s + l.valor, 0), 0);
+
+                    return (
+                      <Fragment key={`cat-group-${cat.id}`}>
+                        {/* Linha Cabeçalho da Categoria com Subtotais dos 12 Meses */}
+                        <tr key={`cat-${cat.id}`} class="category-row">
+                          <td class="col-conta">
+                            <div
+                              style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"
+                              onClick={() => toggleCatMatriz(cat.id)}
+                            >
+                              <Icon
+                                name="chevron"
+                                style={`width:13px;height:13px;flex-shrink:0;transition:transform 0.2s ease;${
+                                  isColapsada ? "transform:rotate(-90deg);" : ""
+                                }`}
+                              />
+                              <i class="dot" style={`background:var(--${NATURE_META[natMatriz].tone});flex-shrink:0;`} />
+                              <span class="cat-nome" style="font-weight:700;">{cat.nome}</span>
+                              <span class="muted cat-count" style="font-size:var(--fs-xs);font-weight:normal;">
+                                ({contasDaCat.length})
+                              </span>
+                            </div>
+                          </td>
+
+                          {MONTHS.map((_, m) => {
+                            const isMesAtual = m === new Date().getMonth();
+                            const subRealMes = contasDaCat.reduce(
+                              (acc, c) => acc + ls.filter((l) => l.contaId === c.id && l.mes === m).reduce((s, l) => s + l.valor, 0),
+                              0,
+                            );
+                            const subProjMes = contasDaCat.reduce(
+                              (acc, c) => acc + (ps || []).filter((p) => p.contaId === c.id && p.mes === m).reduce((s, p) => s + p.valor, 0),
+                              0,
+                            );
+
+                            return (
+                              <td
+                                key={m}
+                                class={`col-mes ${isMesAtual ? "is-current-month" : ""}`}
+                                style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;font-size:var(--fs-xs);text-align:right;"
+                              >
+                                {subRealMes > 0 ? (
+                                  money(subRealMes)
+                                ) : subProjMes > 0 ? (
+                                  <span class="muted" style="font-weight:normal;" title={`Meta: ${money(subProjMes)}`}>
+                                    ({money(subProjMes)})
+                                  </span>
+                                ) : (
+                                  <span class="muted" style="font-weight:normal;">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+
+                          <td class="col-total">
+                            {money(subRealCatAno)}
+                          </td>
+                          <td class="col-acoes">—</td>
+                        </tr>
+
+                        {/* Linhas das Contas pertencentes à Categoria */}
+                        {!isColapsada &&
+                          contasDaCat.map((c) => {
+                            const totalContaReal = ls.filter((l) => l.contaId === c.id).reduce((s, l) => s + l.valor, 0);
+
+                            return (
+                              <tr key={c.id}>
+                                <td class="col-conta col-conta--sub">
+                                  <div class="col-conta__inner">
+                                    <span class="conta-nome" title={c.nome}>
+                                      {c.nome}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                {MONTHS.map((_, m) => {
+                                  const isMesAtual = m === new Date().getMonth();
+                                  const lancsContaMes = ls.filter((l) => l.contaId === c.id && l.mes === m);
+                                  const realContaMes = lancsContaMes.reduce((acc, l) => acc + l.valor, 0);
+                                  const projContaMes = (ps || []).find((p) => p.contaId === c.id && p.mes === m)?.valor || 0;
+
+                                  return (
+                                    <td
+                                      key={m}
+                                      class={`col-mes ${isMesAtual ? "is-current-month" : ""}`}
+                                      style="position:relative;text-align:center;"
+                                    >
+                                      {lancsContaMes.length > 1 ? (
+                                        <div style="display:flex;align-items:center;justify-content:center;gap:3px;">
+                                          <span class="num has-val" style="font-weight:700;">
+                                            {money(realContaMes)}
+                                          </span>
+                                          <span
+                                            class="badge badge--neutral"
+                                            style="font-size:9px;padding:1px 3px;cursor:pointer;"
+                                            title={`${lancsContaMes.length} realizações neste mês. Clique para filtrar no Extrato.`}
+                                            onClick={() => {
+                                              setMesFiltro(m);
+                                              setBusca(c.nome);
+                                              trocarModoVisao("extrato");
+                                            }}
+                                          >
+                                            {lancsContaMes.length}x
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div style="position:relative;display:inline-flex;align-items:center;">
+                                          <input
+                                            type="number"
+                                            step="0.01"
+                                            inputMode="decimal"
+                                            class={`input-cell ${realContaMes > 0 ? "has-val" : ""}`}
+                                            value={realContaMes ? (realContaMes / 100).toFixed(2) : ""}
+                                            placeholder={projContaMes > 0 ? (projContaMes / 100).toFixed(2) : "0,00"}
+                                            title={
+                                              realContaMes > 0
+                                                ? `Realizado: ${money(realContaMes)}${projContaMes > 0 ? ` (Meta: ${money(projContaMes)})` : ""}`
+                                                : projContaMes > 0
+                                                ? `Meta projetada: ${money(projContaMes)}. Digite o valor ou clique no botão para realizar.`
+                                                : "0,00"
+                                            }
+                                            onFocus={(e) => (e.currentTarget as HTMLInputElement).select()}
+                                            onBlur={(e) => {
+                                              const val = parseFloat((e.currentTarget as HTMLInputElement).value) || 0;
+                                              if (val !== realContaMes / 100) {
+                                                atualizarValorRealMatriz(c, m, val);
+                                              }
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                (e.currentTarget as HTMLInputElement).blur();
+                                              }
+                                            }}
+                                          />
+                                          {realContaMes === 0 && projContaMes > 0 && (
+                                            <button
+                                              type="button"
+                                              class="btn btn--ghost btn--icon"
+                                              style="position:absolute;right:2px;top:50%;transform:translateY(-50%);width:18px;height:18px;padding:0;color:var(--primary);opacity:0.85;"
+                                              onClick={() => realizarProjecaoMatriz(c, m, projContaMes)}
+                                              title={`Realizar conforme meta de ${money(projContaMes)}`}
+                                            >
+                                              <Icon name="check" style="width:11px;height:11px;" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+
+                                <td class="col-total">
+                                  <span class={totalContaReal > 0 ? `tone-${NATURE_META[natMatriz].tone}` : ""}>
+                                    {money(totalContaReal)}
+                                  </span>
+                                </td>
+                                <td class="col-acoes">
+                                  <button
+                                    type="button"
+                                    class="btn btn--ghost btn--icon"
+                                    style="width:24px;height:24px;min-height:24px;"
+                                    onClick={() => {
+                                      setCatSelecionadaModal(c.categoriaId);
+                                      abrirNovo();
+                                      setModalLanc((prev) => prev ? { ...prev, contaId: c.id, natureza: c.natureza } : null);
+                                    }}
+                                    title={`Nova realização em ${c.nome}`}
+                                  >
+                                    <Icon name="plus" style="width:12px;height:12px;" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td class="col-conta">TOTAL REALIZADO ({NATURE_META[natMatriz].label.toUpperCase()})</td>
+                    {MONTHS.map((_, m) => {
+                      const isMesAtual = m === new Date().getMonth();
+                      const totalMesReal = csMatriz.reduce(
+                        (acc, c) => acc + ls.filter((l) => l.contaId === c.id && l.mes === m).reduce((s, l) => s + l.valor, 0),
+                        0,
+                      );
+                      return (
+                        <td key={m} class={`col-mes ${isMesAtual ? "is-current-month" : ""}`}>
+                          {money(totalMesReal)}
+                        </td>
+                      );
+                    })}
+                    <td class="col-total" style={`color:var(--${NATURE_META[natMatriz].tone});`}>
+                      {money(
+                        csMatriz.reduce(
+                          (acc, c) => acc + ls.filter((l) => l.contaId === c.id).reduce((s, l) => s + l.valor, 0),
+                          0,
+                        ),
+                      )}
+                    </td>
+                    <td class="col-acoes">—</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : (
+        /* Barra de Ferramentas e Extrato / Tabela */
+        <section class="card lancamentos-card">
+          <div class="card__head lancamentos-toolbar">
+            <div class="lancamentos-toolbar__search">
+              <input
+                type="search"
+                class="input"
+                placeholder="Buscar realização, conta ou observação..."
+                value={busca}
+                onInput={(e) => setBusca((e.currentTarget as HTMLInputElement).value)}
+                style="min-height:36px;font-size:var(--fs-xs);"
+              />
+            </div>
+
+            <div class="lancamentos-toolbar__filters">
+              {/* Seletor de Natureza com badges de contagem */}
+              <div class="tabs tabs--sm lancamentos-toolbar__nat-tabs" style="margin:0;">
+                <button
+                  type="button"
+                  class={`tab ${natFiltro === "todas" ? "is-active" : ""}`}
+                  style="padding:4px 8px;font-size:var(--fs-xs);"
+                  onClick={() => setNatFiltro("todas")}
+                >
+                  Todas ({filtrados.length})
+                </button>
                 {NATUREZAS.map((n) => {
                   const meta = NATURE_META[n];
-                  const csDaNat = cs.filter((c) => c.natureza === n && c.ativa);
+                  const countNat = ls.filter((l) => {
+                    const c = contaMap.get(l.contaId);
+                    if (!c || c.natureza !== n) return false;
+                    if (mesFiltro !== "todos" && l.mes !== mesFiltro) return false;
+                    return true;
+                  }).length;
                   return (
                     <button
                       type="button"
                       key={n}
-                      class={`tab ${natMatriz === n ? "is-active" : ""}`}
-                      style="padding:4px 10px;font-size:var(--fs-xs);"
-                      onClick={() => setNatMatriz(n)}
+                      class={`tab ${natFiltro === n ? "is-active" : ""}`}
+                      style="padding:4px 8px;font-size:var(--fs-xs);"
+                      onClick={() => setNatFiltro(n)}
                     >
                       <i class="dot" style={`background:var(--${meta.tone});`} />
                       <span>{meta.label}</span>
-                      <span class="muted" style="font-size:10px;">({csDaNat.length})</span>
+                      <span class="muted" style="font-size:10px;">({countNat})</span>
                     </button>
                   );
                 })}
               </div>
-
-              <div style="display:flex;align-items:center;gap:8px;">
-                {catsMatriz.length > 0 && (
-                  <button
-                    type="button"
-                    class="btn btn--ghost btn--sm"
-                    style="font-size:var(--fs-xs);height:28px;"
-                    onClick={() => {
-                      if (catsColapsadasMatriz.size === catsMatriz.length) {
-                        setCatsColapsadasMatriz(new Set());
-                      } else {
-                        setCatsColapsadasMatriz(new Set(catsMatriz.map((c) => c.id)));
-                      }
-                    }}
-                  >
-                    {catsColapsadasMatriz.size === catsMatriz.length ? "Expandir Todas" : "Recolher Todas"}
-                  </button>
-                )}
-              </div>
             </div>
-
-            {csMatriz.length === 0 && catsMatriz.length === 0 ? (
-              <div class="empty" style="padding:var(--sp-6) var(--sp-4);">
-                <Icon name="grid" />
-                <h2>Nenhuma conta em {NATURE_META[natMatriz].label}</h2>
-                <p>Cadastre contas e projeções para realizar diretamente na grade.</p>
-              </div>
-            ) : (
-              <div class="table-wrap">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th style="min-width:220px;text-align:left;">Conta / Categoria</th>
-                      {MONTHS.map((m, idx) => {
-                        const isMesAtual = idx === new Date().getMonth();
-                        return (
-                          <th
-                            key={m}
-                            class={isMesAtual ? "is-current-month" : ""}
-                            style="text-align:center;min-width:85px;"
-                            title={isMesAtual ? "Mês Atual" : undefined}
-                          >
-                            {m.toUpperCase()}
-                            {isMesAtual && <span style="display:block;font-size:0.55rem;opacity:0.8;">ATUAL</span>}
-                          </th>
-                        );
-                      })}
-                      <th style="background:var(--surface-solid);min-width:110px;text-align:right;font-weight:700;">
-                        Total Realizado
-                      </th>
-                      <th style="background:var(--surface-solid);min-width:70px;text-align:center;">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {catsFiltradasMatriz.map((cat) => {
-                      const contasDaCat = csMatriz.filter((c) => {
-                        if (c.categoriaId !== cat.id) return false;
-                        if (!termoMatriz) return true;
-                        return c.nome.toLowerCase().includes(termoMatriz) || cat.nome.toLowerCase().includes(termoMatriz);
-                      });
-                      const isColapsada = catsColapsadasMatriz.has(cat.id);
-                      const subRealCatAno = contasDaCat.reduce((sum, c) => sum + ls.filter((l) => l.contaId === c.id).reduce((s, l) => s + l.valor, 0), 0);
-
-                      return (
-                        <Fragment key={`cat-group-${cat.id}`}>
-                          {/* Linha Cabeçalho da Categoria com Subtotais dos 12 Meses */}
-                          <tr key={`cat-${cat.id}`} class="category-row">
-                            <td>
-                              <div
-                                style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"
-                                onClick={() => toggleCatMatriz(cat.id)}
-                              >
-                                <Icon
-                                  name="chevron"
-                                  style={`width:13px;height:13px;flex-shrink:0;transition:transform 0.2s ease;${
-                                    isColapsada ? "transform:rotate(-90deg);" : ""
-                                  }`}
-                                />
-                                <i class="dot" style={`background:var(--${NATURE_META[natMatriz].tone});flex-shrink:0;`} />
-                                <span style="font-weight:700;">{cat.nome}</span>
-                                <span class="muted" style="font-size:var(--fs-xs);font-weight:normal;">
-                                  ({contasDaCat.length})
-                                </span>
-                              </div>
-                            </td>
-
-                            {MONTHS.map((_, m) => {
-                              const isMesAtual = m === new Date().getMonth();
-                              const subRealMes = contasDaCat.reduce(
-                                (acc, c) => acc + ls.filter((l) => l.contaId === c.id && l.mes === m).reduce((s, l) => s + l.valor, 0),
-                                0,
-                              );
-                              const subProjMes = contasDaCat.reduce(
-                                (acc, c) => acc + (ps || []).filter((p) => p.contaId === c.id && p.mes === m).reduce((s, p) => s + p.valor, 0),
-                                0,
-                              );
-
-                              return (
-                                <td
-                                  key={m}
-                                  class={isMesAtual ? "is-current-month" : ""}
-                                  style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;font-size:var(--fs-xs);text-align:right;"
-                                >
-                                  {subRealMes > 0 ? (
-                                    money(subRealMes)
-                                  ) : subProjMes > 0 ? (
-                                    <span class="muted" style="font-weight:normal;" title={`Meta: ${money(subProjMes)}`}>
-                                      ({money(subProjMes)})
-                                    </span>
-                                  ) : (
-                                    <span class="muted" style="font-weight:normal;">—</span>
-                                  )}
-                                </td>
-                              );
-                            })}
-
-                            <td style="font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;background:var(--surface-soft);text-align:right;">
-                              {money(subRealCatAno)}
-                            </td>
-                            <td style="background:var(--surface-soft);text-align:center;">—</td>
-                          </tr>
-
-                          {/* Linhas das Contas pertencentes à Categoria */}
-                          {!isColapsada &&
-                            contasDaCat.map((c) => {
-                              const totalContaReal = ls.filter((l) => l.contaId === c.id).reduce((s, l) => s + l.valor, 0);
-
-                              return (
-                                <tr key={c.id}>
-                                  <td style="padding-left:26px;text-align:left;">
-                                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-                                      <span style="font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                        {c.nome}
-                                      </span>
-                                    </div>
-                                  </td>
-
-                                  {MONTHS.map((_, m) => {
-                                    const isMesAtual = m === new Date().getMonth();
-                                    const lancsContaMes = ls.filter((l) => l.contaId === c.id && l.mes === m);
-                                    const realContaMes = lancsContaMes.reduce((acc, l) => acc + l.valor, 0);
-                                    const projContaMes = (ps || []).find((p) => p.contaId === c.id && p.mes === m)?.valor || 0;
-
-                                    return (
-                                      <td
-                                        key={m}
-                                        class={isMesAtual ? "is-current-month" : ""}
-                                        style="position:relative;padding:3px 4px;text-align:center;"
-                                      >
-                                        {lancsContaMes.length > 1 ? (
-                                          <div style="display:flex;align-items:center;justify-content:center;gap:3px;">
-                                            <span class="num has-val" style="font-size:var(--fs-xs);font-weight:700;">
-                                              {money(realContaMes)}
-                                            </span>
-                                            <span
-                                              class="badge badge--neutral"
-                                              style="font-size:9px;padding:1px 3px;cursor:pointer;"
-                                              title={`${lancsContaMes.length} realizações neste mês. Clique para filtrar no Extrato.`}
-                                              onClick={() => {
-                                                setMesFiltro(m);
-                                                setBusca(c.nome);
-                                                trocarModoVisao("extrato");
-                                              }}
-                                            >
-                                              {lancsContaMes.length}x
-                                            </span>
-                                          </div>
-                                        ) : (
-                                          <div style="position:relative;display:inline-flex;align-items:center;">
-                                            <input
-                                              type="number"
-                                              step="0.01"
-                                              inputMode="decimal"
-                                              class={`input-cell ${realContaMes > 0 ? "has-val" : ""}`}
-                                              value={realContaMes ? (realContaMes / 100).toFixed(2) : ""}
-                                              placeholder={projContaMes > 0 ? (projContaMes / 100).toFixed(2) : "0,00"}
-                                              title={
-                                                realContaMes > 0
-                                                  ? `Realizado: ${money(realContaMes)}${projContaMes > 0 ? ` (Meta: ${money(projContaMes)})` : ""}`
-                                                  : projContaMes > 0
-                                                  ? `Meta projetada: ${money(projContaMes)}. Digite o valor ou clique no botão para realizar.`
-                                                  : "0,00"
-                                              }
-                                              onFocus={(e) => (e.currentTarget as HTMLInputElement).select()}
-                                              onBlur={(e) => {
-                                                const val = parseFloat((e.currentTarget as HTMLInputElement).value) || 0;
-                                                if (val !== realContaMes / 100) {
-                                                  atualizarValorRealMatriz(c, m, val);
-                                                }
-                                              }}
-                                              onKeyDown={(e) => {
-                                                if (e.key === "Enter") {
-                                                  (e.currentTarget as HTMLInputElement).blur();
-                                                }
-                                              }}
-                                            />
-                                            {realContaMes === 0 && projContaMes > 0 && (
-                                              <button
-                                                type="button"
-                                                class="btn btn--ghost btn--icon"
-                                                style="position:absolute;right:2px;top:50%;transform:translateY(-50%);width:18px;height:18px;padding:0;color:var(--primary);opacity:0.85;"
-                                                onClick={() => realizarProjecaoMatriz(c, m, projContaMes)}
-                                                title={`Realizar conforme meta de ${money(projContaMes)}`}
-                                              >
-                                                <Icon name="check" style="width:11px;height:11px;" />
-                                              </button>
-                                            )}
-                                          </div>
-                                        )}
-                                      </td>
-                                    );
-                                  })}
-
-                                  <td style="font-weight:700;font-variant-numeric:tabular-nums;text-align:right;background:var(--surface-soft);">
-                                    <span class={totalContaReal > 0 ? `tone-${NATURE_META[natMatriz].tone}` : ""}>
-                                      {money(totalContaReal)}
-                                    </span>
-                                  </td>
-                                  <td style="text-align:center;background:var(--surface-soft);">
-                                    <button
-                                      type="button"
-                                      class="btn btn--ghost btn--icon"
-                                      style="width:24px;height:24px;min-height:24px;"
-                                      onClick={() => {
-                                        setCatSelecionadaModal(c.categoriaId);
-                                        abrirNovo();
-                                        setModalLanc((prev) => prev ? { ...prev, contaId: c.id, natureza: c.natureza } : null);
-                                      }}
-                                      title={`Nova realização em ${c.nome}`}
-                                    >
-                                      <Icon name="plus" style="width:12px;height:12px;" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
-        ) : filtrados.length === 0 ? (
-          <div class="empty" style="padding:var(--sp-6) var(--sp-4);">
-            <Icon name="list" />
-            <h2>Nenhuma realização encontrada</h2>
-            <p>
-              {pendenciasPeriodo.length > 0
-                ? "Existem contas projetadas aguardando realização no card de pendências acima."
-                : "Clique em 'Nova Realização' para registrar uma receita, despesa ou aporte."}
-            </p>
-          </div>
+
+          {filtrados.length === 0 ? (
+            <div class="empty" style="padding:var(--sp-6) var(--sp-4);">
+              <Icon name="list" />
+              <h2>Nenhuma realização encontrada</h2>
+              <p>
+                {pendenciasPeriodo.length > 0
+                  ? "Existem contas projetadas aguardando realização no card de pendências acima."
+                  : "Clique em 'Nova Realização' para registrar uma receita, despesa ou aporte."}
+              </p>
+            </div>
         ) : modoVisao === "extrato" ? (
           /* Modo Extrato Agrupado por Data */
           <div style="padding:0 var(--sp-2) var(--sp-2) var(--sp-2);">
@@ -1548,6 +1594,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           </div>
         )}
       </section>
+      )}
 
       {/* Modal para Ignorar Projeção com Opção de Somar ao Próximo Mês */}
       {modalIgnorarItem && (
