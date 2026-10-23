@@ -5,15 +5,54 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#13161c",
+  "background_color": "#0f172a",
   "theme_color": "#13161c",
   "orientation": "any",
+  "categories": ["finance", "business", "productivity"],
   "icons": [
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nova Realização",
+      "short_name": "Realizar",
+      "url": "/#/realizacoes/novo",
+      "description": "Adicionar nova realização financeira"
+    },
+    {
+      "name": "Projeções",
+      "short_name": "Projeções",
+      "url": "/#/projecoes",
+      "description": "Visualizar planejamento de projeções"
     }
   ]
 }

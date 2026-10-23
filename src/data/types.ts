@@ -67,6 +67,7 @@ export interface Projecao extends Base {
   contaId: string;
   mes: number;
   valor: number;
+  data?: string; // Data específica / vencimento (ISO yyyy-mm-dd) - opcional
   obs?: string;
   vinculoOrigemId?: string;
   parcela?: number;

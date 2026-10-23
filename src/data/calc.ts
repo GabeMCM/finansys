@@ -210,15 +210,26 @@ export function calcularPendencias(
     if (realizado >= p.valor) continue; // Já 100% quitada/lançada
 
     const valorPendente = p.valor - realizado;
-    const diaEstimado = diasPorConta.get(p.contaId) || 10;
+    const diaDaData = p.data ? parseInt(p.data.split("-")[2], 10) : undefined;
+    const diaEstimado = (diaDaData && !isNaN(diaDaData)) ? diaDaData : (diasPorConta.get(p.contaId) || 10);
     const maxDiasNoMes = new Date(anoNum, p.mes + 1, 0).getDate();
     const diaValido = Math.min(diaEstimado, maxDiasNoMes);
-    const dataSugerida = `${anoNum}-${String(p.mes + 1).padStart(2, "0")}-${String(diaValido).padStart(2, "0")}`;
+    const dataSugerida = p.data || `${anoNum}-${String(p.mes + 1).padStart(2, "0")}-${String(diaValido).padStart(2, "0")}`;
 
     let status: "vencida" | "a_vencer" = "a_vencer";
     let diasAtraso: number | undefined;
 
-    if (anoNum < anoAtual) {
+    if (p.data) {
+      const [pA, pM, pD] = p.data.split("-").map(Number);
+      const dataVenc = new Date(pA, pM - 1, pD, 23, 59, 59);
+      const diffMs = dataReferencia.getTime() - dataVenc.getTime();
+      if (diffMs > 0) {
+        status = "vencida";
+        diasAtraso = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+      } else {
+        status = "a_vencer";
+      }
+    } else if (anoNum < anoAtual) {
       status = "vencida";
       diasAtraso = 30;
     } else if (anoNum > anoAtual) {

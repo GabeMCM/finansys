@@ -218,7 +218,7 @@ export function Investimentos() {
               <span class="card__title" style="display:flex; align-items:center; gap:8px;">
                 <Icon name={modoVisao === "cards" ? "grid" : "list"} /> Reservas & Caixinhas ({resList.length})
               </span>
-              <div class="tabs tabs--sm" style="margin:0; background:var(--surface); padding:2px; border-radius:var(--r-md); border:1px solid var(--border);">
+              <div class="tabs tabs--sm" style="margin:0;">
                 <button
                   type="button"
                   class={`tab ${modoVisao === "cards" ? "is-active" : ""}`}

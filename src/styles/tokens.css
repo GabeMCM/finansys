@@ -48,40 +48,53 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  --bg: hsl(220 20% 97%);
-  --bg-glow: hsl(214 50% 60% / 0.06);
-  --surface: hsl(0 0% 100% / 0.92);
-  --surface-solid: hsl(0 0% 100%);
-  --surface-hover: hsl(220 20% 95%);
-  --surface-soft: hsl(220 18% 94%);
-  --border: hsl(220 20% 20% / 0.08);
-  --border-strong: hsl(220 20% 20% / 0.14);
-  --chrome-bg: hsl(0 0% 100% / 0.88);
+  /* Superfícies com separação e nitidez */
+  --bg: #f8fafc;
+  --bg-glow: hsl(214 60% 50% / 0.05);
+  --surface: #ffffff;
+  --surface-solid: #ffffff;
+  --surface-hover: #f1f5f9;
+  --surface-soft: #e2e8f0;
+  --border: #cbd5e1;
+  --border-strong: #94a3b8;
+  --chrome-bg: hsl(0 0% 100% / 0.96);
 
-  --text: hsl(222 28% 14%);
-  --text-muted: hsl(220 12% 40%);
-  --text-faint: hsl(220 9% 56%);
+  /* Tipografia com contraste e legibilidade WCAG AA/AAA */
+  --text: #0f172a;
+  --text-muted: #334155;
+  --text-faint: #64748b;
 
-  --primary: hsl(214 58% 42%);
-  --primary-strong: hsl(214 60% 34%);
-  --primary-soft: hsl(214 58% 42% / 0.10);
-  --gradient-brand: linear-gradient(135deg, hsl(214 58% 42%), hsl(216 55% 34%));
+  /* Marca */
+  --primary: #1d4ed8;
+  --primary-strong: #1e40af;
+  --primary-soft: hsl(217 91% 60% / 0.12);
+  --gradient-brand: linear-gradient(135deg, #2563eb, #1d4ed8);
 
-  --hero-bg: linear-gradient(135deg, hsl(216 48% 30%), hsl(220 42% 22%));
-  --hero-border: transparent;
-  --hero-text: #fff;
-  --hero-muted: hsl(216 30% 82%);
+  /* Hero (saldo) */
+  --hero-bg: linear-gradient(135deg, #1e293b, #0f172a);
+  --hero-border: #334155;
+  --hero-text: #ffffff;
+  --hero-muted: #94a3b8;
 
-  --in: hsl(156 48% 32%);
-  --out: hsl(356 55% 45%);
-  --aporte: hsl(204 55% 38%);
-  --saida: hsl(30 65% 40%);
-  --warn: hsl(40 75% 38%);
-  --rendimento: hsl(265 60% 48%);
+  /* Naturezas financeiras com alto contraste sobre fundos claros */
+  --in: #047857;
+  --out: #b91c1c;
+  --aporte: #0369a1;
+  --saida: #b45309;
+  --warn: #a16207;
+  --rendimento: #6d28d9;
+
+  /* Fundos pastel nítidos para badges e destaques no modo claro */
+  --in-soft: #d1fae5;
+  --out-soft: #fee2e2;
+  --aporte-soft: #e0f2fe;
+  --saida-soft: #fef3c7;
+  --rendimento-soft: #ede9fe;
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08);
 }
 
 :root {
-  /* Fundos suaves derivados das naturezas */
+  /* Fundos suaves derivados das naturezas (padrão / dark) */
   --in-soft: color-mix(in srgb, var(--in) 14%, transparent);
   --out-soft: color-mix(in srgb, var(--out) 14%, transparent);
   --aporte-soft: color-mix(in srgb, var(--aporte) 14%, transparent);

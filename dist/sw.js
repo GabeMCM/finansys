@@ -1,9 +1,13 @@
-const CACHE_NAME = "finansys-v1";
+const CACHE_NAME = "finansys-v2";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
   "/favicon.svg",
+  "/pwa-192.png",
+  "/pwa-512.png",
+  "/apple-touch-icon.png",
   "/manifest.webmanifest",
+  "/manifest.json",
 ];
 
 self.addEventListener("install", (e) => {

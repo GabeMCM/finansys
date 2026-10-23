@@ -21,10 +21,8 @@ import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
 
 export function Ajustes() {
-  // Cardlists retráteis (accordions)
-  const [secoesAbertas, setSecoesAbertas] = useState<Set<string>>(() => {
-    return new Set(["empresas", "anos", "bancos", "contas", "sistema"]);
-  });
+  // Cardlists retráteis (accordions) - todos recolhidos por padrão
+  const [secoesAbertas, setSecoesAbertas] = useState<Set<string>>(() => new Set());
 
   const toggleSecao = (secao: string) => {
     setSecoesAbertas((prev) => {

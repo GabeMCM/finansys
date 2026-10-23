@@ -702,14 +702,19 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
 
   const realizarProjecaoMatriz = async (c: Conta, m: number, projCents: number) => {
     if (!ano || projCents <= 0) return;
-    const diaHoje = new Date().getDate();
-    const mesHoje = new Date().getMonth();
-    const anoAtualHoje = new Date().getFullYear();
-    let diaStr = "01";
-    if (m === mesHoje && anoNum === anoAtualHoje) {
-      diaStr = String(diaHoje).padStart(2, "0");
+    const proj = ps.find((p) => p.contaId === c.id && p.mes === m);
+    let dataStr = proj?.data;
+    if (!dataStr) {
+      const diaHoje = new Date().getDate();
+      const mesHoje = new Date().getMonth();
+      const anoAtualHoje = new Date().getFullYear();
+      let diaStr = "01";
+      if (m === mesHoje && anoNum === anoAtualHoje) {
+        diaStr = String(diaHoje).padStart(2, "0");
+      }
+      dataStr = `${anoNum}-${String(m + 1).padStart(2, "0")}-${diaStr}`;
     }
-    const dataStr = `${anoNum}-${String(m + 1).padStart(2, "0")}-${diaStr}`;
+
     await lancamentos.create({
       anoId: ano.id,
       contaId: c.id,
@@ -806,7 +811,42 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           <h1 style="display:flex;align-items:center;gap:8px;">Realizações {anoNum}</h1>
           <p>Valores efetivamente realizados e conciliação com o planejamento financeiro</p>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
+
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          {/* Seletor de visualização Matriz 12 Meses / Extrato / Tabela - Padrão consistente com Projeções */}
+          <div class="tabs tabs--sm" style="margin-bottom:0;">
+            <button
+              type="button"
+              class={`tab ${modoVisao === "matriz" ? "is-active" : ""}`}
+              style="padding:6px 12px;font-size:var(--fs-xs);min-height:30px;"
+              onClick={() => trocarModoVisao("matriz")}
+              title="Visualização em Matriz 12 Meses (Lançar direto da Projeção)"
+            >
+              <Icon name="grid" style="width:14px;height:14px;" />
+              <span>Matriz 12 Meses</span>
+            </button>
+            <button
+              type="button"
+              class={`tab ${modoVisao === "extrato" ? "is-active" : ""}`}
+              style="padding:6px 12px;font-size:var(--fs-xs);min-height:30px;"
+              onClick={() => trocarModoVisao("extrato")}
+              title="Visualização em Extrato Diário"
+            >
+              <Icon name="list" style="width:14px;height:14px;" />
+              <span>Extrato</span>
+            </button>
+            <button
+              type="button"
+              class={`tab ${modoVisao === "tabela" ? "is-active" : ""}`}
+              style="padding:6px 12px;font-size:var(--fs-xs);min-height:30px;"
+              onClick={() => trocarModoVisao("tabela")}
+              title="Visualização em Tabela Tabular"
+            >
+              <Icon name="matrix" style="width:14px;height:14px;" />
+              <span>Tabela</span>
+            </button>
+          </div>
+
           <button type="button" class="btn btn--primary" onClick={() => abrirNovo()}>
             <Icon name="plus" /> Nova Realização
           </button>
@@ -967,40 +1007,6 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                   </button>
                 );
               })}
-            </div>
-
-            {/* Alternância Extrato / Tabela */}
-            <div class="tabs tabs--sm lancamentos-toolbar__view-switch" style="margin:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:2px;">
-              <button
-                type="button"
-                class={`tab ${modoVisao === "extrato" ? "is-active" : ""}`}
-                style="padding:3px 8px;font-size:var(--fs-xs);min-height:26px;"
-                onClick={() => trocarModoVisao("extrato")}
-                title="Visualização em Extrato Diário"
-              >
-                <Icon name="list" style="width:12px;height:12px;" />
-                <span>Extrato</span>
-              </button>
-              <button
-                type="button"
-                class={`tab ${modoVisao === "tabela" ? "is-active" : ""}`}
-                style="padding:3px 8px;font-size:var(--fs-xs);min-height:26px;"
-                onClick={() => trocarModoVisao("tabela")}
-                title="Visualização em Tabela Tabular"
-              >
-                <Icon name="matrix" style="width:12px;height:12px;" />
-                <span>Tabela</span>
-              </button>
-              <button
-                type="button"
-                class={`tab ${modoVisao === "matriz" ? "is-active" : ""}`}
-                style="padding:3px 8px;font-size:var(--fs-xs);min-height:26px;"
-                onClick={() => trocarModoVisao("matriz")}
-                title="Visualização em Matriz 12 Meses (Lançar direto da Projeção)"
-              >
-                <Icon name="grid" style="width:12px;height:12px;" />
-                <span>Matriz 12M</span>
-              </button>
             </div>
           </div>
         </div>

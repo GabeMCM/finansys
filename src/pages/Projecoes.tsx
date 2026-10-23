@@ -35,6 +35,8 @@ interface ModalNovaProjecaoState {
   mesEspecifico: number;
   valorEspecificoCentavos: number;
   valoresMensais: string[];
+  diaVencimento?: number;
+  dataEspecifica?: string;
   obs: string;
   regraCalculo: RegraVinculo;
   salvarVinculoNaConta: boolean;
@@ -55,7 +57,7 @@ export function Projecoes() {
   const [categoriasColapsadas, setCategoriasColapsadas] = useState<Set<string>>(new Set());
 
   // Modais
-  const [modalObs, setModalObs] = useState<{ contaId: string; mes: number; obs: string; nome: string } | null>(null);
+  const [modalObs, setModalObs] = useState<{ contaId: string; mes: number; obs: string; nome: string; data?: string } | null>(null);
   const [modalEditarConta, setModalEditarConta] = useState<{ id: string; nome: string; categoriaId: string } | null>(null);
   const [modalNovaProjecao, setModalNovaProjecao] = useState<ModalNovaProjecaoState | null>(null);
 
@@ -110,7 +112,7 @@ export function Projecoes() {
   const cats = todasCats.filter((c) => c.natureza === nat);
 
   // Mapa de projeções: contaId + "_" + mes -> Projecao
-  const pMap = new Map<string, { id?: string; valor: number; obs?: string; parcela?: number; totalParcelas?: number }>();
+  const pMap = new Map<string, { id?: string; valor: number; obs?: string; parcela?: number; totalParcelas?: number; data?: string }>();
   for (const p of ps) {
     pMap.set(`${p.contaId}_${p.mes}`, {
       id: p.id,
@@ -118,11 +120,12 @@ export function Projecoes() {
       obs: p.obs,
       parcela: p.parcela,
       totalParcelas: p.totalParcelas,
+      data: p.data,
     });
   }
 
   const getProj = (contaId: string, mes: number) => {
-    return pMap.get(`${contaId}_${mes}`) || { valor: 0, obs: "", parcela: undefined, totalParcelas: undefined };
+    return pMap.get(`${contaId}_${mes}`) || { valor: 0, obs: "", parcela: undefined, totalParcelas: undefined, data: undefined };
   };
 
   const recalcularDependentes = async (meses: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) => {
@@ -260,8 +263,20 @@ export function Projecoes() {
   const salvarObs = async () => {
     if (!modalObs) return;
     const atual = getProj(modalObs.contaId, modalObs.mes);
-    await projecoes.set(ano.id, modalObs.contaId, modalObs.mes, atual.valor, modalObs.obs.trim() || undefined);
-    toast.success("Observação salva!");
+    await projecoes.set(
+      ano.id,
+      modalObs.contaId,
+      modalObs.mes,
+      atual.valor,
+      modalObs.obs.trim() || undefined,
+      undefined,
+      {
+        parcela: atual.parcela,
+        totalParcelas: atual.totalParcelas,
+        data: modalObs.data ? modalObs.data.trim() : undefined,
+      }
+    );
+    toast.success("Detalhes da projeção salvos!");
     setModalObs(null);
   };
 
@@ -380,8 +395,15 @@ export function Projecoes() {
       const dist = modalNovaProjecao.distribuicao;
       if (dist === "fixo") {
         const centavos = modalNovaProjecao.valorFixoCentavos;
+        const diaVenc = modalNovaProjecao.diaVencimento;
         for (let m = 0; m < 12; m++) {
-          await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto);
+          let dataStr: string | undefined;
+          if (diaVenc && diaVenc >= 1 && diaVenc <= 31) {
+            const maxDias = new Date(anoNum, m + 1, 0).getDate();
+            const diaReal = Math.min(diaVenc, maxDias);
+            dataStr = `${anoNum}-${String(m + 1).padStart(2, "0")}-${String(diaReal).padStart(2, "0")}`;
+          }
+          await projecoes.set(ano.id, targetContaId, m, centavos, obsTexto, undefined, { data: dataStr });
         }
         toast.success("Projeção fixa mensal salva com sucesso!");
       } else if (dist === "parcelado") {
@@ -397,6 +419,7 @@ export function Projecoes() {
         const dividir = modalNovaProjecao.parcelaDividirValor;
         const valorPorParcela = dividir ? Math.floor(centavosEntrada / totalParcelas) : centavosEntrada;
         const resto = dividir ? centavosEntrada - (valorPorParcela * totalParcelas) : 0;
+        const diaVenc = modalNovaProjecao.diaVencimento;
 
         for (let i = 1; i <= totalParcelas; i++) {
           const valorParcela = i === 1 ? valorPorParcela + resto : valorPorParcela;
@@ -417,6 +440,13 @@ export function Projecoes() {
             ? `Parcela ${i}/${totalParcelas} - ${obsTexto}`
             : `Parcela ${i}/${totalParcelas}`;
 
+          let dataStr: string | undefined;
+          if (diaVenc && diaVenc >= 1 && diaVenc <= 31) {
+            const maxDias = new Date(targetYear, targetMonth + 1, 0).getDate();
+            const diaReal = Math.min(diaVenc, maxDias);
+            dataStr = `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-${String(diaReal).padStart(2, "0")}`;
+          }
+
           await projecoes.set(
             anoAlvoId,
             targetContaId,
@@ -424,15 +454,24 @@ export function Projecoes() {
             valorParcela,
             obsParcela,
             undefined,
-            { parcela: i, totalParcelas }
+            { parcela: i, totalParcelas, data: dataStr }
           );
         }
         toast.success(`${totalParcelas} parcelas projetadas com sucesso!`);
       } else if (dist === "especifico") {
         const centavos = modalNovaProjecao.valorEspecificoCentavos;
+        const dataEsp = modalNovaProjecao.dataEspecifica;
         for (let m = 0; m < 12; m++) {
           const val = m === modalNovaProjecao.mesEspecifico ? centavos : 0;
-          await projecoes.set(ano.id, targetContaId, m, val, m === modalNovaProjecao.mesEspecifico ? obsTexto : undefined);
+          await projecoes.set(
+            ano.id,
+            targetContaId,
+            m,
+            val,
+            m === modalNovaProjecao.mesEspecifico ? obsTexto : undefined,
+            undefined,
+            m === modalNovaProjecao.mesEspecifico && dataEsp ? { data: dataEsp } : undefined
+          );
         }
         toast.success(`Projeção de ${MONTHS[modalNovaProjecao.mesEspecifico]} salva com sucesso!`);
       } else if (dist === "mensal") {
@@ -612,7 +651,7 @@ export function Projecoes() {
 
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           {/* Seletor de visualização Matriz / Mensal */}
-          <div class="tabs" style="margin-bottom:0;background:var(--surface);padding:3px;border-radius:var(--r-md);border:1px solid var(--border);">
+          <div class="tabs tabs--sm" style="margin-bottom:0;">
             <button
               type="button"
               class={`tab ${modoVisao === "grade" ? "is-active" : ""}`}
@@ -953,8 +992,9 @@ export function Projecoes() {
                                           class={`input-cell ${p.valor > 0 ? "has-val" : ""}`}
                                           value={p.valor ? (p.valor / 100).toFixed(2) : ""}
                                           placeholder="0,00"
-                                          title={p.obs || (p.parcela && p.totalParcelas ? `Parcela ${p.parcela} de ${p.totalParcelas}` : undefined)}
+                                          title={`${p.data ? `Vencimento: ${p.data.split("-").reverse().join("/")} · ` : ""}${p.obs || (p.parcela && p.totalParcelas ? `Parcela ${p.parcela} de ${p.totalParcelas}` : "")}`}
                                           onFocus={(e) => e.currentTarget.select()}
+                                          onDblClick={() => setModalObs({ contaId: c.id, mes: m, obs: p.obs || "", data: p.data, nome: c.nome })}
                                           onBlur={(e) => {
                                             const val = parseFloat(e.currentTarget.value) || 0;
                                             if (val !== p.valor / 100) atualizarValor(c.id, m, val);
@@ -965,6 +1005,14 @@ export function Projecoes() {
                                             }
                                           }}
                                         />
+                                        {p.data && (
+                                          <span
+                                            style="position:absolute;bottom:-3px;left:2px;font-size:8px;line-height:1;padding:1px 2px;border-radius:2px;background:var(--surface-soft);color:var(--text-faint);border:1px solid var(--border);pointer-events:none;font-weight:600;"
+                                            title={`Vencimento: ${p.data.split("-").reverse().join("/")}`}
+                                          >
+                                            {p.data.split("-")[2]}
+                                          </span>
+                                        )}
                                         {p.parcela && p.totalParcelas && (
                                           <span
                                             style="position:absolute;top:-4px;right:-2px;font-size:9px;line-height:1;padding:1px 3px;border-radius:3px;background:var(--primary);color:#fff;pointer-events:none;font-weight:700;"
@@ -1177,6 +1225,15 @@ export function Projecoes() {
                               <div style="flex:1;min-width:0;">
                                 <div style="font-weight:600;font-size:var(--fs-sm);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                                   <span>{c.nome}</span>
+                                  {p.data && (
+                                    <span
+                                      class="badge badge--neutral"
+                                      style="font-size:10px;padding:1px 5px;display:inline-flex;align-items:center;gap:3px;"
+                                      title={`Data de vencimento / cobrança: ${p.data.split("-").reverse().join("/")}`}
+                                    >
+                                      <Icon name="calendar" style="width:10px;height:10px;" /> Venc. {p.data.split("-")[2]}/{p.data.split("-")[1]}
+                                    </span>
+                                  )}
                                   {p.parcela && p.totalParcelas && (
                                     <span
                                       class="badge"
@@ -1273,11 +1330,11 @@ export function Projecoes() {
                                 <button
                                   type="button"
                                   class="btn btn--ghost btn--icon"
-                                  style={`min-height:36px;width:36px;${p.obs ? "color:var(--primary);" : ""}`}
+                                  style={`min-height:36px;width:36px;${p.obs || p.data ? "color:var(--primary);" : ""}`}
                                   onClick={() =>
-                                    setModalObs({ contaId: c.id, mes: mesAtivo, obs: p.obs || "", nome: c.nome })
+                                    setModalObs({ contaId: c.id, mes: mesAtivo, obs: p.obs || "", data: p.data, nome: c.nome })
                                   }
-                                  title="Observação desta projeção"
+                                  title="Detalhes e vencimento desta projeção"
                                 >
                                   <Icon name="pencil" />
                                 </button>
@@ -1464,7 +1521,7 @@ export function Projecoes() {
                     />
                   </div>
 
-                  {/* Campo de valor correspondente ao modo selecionado */}
+                  {/* Campo de valor e vencimento correspondente ao modo selecionado */}
                   {modalNovaProjecao.distribuicao === "fixo" && (
                     <div>
                       <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:4px;">
@@ -1478,6 +1535,25 @@ export function Projecoes() {
                           setModalNovaProjecao({ ...modalNovaProjecao, valorFixoCentavos: cents })
                         }
                       />
+                      <div style="margin-top:var(--sp-2);">
+                        <label class="form-label" for="nova-proj-dia-fixo" style="font-size:var(--fs-xs);margin-bottom:4px;">
+                          Dia de Vencimento Mensal (Opcional)
+                        </label>
+                        <input
+                          id="nova-proj-dia-fixo"
+                          type="number"
+                          min="1"
+                          max="31"
+                          class="input"
+                          style="max-width:160px;"
+                          placeholder="Ex: 10"
+                          value={modalNovaProjecao.diaVencimento || ""}
+                          onInput={(e) => {
+                            const val = parseInt((e.currentTarget as HTMLInputElement).value, 10);
+                            setModalNovaProjecao({ ...modalNovaProjecao, diaVencimento: isNaN(val) ? undefined : val });
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -1493,6 +1569,25 @@ export function Projecoes() {
                           setModalNovaProjecao({ ...modalNovaProjecao, parcelaValorCentavos: cents })
                         }
                       />
+                      <div style="margin-top:var(--sp-2);">
+                        <label class="form-label" for="nova-proj-dia-parc" style="font-size:var(--fs-xs);margin-bottom:4px;">
+                          Dia de Vencimento das Parcelas (Opcional)
+                        </label>
+                        <input
+                          id="nova-proj-dia-parc"
+                          type="number"
+                          min="1"
+                          max="31"
+                          class="input"
+                          style="max-width:160px;"
+                          placeholder="Ex: 10"
+                          value={modalNovaProjecao.diaVencimento || ""}
+                          onInput={(e) => {
+                            const val = parseInt((e.currentTarget as HTMLInputElement).value, 10);
+                            setModalNovaProjecao({ ...modalNovaProjecao, diaVencimento: isNaN(val) ? undefined : val });
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -1508,6 +1603,21 @@ export function Projecoes() {
                           setModalNovaProjecao({ ...modalNovaProjecao, valorEspecificoCentavos: cents })
                         }
                       />
+                      <div style="margin-top:var(--sp-2);">
+                        <label class="form-label" for="nova-proj-data-esp" style="font-size:var(--fs-xs);margin-bottom:4px;">
+                          Data de Vencimento / Cobrança (Opcional)
+                        </label>
+                        <input
+                          id="nova-proj-data-esp"
+                          type="date"
+                          class="input"
+                          style="max-width:200px;"
+                          value={modalNovaProjecao.dataEspecifica || ""}
+                          onInput={(e) =>
+                            setModalNovaProjecao({ ...modalNovaProjecao, dataEspecifica: (e.currentTarget as HTMLInputElement).value })
+                          }
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1565,9 +1675,9 @@ export function Projecoes() {
       </Modal>
       )}
 
-      {/* Modal Observação Rápida */}
+      {/* Modal Detalhes & Vencimento da Projeção */}
       <Modal
-        title={`Observação: ${modalObs?.nome || ""}`}
+        title={`Detalhes & Vencimento: ${modalObs?.nome || ""}`}
         isOpen={modalObs !== null}
         onClose={() => setModalObs(null)}
         footer={
@@ -1576,12 +1686,28 @@ export function Projecoes() {
               Cancelar
             </button>
             <button type="button" class="btn btn--primary" onClick={salvarObs}>
-              Salvar Observação
+              Salvar Detalhes
             </button>
           </>
         }
       >
         <div class="form-group">
+          <label class="form-label" for="proj-data">
+            Data de Vencimento / Cobrança ({modalObs ? MONTHS[modalObs.mes] : ""})
+          </label>
+          <input
+            id="proj-data"
+            type="date"
+            class="input"
+            value={modalObs?.data || ""}
+            onInput={(e) => modalObs && setModalObs({ ...modalObs, data: (e.currentTarget as HTMLInputElement).value })}
+          />
+          <span class="muted" style="font-size:var(--fs-xs);margin-top:4px;">
+            A data auxilia no controle de cobranças e no cálculo exato de pendências e lembretes de atraso.
+          </span>
+        </div>
+
+        <div class="form-group" style="margin-top:var(--sp-3);">
           <label class="form-label" for="proj-obs">
             Detalhes / Justificativa da Projeção ({modalObs ? MONTHS[modalObs.mes] : ""})
           </label>
@@ -1591,7 +1717,7 @@ export function Projecoes() {
             rows={3}
             placeholder="Ex: Reforma emergencial, distribuição extraordinária de dividendos..."
             value={modalObs?.obs || ""}
-            onInput={(e) => modalObs && setModalObs({ ...modalObs, obs: e.currentTarget.value })}
+            onInput={(e) => modalObs && setModalObs({ ...modalObs, obs: (e.currentTarget as HTMLTextAreaElement).value })}
           />
         </div>
       </Modal>

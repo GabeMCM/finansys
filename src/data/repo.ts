@@ -83,7 +83,7 @@ export const projecoes = {
     valor: number,
     obs?: string,
     vinculoOrigemId?: string,
-    extra?: { parcela?: number; totalParcelas?: number }
+    extra?: { parcela?: number; totalParcelas?: number; data?: string; reservaId?: string; tipoReserva?: "aporte" | "resgate" }
   ) {
     const cur = await db.projecoes.where({ anoId, contaId, mes }).filter(alive).first();
     if (cur) return projecoes.update(cur.id, { valor, obs, vinculoOrigemId, ...(extra || {}) });
