@@ -5,9 +5,10 @@ import {
   calcularBaseProjecoes,
   calcularCarteiraReservas,
   calcularPendencias,
+  calcularPosicaoBancos,
   calcularValorVinculado,
 } from "./calc.ts";
-import type { Conta, Lancamento, Projecao, Reserva, ReservaMovimento, ReservaProjecao } from "./types.ts";
+import type { Conta, ContaBancaria, Lancamento, Projecao, Reserva, ReservaMovimento, ReservaProjecao } from "./types.ts";
 
 const base = { createdAt: 0, updatedAt: 0 };
 const conta = (id: string, natureza: Conta["natureza"]): Conta =>
@@ -185,6 +186,69 @@ Deno.test("calcularCarteiraReservas consolida aportes, resgates, rendimentos e m
   assertEquals(carteira.totalAportadoAnoReal, 1_000_00);
   assertEquals(carteira.totalResgatadoAnoReal, 400_00);
   assertEquals(carteira.totalRendimentoAnoReal, 25_00);
+});
+
+Deno.test("calcularPosicaoBancos consolida saldo inicial, entradas, saídas e reservas", () => {
+  const b1: ContaBancaria = { ...base, id: "b1", empresaId: "e", nome: "Nubank PJ", saldoInicialCentavos: 10_000_00, ativa: true };
+  const b2: ContaBancaria = { ...base, id: "b2", empresaId: "e", nome: "Itaú Corrente", saldoInicialCentavos: 5_000_00, ativa: true };
+
+  const cReceita = conta("c_rec", "receber");
+  const cDespesa = conta("c_desp", "pagar");
+
+  const l1: Lancamento = { ...base, id: "l1", anoId: "a", contaId: "c_rec", mes: 0, valor: 3_000_00, data: "2026-01-10", bancoId: "b1" };
+  const l2: Lancamento = { ...base, id: "l2", anoId: "a", contaId: "c_desp", mes: 0, valor: 1_000_00, data: "2026-01-12", bancoId: "b1" };
+  const l3: Lancamento = { ...base, id: "l3", anoId: "a", contaId: "c_desp", mes: 0, valor: 500_00, data: "2026-01-15", bancoId: "b2" };
+  const lSemBanco: Lancamento = { ...base, id: "l4", anoId: "a", contaId: "c_rec", mes: 0, valor: 9_999_00, data: "2026-01-20" };
+
+  // Movimento de reserva direto (sem lançamento duplicado)
+  const movResgate: ReservaMovimento = {
+    ...base,
+    id: "m_resg",
+    empresaId: "e",
+    anoId: "a",
+    reservaId: "r1",
+    tipo: "resgate",
+    valor: 2_000_00,
+    data: "2026-01-25",
+    mes: 0,
+    bancoId: "b2",
+  };
+
+  const pos = calcularPosicaoBancos([b1, b2], [l1, l2, l3, lSemBanco], [cReceita, cDespesa], [movResgate]);
+
+  // Banco 1 (Nubank):
+  // Saldo Inicial = 10.000,00
+  // Entradas = 3.000,00 (l1)
+  // Saídas = 1.000,00 (l2)
+  // Saldo Atual = 12.000,00
+  const posB1 = pos.bancos.find((b) => b.banco.id === "b1")!;
+  assertEquals(posB1.saldoInicial, 10_000_00);
+  assertEquals(posB1.totalEntradas, 3_000_00);
+  assertEquals(posB1.totalSaidas, 1_000_00);
+  assertEquals(posB1.saldoAtual, 12_000_00);
+  assertEquals(posB1.qtdLancamentos, 2);
+
+  // Banco 2 (Itaú):
+  // Saldo Inicial = 5.000,00
+  // Entradas = 2.000,00 (movResgate)
+  // Saídas = 500,00 (l3)
+  // Saldo Atual = 6.500,00
+  const posB2 = pos.bancos.find((b) => b.banco.id === "b2")!;
+  assertEquals(posB2.saldoInicial, 5_000_00);
+  assertEquals(posB2.totalEntradas, 2_000_00);
+  assertEquals(posB2.totalSaidas, 500_00);
+  assertEquals(posB2.saldoAtual, 6_500_00);
+  assertEquals(posB2.qtdLancamentos, 2);
+
+  // Total Consolidado:
+  // Saldo Inicial = 15.000,00
+  // Total Entradas = 5.000,00
+  // Total Saídas = 1.500,00
+  // Total Saldo Atual = 18.500,00
+  assertEquals(pos.totalSaldoInicial, 15_000_00);
+  assertEquals(pos.totalEntradas, 5_000_00);
+  assertEquals(pos.totalSaidas, 1_500_00);
+  assertEquals(pos.totalSaldoAtual, 18_500_00);
 });
 
 

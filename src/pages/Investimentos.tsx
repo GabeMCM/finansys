@@ -1,11 +1,12 @@
 import { useState } from "preact/hooks";
 import { Icon } from "../components/Icon.tsx";
+import { CustomSelect } from "../components/CustomSelect.tsx";
 import { ModalReserva } from "../components/investimento/ModalReserva.tsx";
 import { ModalMovimentoReserva } from "../components/investimento/ModalMovimentoReserva.tsx";
 import { ModalProjecaoReserva } from "../components/investimento/ModalProjecaoReserva.tsx";
 import { toast } from "../components/Toast.tsx";
 import { calcularCarteiraReservas } from "../data/calc.ts";
-import { anos, contas, empresas, reservaMovimentos, reservaProjecoes, reservas } from "../data/repo.ts";
+import { anos, contas, contasBancarias, empresas, reservaMovimentos, reservaProjecoes, reservas } from "../data/repo.ts";
 import type { Reserva, ReservaMovimento, TipoMovimentoReserva } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { money, MONTHS } from "../lib/format.ts";
@@ -14,7 +15,7 @@ import { anoAtivo, empresaAtiva } from "../state.ts";
 const CORES_PALETA_MAP: Record<string, string> = {
   emerald: "#10b981",
   blue: "#3b82f6",
-  violet: "#8b5cf6",
+  violet: "var(--rendimento)",
   amber: "#f59e0b",
   rose: "#f43f5e",
   cyan: "#06b6d4",
@@ -43,14 +44,15 @@ export function Investimentos() {
     const [emp, ano] = await Promise.all([empresas.get(empId), anos.find(empId, anoNum)]);
     if (!emp || !ano) return { emp, ano: undefined } as const;
 
-    const [resList, movList, projList, contList] = await Promise.all([
+    const [resList, movList, projList, contList, bancoList] = await Promise.all([
       reservas.byEmpresa(empId),
       reservaMovimentos.byAno(ano.id),
       reservaProjecoes.byAno(ano.id),
       contas.byEmpresa(empId),
+      contasBancarias.byEmpresa(empId),
     ]);
 
-    return { emp, ano, resList, movList, projList, contList } as const;
+    return { emp, ano, resList, movList, projList, contList, bancoList } as const;
   }, [empId, anoNum], undefined);
 
   if (dados === undefined) return null; // Carregando
@@ -73,7 +75,7 @@ export function Investimentos() {
     );
   }
 
-  const { ano, resList, movList, projList, contList } = dados;
+  const { ano, resList, movList, projList, contList, bancoList } = dados;
 
   // Mês de referência para saldo atual da carteira
   const hoje = new Date();
@@ -82,8 +84,9 @@ export function Investimentos() {
   // Cálculo consolidado da carteira
   const carteira = calcularCarteiraReservas(resList, movList, projList, mesAtual);
 
-  // Mapa de contas operacionais por ID
+  // Mapas de consulta rápida
   const contaMap = new Map(contList.map((c) => [c.id, c.nome]));
+  const bancoMap = new Map(bancoList.map((b) => [b.id, b.nome]));
   const reservaMap = new Map(resList.map((r) => [r.id, r]));
 
   // Extrato filtrado
@@ -165,10 +168,10 @@ export function Investimentos() {
 
           <div class="stat">
             <span class="stat__label">
-              <span class="dot" style="background: #8b5cf6;" />
+              <span class="dot dot--rendimento" />
               Rendimento Acumulado
             </span>
-            <div class="stat__value" style="color: #8b5cf6;">
+            <div class="stat__value" style="color: var(--rendimento);">
               {money(carteira.totalRendimentoAnoReal)}
             </div>
             <div class="stat__sub">
@@ -209,7 +212,7 @@ export function Investimentos() {
               </span>
             </div>
 
-            <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--sp-3);">
+            <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--sp-3);">
               {carteira.reservas.map((resumo) => {
                 const r = resumo.reserva;
                 const corHex = CORES_PALETA_MAP[r.cor || "emerald"] || CORES_PALETA_MAP.emerald;
@@ -293,16 +296,16 @@ export function Investimentos() {
                       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                         <button
                           type="button"
-                          class="btn"
-                          style="background: var(--in-soft); color: var(--in); border-color: transparent; font-size: var(--fs-xs); min-height: 36px;"
+                          class="btn btn--sm"
+                          style="background: var(--in-soft); color: var(--in); border-color: transparent;"
                           onClick={() => setModalMovimento({ reservaId: r.id, tipo: "aporte" })}
                         >
                           <Icon name="arrowDown" /> Aplicar
                         </button>
                         <button
                           type="button"
-                          class="btn"
-                          style="background: var(--aporte-soft); color: var(--aporte); border-color: transparent; font-size: var(--fs-xs); min-height: 36px;"
+                          class="btn btn--sm"
+                          style="background: var(--aporte-soft); color: var(--aporte); border-color: transparent;"
                           onClick={() => setModalMovimento({ reservaId: r.id, tipo: "resgate" })}
                         >
                           <Icon name="arrowUp" /> Resgatar
@@ -312,16 +315,16 @@ export function Investimentos() {
                       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                         <button
                           type="button"
-                          class="btn btn--ghost"
-                          style="font-size: var(--fs-xs); min-height: 34px; border: 1px solid var(--border);"
+                          class="btn btn--ghost btn--sm"
+                          style="border: 1px solid var(--border);"
                           onClick={() => setModalMovimento({ reservaId: r.id, tipo: "rendimento" })}
                         >
                           <Icon name="sparkle" /> Rendimento
                         </button>
                         <button
                           type="button"
-                          class="btn btn--ghost"
-                          style="font-size: var(--fs-xs); min-height: 34px; border: 1px solid var(--border);"
+                          class="btn btn--ghost btn--sm"
+                          style="border: 1px solid var(--border);"
                           onClick={() => setModalProjecaoReserva(r)}
                         >
                           <Icon name="calendar" /> Projetar
@@ -338,60 +341,49 @@ export function Investimentos() {
         {/* Bloco Inferior: Abas de Extrato e Evolução Mensal */}
         {resList.length > 0 && (
           <section class="card" style="margin-top: var(--sp-2);">
-            {/* Header com Alternância de Abas e Filtros */}
+            {/* Header com Alternância de Abas e Filtros no Padrão Finansys */}
             <div
               style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: var(--sp-3); border-bottom: 1px solid var(--border); padding-bottom: var(--sp-3);"
             >
-              <div style="display: flex; gap: 6px;">
+              <div class="tabs tabs--sm" style="margin: 0;">
                 <button
                   type="button"
-                  class={`chip ${abaInferior === "extrato" ? "is-active" : ""}`}
+                  class={`tab ${abaInferior === "extrato" ? "is-active" : ""}`}
                   onClick={() => setAbaInferior("extrato")}
                 >
                   <Icon name="list" /> Extrato de Movimentações
                 </button>
                 <button
                   type="button"
-                  class={`chip ${abaInferior === "evolucao" ? "is-active" : ""}`}
+                  class={`tab ${abaInferior === "evolucao" ? "is-active" : ""}`}
                   onClick={() => setAbaInferior("evolucao")}
                 >
                   <Icon name="chart" /> Evolução Mensal (Proj × Real)
                 </button>
               </div>
 
-              {/* Filtro por Reserva */}
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <select
-                  class="input"
-                  style="font-size: var(--fs-xs); height: 34px; padding: 0 8px;"
+              {/* Filtro por Reserva e Mês via CustomSelect */}
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <CustomSelect
+                  variant="chip"
                   value={filtroReservaId}
-                  onChange={(e) => setFiltroReservaId((e.target as HTMLSelectElement).value)}
-                >
-                  <option value="todas">Todas as Reservas</option>
-                  {resList.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.nome}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: "todas", label: "Todas as Reservas", icon: "wallet" },
+                    ...resList.map((r) => ({ value: r.id, label: r.nome })),
+                  ]}
+                  onChange={(v) => setFiltroReservaId(v)}
+                />
 
                 {abaInferior === "extrato" && (
-                  <select
-                    class="input"
-                    style="font-size: var(--fs-xs); height: 34px; padding: 0 8px;"
-                    value={filtroMes}
-                    onChange={(e) => {
-                      const v = (e.target as HTMLSelectElement).value;
-                      setFiltroMes(v === "todos" ? "todos" : parseInt(v, 10));
-                    }}
-                  >
-                    <option value="todos">Todos os Meses</option>
-                    {MONTHS.map((mNome, mIdx) => (
-                      <option key={mIdx} value={mIdx}>
-                        {mNome}
-                      </option>
-                    ))}
-                  </select>
+                  <CustomSelect
+                    variant="chip"
+                    value={String(filtroMes)}
+                    options={[
+                      { value: "todos", label: "Todos os Meses", icon: "calendar" },
+                      ...MONTHS.map((mNome, mIdx) => ({ value: String(mIdx), label: mNome })),
+                    ]}
+                    onChange={(v) => setFiltroMes(v === "todos" ? "todos" : parseInt(v, 10))}
+                  />
                 )}
               </div>
             </div>
@@ -408,40 +400,46 @@ export function Investimentos() {
                     {extratoFiltrado.map((mov) => {
                       const res = reservaMap.get(mov.reservaId);
                       const contaNome = mov.contaId ? contaMap.get(mov.contaId) : undefined;
+                      const bancoNome = mov.bancoId ? bancoMap.get(mov.bancoId) : undefined;
                       const isAporte = mov.tipo === "aporte";
                       const isResgate = mov.tipo === "resgate";
                       const isRend = mov.tipo === "rendimento";
 
-                      const badgeCls = isAporte ? "badge--in" : isResgate ? "badge--out" : "badge--neutral";
+                      const badgeCls = isAporte ? "badge--in" : isResgate ? "badge--out" : "badge--rendimento";
                       const tipoRotulo = isAporte ? "Aplicação" : isResgate ? "Resgate" : "Rendimento";
                       const sinal = isAporte || isRend ? "+" : "−";
-                      const corValor = isAporte ? "var(--in)" : isResgate ? "var(--aporte)" : "#8b5cf6";
+                      const corValor = isAporte ? "var(--in)" : isResgate ? "var(--aporte)" : "var(--rendimento)";
 
                       return (
                         <div key={mov.id} class="list__item">
                           <div
                             class="list__icon"
                             style={`background: ${
-                              isAporte ? "var(--in-soft)" : isResgate ? "var(--aporte-soft)" : "hsl(270 40% 50% / 0.15)"
+                              isAporte ? "var(--in-soft)" : isResgate ? "var(--aporte-soft)" : "var(--rendimento-soft)"
                             }; color: ${corValor};`}
                           >
                             <Icon name={isAporte ? "arrowDown" : isResgate ? "arrowUp" : "sparkle"} />
                           </div>
 
                           <div class="list__body">
-                            <div style="display:flex; align-items:center; gap:8px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                               <span class={`badge ${badgeCls}`}>{tipoRotulo}</span>
                               <span class="list__title">{res ? res.nome : "Reserva"}</span>
                             </div>
-                            <div class="list__sub" style="margin-top: 3px;">
+                            <div class="list__sub" style="margin-top: 3px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                               <span>{mov.data.split("-").reverse().join("/")}</span>
+                              {bancoNome && (
+                                <span class="badge badge--neutral" style="font-size:0.68rem; gap:4px; padding:1px 6px;">
+                                  <Icon name="bank" style="width:11px; height:11px;" /> {bancoNome}
+                                </span>
+                              )}
                               {contaNome && (
-                                <span style="margin-left: 8px; color: var(--text-muted);">
+                                <span style="color: var(--text-muted);">
                                   • Caixa: {contaNome}
                                 </span>
                               )}
                               {mov.obs && (
-                                <span style="margin-left: 8px; font-style: italic;">
+                                <span style="font-style: italic;">
                                   • "{mov.obs}"
                                 </span>
                               )}
@@ -477,21 +475,23 @@ export function Investimentos() {
               </div>
             )}
 
-            {/* ABA 2: Evolução Mensal (Projeção × Real) */}
+            {/* ABA 2: Evolução Mensal (Projeção × Real) via Data Table */}
             {abaInferior === "evolucao" && (
-              <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: var(--fs-xs);">
+              <div class="table-wrap">
+                <table class="data-table">
                   <thead>
-                    <tr style="border-bottom: 2px solid var(--border); text-align: right;">
-                      <th style="text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 700;">Mês</th>
-                      <th style="padding: 8px 12px; color: var(--in); font-weight: 700;">Aportes (Real / Proj)</th>
-                      <th style="padding: 8px 12px; color: var(--aporte); font-weight: 700;">Resgates (Real / Proj)</th>
-                      <th style="padding: 8px 12px; color: #8b5cf6; font-weight: 700;">Rendimento (Real / Proj)</th>
-                      <th style="padding: 8px 12px; color: var(--primary); font-weight: 700;">Saldo Acumulado (Real / Proj)</th>
+                    <tr>
+                      <th style="min-width: 130px;">Mês</th>
+                      <th style="color: var(--in);">Aportes (Real / Proj)</th>
+                      <th style="color: var(--aporte);">Resgates (Real / Proj)</th>
+                      <th style="color: var(--rendimento);">Rendimento (Real / Proj)</th>
+                      <th style="color: var(--primary);">Saldo Acumulado (Real / Proj)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {MONTHS.map((mNome, mIdx) => {
+                      const isAtual = mIdx === mesAtual;
+
                       // Se houver filtro por reserva específica ou consolidado
                       const reservasAlvo =
                         filtroReservaId === "todas"
@@ -529,28 +529,26 @@ export function Investimentos() {
                       }
 
                       return (
-                        <tr
-                          key={mIdx}
-                          style={`border-bottom: 1px solid var(--border); ${
-                            mIdx === mesAtual ? "background: var(--surface-soft); font-weight: 600;" : ""
-                          }`}
-                        >
-                          <td style="text-align: left; padding: 10px 12px; font-weight: 700; color: var(--text);">
-                            {mNome} {mIdx === mesAtual && <span class="badge badge--in" style="font-size: 0.65rem; margin-left: 4px;">Atual</span>}
+                        <tr key={mIdx}>
+                          <td class={isAtual ? "is-current-month" : ""}>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                              <span>{mNome}</span>
+                              {isAtual && <span class="badge badge--in" style="font-size: 0.65rem;">Atual</span>}
+                            </div>
                           </td>
-                          <td style="padding: 10px 12px; text-align: right;">
+                          <td class={isAtual ? "is-current-month" : ""}>
                             <span style="color: var(--in); font-weight: 600;">{money(apReal)}</span>
                             <span style="color: var(--text-faint); margin-left: 6px;">/ {money(apProj)}</span>
                           </td>
-                          <td style="padding: 10px 12px; text-align: right;">
+                          <td class={isAtual ? "is-current-month" : ""}>
                             <span style="color: var(--aporte); font-weight: 600;">{money(resgReal)}</span>
                             <span style="color: var(--text-faint); margin-left: 6px;">/ {money(resgProj)}</span>
                           </td>
-                          <td style="padding: 10px 12px; text-align: right;">
-                            <span style="color: #8b5cf6; font-weight: 600;">{money(rendReal)}</span>
+                          <td class={isAtual ? "is-current-month" : ""}>
+                            <span style="color: var(--rendimento); font-weight: 600;">{money(rendReal)}</span>
                             <span style="color: var(--text-faint); margin-left: 6px;">/ {money(rendProj)}</span>
                           </td>
-                          <td style="padding: 10px 12px; text-align: right;">
+                          <td class={isAtual ? "is-current-month" : ""}>
                             <span style="color: var(--primary); font-weight: 700;">{money(saldoReal)}</span>
                             <span style="color: var(--text-faint); margin-left: 6px;">/ {money(saldoProj)}</span>
                           </td>
@@ -594,6 +592,7 @@ export function Investimentos() {
           isOpen={true}
           reservas={resList}
           contas={contList}
+          contasBancarias={bancoList}
           empresaId={dados.emp.id}
           anoId={ano.id}
           anoNum={ano.ano}

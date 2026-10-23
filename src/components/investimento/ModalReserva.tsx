@@ -142,10 +142,11 @@ export function ModalReserva({
         </div>
       }
     >
-      <form onSubmit={handleSubmit} class="stack" style="gap: var(--sp-4);">
-        <label class="field">
-          <span class="field__label">Nome da Reserva *</span>
+      <form onSubmit={handleSubmit} class="stack" style="gap: var(--sp-3);">
+        <div class="form-group">
+          <label class="form-label" for="reserva-nome">Nome da Reserva *</label>
           <input
+            id="reserva-nome"
             type="text"
             class="input"
             placeholder="Ex: Reserva de Emergência, Expansão 2027, Provisão 13º"
@@ -154,33 +155,35 @@ export function ModalReserva({
             required
             autoFocus
           />
-        </label>
+        </div>
 
-        <label class="field">
-          <span class="field__label">Descrição / Objetivo (Opcional)</span>
+        <div class="form-group">
+          <label class="form-label" for="reserva-desc">Descrição / Objetivo (Opcional)</label>
           <input
+            id="reserva-desc"
             type="text"
             class="input"
             placeholder="Ex: 6 meses de custos fixos da operação"
             value={descricao}
             onInput={(e) => setDescricao((e.target as HTMLInputElement).value)}
           />
-        </label>
+        </div>
 
-        <div class="field">
-          <span class="field__label">Cor de Destaque</span>
-          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:4px;">
+        <div class="form-group">
+          <label class="form-label">Cor de Destaque</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:2px;">
             {CORES_PALETA.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => setCor(c.id)}
-                style={`display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:var(--r-full); border:2px solid ${
-                  cor === c.id ? c.bg : "transparent"
-                }; background:var(--surface-solid); cursor:pointer; font-size:var(--fs-xs); font-weight:600; color:var(--text);`}
+                class="chip"
+                style={`border-color: ${cor === c.id ? c.bg : "var(--border)"}; background: ${
+                  cor === c.id ? "var(--surface-hover)" : "var(--surface-solid)"
+                };`}
               >
                 <span
-                  style={`width:12px; height:12px; border-radius:50%; background:${c.bg}; display:inline-block;`}
+                  style={`width:10px; height:10px; border-radius:50%; background:${c.bg}; display:inline-block; flex-shrink:0;`}
                 />
                 {c.label.split(" / ")[0]}
               </button>
@@ -188,40 +191,40 @@ export function ModalReserva({
           </div>
         </div>
 
-        <div class="grid grid--2" style="gap: var(--sp-3);">
-          <label class="field">
-            <span class="field__label">
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3);">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">
               Meta Financeira (Opcional)
-              <span style="font-size:var(--fs-xs); color:var(--text-faint); margin-left:4px;">
+              <span style="font-size:var(--fs-xs); color:var(--text-faint); margin-left:4px; text-transform:none;">
                 (Alvo desejado)
               </span>
-            </span>
+            </label>
             <MoneyInput
               variant="compact"
               valueCentavos={metaCentavos}
               onChangeCentavos={setMetaCentavos}
               placeholder="0,00 (Livre)"
             />
-          </label>
+          </div>
 
-          <label class="field">
-            <span class="field__label">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label">
               Saldo Inicial Preexistente
-              <span style="font-size:var(--fs-xs); color:var(--text-faint); margin-left:4px;">
+              <span style="font-size:var(--fs-xs); color:var(--text-faint); margin-left:4px; text-transform:none;">
                 (Banca inicial)
               </span>
-            </span>
+            </label>
             <MoneyInput
               variant="compact"
               valueCentavos={saldoInicialCentavos}
               onChangeCentavos={setSaldoInicialCentavos}
               placeholder="0,00"
             />
-          </label>
+          </div>
         </div>
 
         <label
-          style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:var(--fs-sm); font-weight:500; margin-top:2px;"
+          style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:var(--fs-sm); font-weight:500; margin-top:var(--sp-2);"
         >
           <input
             type="checkbox"

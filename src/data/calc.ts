@@ -1,5 +1,6 @@
 import {
   type Conta,
+  type ContaBancaria,
   type Lancamento,
   type Natureza,
   NATUREZAS,
@@ -398,6 +399,97 @@ export function calcularCarteiraReservas(
     totalRendimentoAnoReal: resumos.reduce((sum, r) => sum + r.totalRendimentosReal, 0),
     totalRendimentoAnoProj: resumos.reduce((sum, r) => sum + r.totalRendimentosProj, 0),
     reservas: resumos,
+  };
+}
+
+/* ==========================================================
+   Contas Bancárias (Bancos) — Posição e Saldos
+   ========================================================== */
+
+export interface PosicaoBancoIndividual {
+  banco: ContaBancaria;
+  saldoInicial: number;
+  totalEntradas: number;
+  totalSaidas: number;
+  saldoAtual: number;
+  qtdLancamentos: number;
+}
+
+export interface PosicaoBancosConsolidada {
+  totalSaldoInicial: number;
+  totalEntradas: number;
+  totalSaidas: number;
+  totalSaldoAtual: number;
+  bancos: PosicaoBancoIndividual[];
+}
+
+/**
+ * Calcula a posição e saldo das contas bancárias de uma empresa.
+ * - Saldo Inicial: saldo definido na abertura da conta
+ * - Entradas: lançamentos operacionais de entrada (receber, aporte) + resgates de reserva diretos
+ * - Saídas: lançamentos operacionais de saída (pagar, saída) + aportes em reserva diretos
+ * - Saldo Atual: Saldo Inicial + Entradas − Saídas
+ */
+export function calcularPosicaoBancos(
+  bancos: ContaBancaria[],
+  lancamentos: Lancamento[],
+  contas: Conta[],
+  reservaMovimentos: ReservaMovimento[] = [],
+): PosicaoBancosConsolidada {
+  const contaMap = new Map<string, Conta>(contas.map((c) => [c.id, c]));
+
+  const resumos: PosicaoBancoIndividual[] = bancos.map((banco) => {
+    const saldoInicial = banco.saldoInicialCentavos || 0;
+    let totalEntradas = 0;
+    let totalSaidas = 0;
+    let qtdLancamentos = 0;
+
+    // Lançamentos operacionais vinculados ao banco
+    for (const lanc of lancamentos) {
+      if (lanc.bancoId !== banco.id) continue;
+      qtdLancamentos++;
+
+      const c = contaMap.get(lanc.contaId);
+      const sinal = c ? SINAL[c.natureza] : 1;
+      if (sinal > 0) {
+        totalEntradas += lanc.valor;
+      } else {
+        totalSaidas += lanc.valor;
+      }
+    }
+
+    // Movimentações de reserva com vínculo a este banco (apenas se não geraram lançamento operacional duplicado)
+    for (const mov of reservaMovimentos) {
+      if (mov.bancoId !== banco.id) continue;
+      if (mov.lancamentoId) continue; // Já contabilizado pelo lançamento operacional
+
+      if (mov.tipo === "resgate") {
+        totalEntradas += mov.valor;
+        qtdLancamentos++;
+      } else if (mov.tipo === "aporte") {
+        totalSaidas += mov.valor;
+        qtdLancamentos++;
+      }
+    }
+
+    const saldoAtual = saldoInicial + totalEntradas - totalSaidas;
+
+    return {
+      banco,
+      saldoInicial,
+      totalEntradas,
+      totalSaidas,
+      saldoAtual,
+      qtdLancamentos,
+    };
+  });
+
+  return {
+    totalSaldoInicial: resumos.reduce((sum, r) => sum + r.saldoInicial, 0),
+    totalEntradas: resumos.reduce((sum, r) => sum + r.totalEntradas, 0),
+    totalSaidas: resumos.reduce((sum, r) => sum + r.totalSaidas, 0),
+    totalSaldoAtual: resumos.reduce((sum, r) => sum + r.saldoAtual, 0),
+    bancos: resumos,
   };
 }
 

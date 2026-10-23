@@ -90,6 +90,22 @@ export interface Lancamento extends Base {
   vinculoDescricao?: string;
   reservaId?: string;
   tipoReserva?: "aporte" | "resgate";
+  bancoId?: string; // Vínculo com ContaBancaria (opcional)
+}
+
+/* ==========================================================
+   Contas Bancárias (Bancos)
+   ========================================================== */
+
+export interface ContaBancaria extends Base {
+  empresaId: string;
+  nome: string;                  // Ex: "Nubank PJ", "Itaú Corrente", "Inter"
+  saldoInicialCentavos: number;  // Saldo de abertura em centavos
+  cor?: string;                  // Cor visual opcional (ex: "emerald", "blue", "violet", "amber", "rose", "cyan")
+  agencia?: string;              // Agência bancária (opcional)
+  numeroConta?: string;          // Número da conta com dígito (opcional)
+  bancoCodigo?: string;          // Código de compensação (ex: "260", "341")
+  ativa: boolean;
 }
 
 /* ==========================================================
@@ -119,6 +135,7 @@ export interface ReservaMovimento extends Base {
   obs?: string;
   lancamentoId?: string;          // Vínculo com lançamento no caixa operacional (se houver)
   contaId?: string;               // Conta operacional de onde saiu ou para onde foi o dinheiro
+  bancoId?: string;               // Conta bancária de onde saiu ou para onde foi o dinheiro (opcional)
 }
 
 export interface ReservaProjecao extends Base {

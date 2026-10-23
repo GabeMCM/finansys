@@ -129,28 +129,28 @@ export function ModalProjecaoReserva({
           <span style="font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint); display: block; margin-bottom: 8px;">
             Preenchimento Rápido (Replicar para os 12 meses)
           </span>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)) 120px; gap: 8px; align-items: end;">
-            <label class="field" style="margin-bottom:0;">
-              <span class="field__label" style="font-size: 0.75rem;">Aporte Mensal</span>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; align-items: end;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size: 0.72rem;">Aporte Mensal</label>
               <MoneyInput variant="compact" valueCentavos={rapidoAporte} onChangeCentavos={setRapidoAporte} />
-            </label>
-            <label class="field" style="margin-bottom:0;">
-              <span class="field__label" style="font-size: 0.75rem;">Resgate Mensal</span>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size: 0.72rem;">Resgate Mensal</label>
               <MoneyInput variant="compact" valueCentavos={rapidoResgate} onChangeCentavos={setRapidoResgate} />
-            </label>
-            <label class="field" style="margin-bottom:0;">
-              <span class="field__label" style="font-size: 0.75rem;">Rendimento Mensal</span>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label" style="font-size: 0.72rem;">Rendimento Mensal</label>
               <MoneyInput variant="compact" valueCentavos={rapidoRendimento} onChangeCentavos={setRapidoRendimento} />
-            </label>
+            </div>
             <button type="button" class="btn btn--primary" style="height: 38px;" onClick={aplicarRapido}>
-              <Icon name="copy" /> Replicar
+              <Icon name="copy" /> Replicar nos 12 meses
             </button>
           </div>
         </div>
 
         {/* Grade Mês a Mês */}
-        <div style="max-height: 400px; overflow-y: auto; padding-right: 4px;">
-          <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="max-height: 420px; overflow-y: auto; overflow-x: auto; padding-right: 4px;">
+          <div style="display: flex; flex-direction: column; gap: 8px; min-width: 440px;">
             {linhas.map((linha) => (
               <div
                 key={linha.mes}
@@ -180,7 +180,7 @@ export function ModalProjecaoReserva({
                   />
                 </div>
                 <div>
-                  <span style="font-size: 0.7rem; color: #8b5cf6; font-weight: 600; display: block; margin-bottom: 2px;">
+                  <span style="font-size: 0.7rem; color: var(--rendimento); font-weight: 600; display: block; margin-bottom: 2px;">
                     (+) Rendimento
                   </span>
                   <MoneyInput

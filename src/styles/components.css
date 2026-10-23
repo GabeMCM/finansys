@@ -33,6 +33,7 @@
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .dot--in { background: var(--in); } .dot--out { background: var(--out); }
 .dot--aporte { background: var(--aporte); } .dot--saida { background: var(--saida); }
+.dot--rendimento { background: var(--rendimento); }
 
 /* ---------- Botões ---------- */
 .btn {
@@ -65,6 +66,7 @@
 .badge--out { background: var(--out-soft); color: var(--out); }
 .badge--warn { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
 .badge--neutral { background: var(--surface-soft); color: var(--text-muted); border: 1px solid var(--border); }
+.badge--rendimento { background: var(--rendimento-soft); color: var(--rendimento); }
 
 /* ---------- Gráfico de barras (projetado × real) ---------- */
 .bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 140px; }
@@ -95,10 +97,12 @@
 
 .tone-in { color: var(--in); } .tone-out { color: var(--out); }
 .tone-aporte { color: var(--aporte); } .tone-saida { color: var(--saida); }
+.tone-rendimento { color: var(--rendimento); }
 .bg-in { background: var(--in-soft); color: var(--in); }
 .bg-out { background: var(--out-soft); color: var(--out); }
 .bg-aporte { background: var(--aporte-soft); color: var(--aporte); }
 .bg-saida { background: var(--saida-soft); color: var(--saida); }
+.bg-rendimento { background: var(--rendimento-soft); color: var(--rendimento); }
 
 /* ---------- Barra de progresso ---------- */
 .progress { height: 6px; border-radius: var(--r-full); background: var(--border); overflow: hidden; }

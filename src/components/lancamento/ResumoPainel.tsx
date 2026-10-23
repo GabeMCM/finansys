@@ -19,6 +19,7 @@ export interface ResumoRealProps {
     projetado: number;
     realizadoSemEste: number;
   };
+  bancoNome?: string;
   descricao?: string;
   obs?: string;
 }
@@ -55,6 +56,7 @@ export function ResumoPainel(props: ResumoPainelProps) {
       numRepeticoes,
       dividirValor,
       tetoOrcamentario,
+      bancoNome,
       descricao,
       obs,
     } = props;
@@ -173,6 +175,16 @@ export function ResumoPainel(props: ResumoPainelProps) {
           <div class="summary-box__row">
             <span>Período:</span>
             <strong>{intervaloDatas}</strong>
+          </div>
+        )}
+
+        {bancoNome && (
+          <div class="summary-box__row">
+            <span>Conta Bancária:</span>
+            <strong style="display:inline-flex;align-items:center;gap:4px;">
+              <Icon name="bank" style="width:12px;height:12px;color:var(--primary);" />
+              <span>{bancoNome}</span>
+            </strong>
           </div>
         )}
 

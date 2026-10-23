@@ -3,6 +3,7 @@ import type {
   Ano,
   Categoria,
   Conta,
+  ContaBancaria,
   Empresa,
   Lancamento,
   Projecao,
@@ -17,6 +18,7 @@ export class FinansysDB extends Dexie {
   anos!: EntityTable<Ano, "id">;
   categorias!: EntityTable<Categoria, "id">;
   contas!: EntityTable<Conta, "id">;
+  contasBancarias!: EntityTable<ContaBancaria, "id">;
   projecoes!: EntityTable<Projecao, "id">;
   lancamentos!: EntityTable<Lancamento, "id">;
   reservas!: EntityTable<Reserva, "id">;
@@ -40,6 +42,11 @@ export class FinansysDB extends Dexie {
       reservas: "id, empresaId, nome, updatedAt",
       reservaMovimentos: "id, empresaId, reservaId, anoId, [empresaId+anoId], mes, data, tipo, updatedAt",
       reservaProjecoes: "id, empresaId, reservaId, anoId, [empresaId+anoId], mes, [anoId+reservaId+mes], updatedAt",
+    });
+
+    this.version(3).stores({
+      contasBancarias: "id, empresaId, nome, updatedAt",
+      lancamentos: "id, anoId, contaId, [anoId+mes], data, bancoId, updatedAt",
     });
   }
 }

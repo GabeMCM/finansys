@@ -5,12 +5,13 @@ import { MoneyInput } from "../lancamento/MoneyInput.tsx";
 import { toast } from "../Toast.tsx";
 import { confirmarAcao } from "../ModalConfirm.tsx";
 import { lancamentos, reservaMovimentos } from "../../data/repo.ts";
-import type { Conta, Reserva, ReservaMovimento, TipoMovimentoReserva } from "../../data/types.ts";
+import type { Conta, ContaBancaria, Reserva, ReservaMovimento, TipoMovimentoReserva } from "../../data/types.ts";
 
 export interface ModalMovimentoReservaProps {
   isOpen: boolean;
   reservas: Reserva[];
   contas: Conta[];
+  contasBancarias?: ContaBancaria[];
   empresaId: string;
   anoId: string;
   anoNum: number;
@@ -25,6 +26,7 @@ export function ModalMovimentoReserva({
   isOpen,
   reservas,
   contas,
+  contasBancarias = [],
   empresaId,
   anoId,
   anoNum,
@@ -39,6 +41,7 @@ export function ModalMovimentoReserva({
   const [valorCentavos, setValorCentavos] = useState<number>(0);
   const [data, setData] = useState<string>("");
   const [contaId, setContaId] = useState<string>("");
+  const [bancoId, setBancoId] = useState<string>("");
   const [obs, setObs] = useState<string>("");
   const [salvando, setSalvando] = useState<boolean>(false);
 
@@ -51,6 +54,7 @@ export function ModalMovimentoReserva({
       setValorCentavos(movimento.valor);
       setData(movimento.data);
       setContaId(movimento.contaId || "");
+      setBancoId(movimento.bancoId || "");
       setObs(movimento.obs || "");
     } else {
       const defaultReserva = initialReservaId || (reservas.length > 0 ? reservas[0].id : "");
@@ -58,6 +62,7 @@ export function ModalMovimentoReserva({
       setTipo(initialTipo);
       setValorCentavos(0);
       setContaId("");
+      setBancoId("");
       setObs("");
 
       // Data de hoje ou padrão do ano
@@ -91,6 +96,7 @@ export function ModalMovimentoReserva({
           data,
           mes,
           contaId: contaId || undefined,
+          bancoId: bancoId || undefined,
           obs: obs.trim() || undefined,
         });
 
@@ -104,6 +110,7 @@ export function ModalMovimentoReserva({
               valor: valorCentavos,
               obs: tipo === "aporte" ? `Aplicação na Reserva: ${nomeReserva}` : `Resgate da Reserva: ${nomeReserva}`,
               tipoReserva: tipo,
+              bancoId: bancoId || undefined,
             });
           } else {
             // Conta operacional foi desmarcada -> remove lançamento vinculado
@@ -121,6 +128,7 @@ export function ModalMovimentoReserva({
             obs: tipo === "aporte" ? `Aplicação na Reserva: ${nomeReserva}` : `Resgate da Reserva: ${nomeReserva}`,
             reservaId,
             tipoReserva: tipo,
+            bancoId: bancoId || undefined,
           });
           await reservaMovimentos.update(movimento.id, { lancamentoId: novoLanc.id });
         }
@@ -140,6 +148,7 @@ export function ModalMovimentoReserva({
             obs: tipo === "aporte" ? `Aplicação na Reserva: ${nomeReserva}` : `Resgate da Reserva: ${nomeReserva}`,
             reservaId,
             tipoReserva: tipo,
+            bancoId: bancoId || undefined,
           });
           lancId = novoLanc.id;
         }
@@ -153,6 +162,7 @@ export function ModalMovimentoReserva({
           data,
           mes,
           contaId: contaId || undefined,
+          bancoId: bancoId || undefined,
           obs: obs.trim() || undefined,
           lancamentoId: lancId,
         });
@@ -233,24 +243,24 @@ export function ModalMovimentoReserva({
         </div>
       }
     >
-      <form onSubmit={handleSubmit} class="stack" style="gap: var(--sp-4);">
+      <form onSubmit={handleSubmit} class="stack" style="gap: var(--sp-3);">
         {/* Seletor de Tipo de Movimento */}
-        <div class="field">
-          <span class="field__label">Tipo de Movimentação</span>
-          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+        <div class="form-group">
+          <label class="form-label">Tipo de Movimentação</label>
+          <div class="tabs tabs--sm" style="display:flex; width:100%; margin:0;">
             <button
               type="button"
               onClick={() => setTipo("aporte")}
-              class={`btn ${tipo === "aporte" ? "btn--primary" : "btn--ghost"}`}
-              style={tipo === "aporte" ? "background: var(--in); color: #fff;" : "border: 1px solid var(--border);"}
+              class={`tab ${tipo === "aporte" ? "is-active" : ""}`}
+              style={tipo === "aporte" ? "background: var(--in); color: #fff; font-weight:700;" : ""}
             >
               <Icon name="arrowDown" /> Guardar / Aplicar
             </button>
             <button
               type="button"
               onClick={() => setTipo("resgate")}
-              class={`btn ${tipo === "resgate" ? "btn--primary" : "btn--ghost"}`}
-              style={tipo === "resgate" ? "background: var(--aporte); color: #fff;" : "border: 1px solid var(--border);"}
+              class={`tab ${tipo === "resgate" ? "is-active" : ""}`}
+              style={tipo === "resgate" ? "background: var(--aporte); color: #fff; font-weight:700;" : ""}
             >
               <Icon name="arrowUp" /> Retirar / Resgatar
             </button>
@@ -259,9 +269,10 @@ export function ModalMovimentoReserva({
               onClick={() => {
                 setTipo("rendimento");
                 setContaId(""); // Rendimento não afeta caixa operacional
+                setBancoId("");
               }}
-              class={`btn ${tipo === "rendimento" ? "btn--primary" : "btn--ghost"}`}
-              style={tipo === "rendimento" ? "background: #8b5cf6; color: #fff;" : "border: 1px solid var(--border);"}
+              class={`tab ${tipo === "rendimento" ? "is-active" : ""}`}
+              style={tipo === "rendimento" ? "background: var(--rendimento); color: #fff; font-weight:700;" : ""}
             >
               <Icon name="sparkle" /> Rendimento
             </button>
@@ -269,8 +280,8 @@ export function ModalMovimentoReserva({
         </div>
 
         {/* Valor em destaque */}
-        <div class="field">
-          <span class="field__label">Valor da Operação *</span>
+        <div class="form-group">
+          <label class="form-label">Valor da Operação *</label>
           <MoneyInput
             variant="hero"
             valueCentavos={valorCentavos}
@@ -280,85 +291,132 @@ export function ModalMovimentoReserva({
         </div>
 
         {/* Reserva & Data */}
-        <div class="grid grid--2" style="gap: var(--sp-3);">
-          <label class="field">
-            <span class="field__label">Reserva / Caixinha *</span>
-            <select
-              class="input"
-              value={reservaId}
-              onChange={(e) => setReservaId((e.target as HTMLSelectElement).value)}
-              required
-            >
-              {reservas.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.nome}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-3);">
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label" for="mov-reserva">Reserva / Caixinha *</label>
+            <div class="select-wrap">
+              <select
+                id="mov-reserva"
+                class="select"
+                value={reservaId}
+                onChange={(e) => setReservaId((e.target as HTMLSelectElement).value)}
+                required
+              >
+                {reservas.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nome}
+                  </option>
+                ))}
+              </select>
+              <Icon name="chevron" class="icon" />
+            </div>
+          </div>
 
-          <label class="field">
-            <span class="field__label">Data da Operação *</span>
+          <div class="form-group" style="margin-bottom:0;">
+            <label class="form-label" for="mov-data">Data da Operação *</label>
             <input
+              id="mov-data"
               type="date"
               class="input"
               value={data}
               onChange={(e) => setData((e.target as HTMLInputElement).value)}
               required
             />
-          </label>
+          </div>
         </div>
+
+        {/* Conta Bancária Vinculada (Opcional) */}
+        {contasBancarias.length > 0 && tipo !== "rendimento" && (
+          <div class="form-group">
+            <label class="form-label" for="mov-banco">
+              <span style="display:flex; align-items:center; justify-content:space-between;">
+                <span style="display:inline-flex; align-items:center; gap:6px;">
+                  <Icon name="bank" style="width:14px; height:14px; color:var(--primary);" />
+                  {tipo === "aporte" ? "Saiu de qual Conta Bancária?" : "Entrou em qual Conta Bancária?"}
+                </span>
+                <span style="font-size: var(--fs-xs); color: var(--text-faint); font-weight: normal; text-transform: none;">
+                  (Opcional)
+                </span>
+              </span>
+            </label>
+            <div class="select-wrap">
+              <select
+                id="mov-banco"
+                class="select"
+                value={bancoId}
+                onChange={(e) => setBancoId((e.target as HTMLSelectElement).value)}
+              >
+                <option value="">Nenhum banco selecionado</option>
+                {contasBancarias
+                  .filter((b) => b.ativa !== false)
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nome}
+                    </option>
+                  ))}
+              </select>
+              <Icon name="chevron" class="icon" />
+            </div>
+          </div>
+        )}
 
         {/* Movimentar Caixa Operacional (Apenas Aporte e Resgate) */}
         {tipo !== "rendimento" && (
           <div
             style="background: var(--surface-soft); padding: var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--border);"
           >
-            <label class="field" style="margin-bottom: 0;">
-              <span class="field__label" style="display:flex; align-items:center; justify-content:space-between;">
-                <span>
-                  {tipo === "aporte" ? "Debitar de qual Conta Operacional?" : "Creditar em qual Conta Operacional?"}
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" for="mov-conta">
+                <span style="display:flex; align-items:center; justify-content:space-between;">
+                  <span>
+                    {tipo === "aporte" ? "Debitar de qual Conta Operacional?" : "Creditar em qual Conta Operacional?"}
+                  </span>
+                  <span style="font-size: var(--fs-xs); color: var(--text-faint); font-weight: normal; text-transform: none;">
+                    (Opcional)
+                  </span>
                 </span>
-                <span style="font-size: var(--fs-xs); color: var(--text-faint);">
-                  (Opcional)
-                </span>
-              </span>
-              <select
-                class="input"
-                value={contaId}
-                onChange={(e) => setContaId((e.target as HTMLSelectElement).value)}
-              >
-                <option value="">Nenhuma / Ajuste Direto na Reserva (Não mexe no Caixa Diário)</option>
-                {contas
-                  .filter((c) => c.ativa !== false)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome} ({c.natureza})
-                    </option>
-                  ))}
-              </select>
-              <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-top: 4px; display: block;">
+              </label>
+              <div class="select-wrap">
+                <select
+                  id="mov-conta"
+                  class="select"
+                  value={contaId}
+                  onChange={(e) => setContaId((e.target as HTMLSelectElement).value)}
+                >
+                  <option value="">Nenhuma / Ajuste Direto na Reserva (Não mexe no Caixa Diário)</option>
+                  {contas
+                    .filter((c) => c.ativa !== false)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome} ({c.natureza})
+                      </option>
+                    ))}
+                </select>
+                <Icon name="chevron" class="icon" />
+              </div>
+              <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-top: 6px; display: block;">
                 {contaId
                   ? tipo === "aporte"
-                    ? "✓ O valor sairá do caixa operacional e entrará na reserva patrimonial."
-                    : "✓ O valor sairá da reserva e entrará como recurso disponível no caixa operacional."
-                  : "ℹ️ Operação direta: atualiza o saldo da reserva sem criar lançamentos no fluxo de caixa diário."}
+                    ? "✓ O valor sairá do plano de contas operacional e entrará na reserva patrimonial."
+                    : "✓ O valor sairá da reserva e entrará como recurso disponível no plano de contas operacional."
+                  : "ℹ️ Operação direta: atualiza o saldo da reserva sem duplicar lançamentos no fluxo de caixa diário."}
               </span>
-            </label>
+            </div>
           </div>
         )}
 
         {/* Observações */}
-        <label class="field">
-          <span class="field__label">Observações / Motivo (Opcional)</span>
+        <div class="form-group">
+          <label class="form-label" for="mov-obs">Observações / Motivo (Opcional)</label>
           <input
+            id="mov-obs"
             type="text"
             class="input"
             placeholder="Ex: Aporte mensal recorrente, Rendimento do CDI de Maio..."
             value={obs}
             onInput={(e) => setObs((e.target as HTMLInputElement).value)}
           />
-        </label>
+        </div>
       </form>
     </Modal>
   );

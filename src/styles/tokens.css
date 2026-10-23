@@ -42,6 +42,7 @@
   --aporte: hsl(204 42% 58%);
   --saida: hsl(32 50% 58%);
   --warn: hsl(42 60% 58%);
+  --rendimento: hsl(265 60% 65%);
 }
 
 [data-theme="light"] {
@@ -76,6 +77,7 @@
   --aporte: hsl(204 55% 38%);
   --saida: hsl(30 65% 40%);
   --warn: hsl(40 75% 38%);
+  --rendimento: hsl(265 60% 48%);
 }
 
 :root {
@@ -84,6 +86,7 @@
   --out-soft: color-mix(in srgb, var(--out) 14%, transparent);
   --aporte-soft: color-mix(in srgb, var(--aporte) 14%, transparent);
   --saida-soft: color-mix(in srgb, var(--saida) 14%, transparent);
+  --rendimento-soft: color-mix(in srgb, var(--rendimento) 14%, transparent);
 
   /* Tipografia */
   --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;

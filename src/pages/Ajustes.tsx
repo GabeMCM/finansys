@@ -6,13 +6,14 @@ import { ModalAuth } from "../components/ModalAuth.tsx";
 import { ModalConfirm, confirmarAcao } from "../components/ModalConfirm.tsx";
 import { ModalReplicacao } from "../components/ModalReplicacao.tsx";
 import { toast } from "../components/Toast.tsx";
+import { MoneyInput } from "../components/lancamento/MoneyInput.tsx";
 import { dumpDatabase, restoreDatabase } from "../data/backup.ts";
 import { atualizarNomePerfil, cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem, puxarBackupNuvem } from "../data/cloudSync.ts";
 import { getInactivityTimeout, inactivityTimeoutSignal, lockScreenNow, setInactivityTimeout } from "../data/inactivityGuard.ts";
-import { anos, categorias, contas, empresas, projecoes } from "../data/repo.ts";
+import { anos, categorias, contas, contasBancarias, empresas, projecoes } from "../data/repo.ts";
 import { calcularBaseProjecoes, calcularValorVinculado } from "../data/calc.ts";
 import { seedExemplo } from "../data/seed.ts";
-import { type Ano, type Categoria, type Conta, type Empresa, type Natureza, NATUREZAS, type RegraVinculo, type ModoVinculo } from "../data/types.ts";
+import { type Ano, type Categoria, type Conta, type ContaBancaria, type Empresa, type Natureza, NATUREZAS, type RegraVinculo, type ModoVinculo } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { formatCpfCnpj, labelCpfCnpj, money } from "../lib/format.ts";
 import { avaliarFormula, calcularFormulaProjecoes, extrairVariaveis } from "../lib/formula.ts";
@@ -20,7 +21,7 @@ import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
 
 export function Ajustes() {
-  const [tab, setTab] = useState<"empresas" | "anos" | "contas" | "sistema">("empresas");
+  const [tab, setTab] = useState<"empresas" | "anos" | "contas" | "bancos" | "sistema">("empresas");
 
   // Estados dos modais de Empresa
   const [modalEmpresa, setModalEmpresa] = useState<Partial<Empresa> | null>(null);
@@ -34,6 +35,9 @@ export function Ajustes() {
   const [modalCat, setModalCat] = useState<Partial<Categoria> | null>(null);
   const [modalConta, setModalConta] = useState<Partial<Conta> | null>(null);
 
+  // Estados dos modais de Conta Bancária (Bancos)
+  const [modalBanco, setModalBanco] = useState<Partial<ContaBancaria> | null>(null);
+
   // Estado de Autenticação / Finansys Cloud Vault
   const [modalAuthAberto, setModalAuthAberto] = useState(false);
   const [modalEditarNomePerfil, setModalEditarNomePerfil] = useState<string | null>(null);
@@ -44,6 +48,7 @@ export function Ajustes() {
   const listaAnos = useLive(() => (empId ? anos.byEmpresa(empId) : Promise.resolve([])), [empId], []);
   const listaCats = useLive(() => (empId ? categorias.byEmpresa(empId, natTab) : Promise.resolve([])), [empId, natTab], []);
   const listaContas = useLive(() => (empId ? contas.byEmpresa(empId, natTab) : Promise.resolve([])), [empId, natTab], []);
+  const listaBancos = useLive(() => (empId ? contasBancarias.byEmpresa(empId) : Promise.resolve([])), [empId], []);
   const todasContasEmpresa = useLive(() => (empId ? contas.byEmpresa(empId) : Promise.resolve([])), [empId], []);
   const todasCategoriasEmpresa = useLive(() => (empId ? categorias.byEmpresa(empId) : Promise.resolve([])), [empId], []);
 
@@ -231,6 +236,49 @@ export function Ajustes() {
     reader.readAsDataURL(file);
   };
 
+  // Salvar Conta Bancária
+  const salvarBanco = async (e: Event) => {
+    e.preventDefault();
+    if (!empId || !modalBanco || !modalBanco.nome?.trim()) return;
+    if (modalBanco.id) {
+      await contasBancarias.update(modalBanco.id, {
+        nome: modalBanco.nome.trim(),
+        saldoInicialCentavos: modalBanco.saldoInicialCentavos || 0,
+        cor: modalBanco.cor || "emerald",
+        agencia: modalBanco.agencia?.trim() || undefined,
+        numeroConta: modalBanco.numeroConta?.trim() || undefined,
+        ativa: modalBanco.ativa !== false,
+      });
+      toast.success("Conta bancária atualizada com sucesso!");
+    } else {
+      await contasBancarias.create({
+        empresaId: empId,
+        nome: modalBanco.nome.trim(),
+        saldoInicialCentavos: modalBanco.saldoInicialCentavos || 0,
+        cor: modalBanco.cor || "emerald",
+        agencia: modalBanco.agencia?.trim() || undefined,
+        numeroConta: modalBanco.numeroConta?.trim() || undefined,
+        ativa: modalBanco.ativa !== false,
+      });
+      toast.success("Conta bancária cadastrada com sucesso!");
+    }
+    setModalBanco(null);
+  };
+
+  // Excluir Conta Bancária
+  const excluirBanco = async (b: ContaBancaria) => {
+    const ok = await confirmarAcao({
+      titulo: `Excluir "${b.nome}"?`,
+      mensagem: "A conta bancária será desativada. Os lançamentos e movimentações vinculados continuarão preservados.",
+      rotuloConfirmar: "Sim, excluir",
+      tipo: "danger",
+    });
+    if (ok) {
+      await contasBancarias.delete(b.id);
+      toast.success("Conta bancária excluída.");
+    }
+  };
+
   return (
     <>
       <div class="page-head">
@@ -249,6 +297,9 @@ export function Ajustes() {
         </button>
         <button type="button" class={`tab ${tab === "contas" ? "is-active" : ""}`} onClick={() => setTab("contas")}>
           <Icon name="grid" /> Plano de Contas
+        </button>
+        <button type="button" class={`tab ${tab === "bancos" ? "is-active" : ""}`} onClick={() => setTab("bancos")}>
+          <Icon name="bank" /> Contas Bancárias
         </button>
         <button type="button" class={`tab ${tab === "sistema" ? "is-active" : ""}`} onClick={() => setTab("sistema")}>
           <Icon name="settings" /> Preferências
@@ -601,6 +652,112 @@ export function Ajustes() {
             )}
           </section>
         </div>
+      )}
+
+      {/* ================= ABA CONTAS BANCÁRIAS ================= */}
+      {tab === "bancos" && (
+        <section class="card">
+          <div class="card__head">
+            <div>
+              <h2 class="card__title">Contas Bancárias ({listaEmpresas.find((e) => e.id === empId)?.nome || "Empresa"})</h2>
+              <p class="muted" style="font-size:var(--fs-xs);">Gerencie os bancos da empresa e seus saldos iniciais de abertura</p>
+            </div>
+            {empId && (
+              <button
+                id="btn-nova-conta-bancaria"
+                type="button"
+                class="btn btn--primary"
+                onClick={() =>
+                  setModalBanco({
+                    nome: "",
+                    saldoInicialCentavos: 0,
+                    cor: "emerald",
+                    ativa: true,
+                  })
+                }
+              >
+                <Icon name="plus" /> Nova Conta Bancária
+              </button>
+            )}
+          </div>
+
+          {!empId ? (
+            <p class="muted">Selecione ou cadastre uma empresa primeiro na aba Empresas.</p>
+          ) : listaBancos.length === 0 ? (
+            <div class="empty" style="padding: var(--sp-6) var(--sp-4);">
+              <div
+                style="width: 56px; height: 56px; border-radius: 16px; background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); display: grid; place-items: center; margin: 0 auto var(--sp-3);"
+              >
+                <Icon name="bank" style="width: 28px; height: 28px;" />
+              </div>
+              <h2>Nenhuma conta bancária cadastrada</h2>
+              <p style="max-width: 480px; margin: 0 auto 16px; color: var(--text-muted); font-size: var(--fs-sm);">
+                Cadastre as contas correntes, carteiras e bancos da sua empresa (ex: Nubank PJ, Itaú, Inter) e informe o saldo inicial de cada uma.
+              </p>
+              <button
+                type="button"
+                class="btn btn--primary"
+                onClick={() =>
+                  setModalBanco({
+                    nome: "",
+                    saldoInicialCentavos: 0,
+                    cor: "emerald",
+                    ativa: true,
+                  })
+                }
+              >
+                <Icon name="plus" /> Cadastrar Primeira Conta Bancária
+              </button>
+            </div>
+          ) : (
+            <div class="list">
+              {listaBancos.map((b) => (
+                <div class="list__item" key={b.id}>
+                  <div
+                    class="list__icon"
+                    style={`background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary);`}
+                  >
+                    <Icon name="bank" />
+                  </div>
+                  <div class="list__body">
+                    <div class="list__title" style="display:flex;align-items:center;gap:8px;">
+                      <span>{b.nome}</span>
+                      {b.ativa ? (
+                        <span class="badge badge--in">Ativa</span>
+                      ) : (
+                        <span class="badge badge--neutral">Inativa</span>
+                      )}
+                    </div>
+                    <div class="list__sub" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;">
+                      <span>Saldo Inicial: <strong style="color:var(--text);">{money(b.saldoInicialCentavos)}</strong></span>
+                      {b.agencia && <span>• Agência: {b.agencia}</span>}
+                      {b.numeroConta && <span>• Conta: {b.numeroConta}</span>}
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:6px;align-items:center;">
+                    <button
+                      type="button"
+                      class="btn btn--ghost btn--icon"
+                      title="Editar conta bancária"
+                      onClick={() => setModalBanco(b)}
+                    >
+                      <Icon name="pencil" style="width:16px;height:16px;" />
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--ghost btn--icon"
+                      style="color:var(--out);"
+                      title="Excluir conta bancária"
+                      onClick={() => excluirBanco(b)}
+                    >
+                      <Icon name="trash" style="width:16px;height:16px;" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {/* ================= ABA PREFERÊNCIAS E SISTEMA ================= */}
@@ -1535,6 +1692,99 @@ export function Ajustes() {
               Este nome será exibido no topo do sistema e salvo permanentemente em sua conta.
             </span>
           </div>
+        </Modal>
+      )}
+
+      {/* Modal Nova / Editar Conta Bancária */}
+      {modalBanco && (
+        <Modal
+          title={modalBanco.id ? "Editar Conta Bancária" : "Nova Conta Bancária"}
+          isOpen={true}
+          onClose={() => setModalBanco(null)}
+          onSubmitShortcut={() => {
+            const form = document.getElementById("form-modal-banco") as HTMLFormElement;
+            if (form) form.requestSubmit();
+          }}
+          footer={
+            <div class="modal-footer-actions">
+              <div />
+              <div class="modal-footer-actions__right">
+                <button type="button" class="btn btn--ghost" onClick={() => setModalBanco(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" form="form-modal-banco" class="btn btn--primary">
+                  <Icon name="check" /> {modalBanco.id ? "Salvar Alterações" : "Cadastrar Conta"}
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <form id="form-modal-banco" onSubmit={salvarBanco} class="stack" style="gap: var(--sp-3);">
+            <div class="form-group">
+              <label class="form-label" for="banco-nome">Nome da Conta / Banco *</label>
+              <input
+                id="banco-nome"
+                type="text"
+                class="input"
+                placeholder="Ex: Nubank PJ, Itaú Corrente, Inter, Caixa..."
+                value={modalBanco.nome || ""}
+                onInput={(e) => setModalBanco({ ...modalBanco, nome: (e.target as HTMLInputElement).value })}
+                required
+                autoFocus
+              />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                Saldo Inicial de Abertura *
+                <span style="font-size: var(--fs-xs); color: var(--text-faint); margin-left: 4px; text-transform: none;">
+                  (Banca existente na conta ao iniciar o controle)
+                </span>
+              </label>
+              <MoneyInput
+                variant="hero"
+                valueCentavos={modalBanco.saldoInicialCentavos || 0}
+                onChangeCentavos={(cents) => setModalBanco({ ...modalBanco, saldoInicialCentavos: cents })}
+              />
+            </div>
+
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--sp-3);">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="banco-agencia">Agência (Opcional)</label>
+                <input
+                  id="banco-agencia"
+                  type="text"
+                  class="input"
+                  placeholder="Ex: 0001"
+                  value={modalBanco.agencia || ""}
+                  onInput={(e) => setModalBanco({ ...modalBanco, agencia: (e.target as HTMLInputElement).value })}
+                />
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="banco-conta">Número da Conta (Opcional)</label>
+                <input
+                  id="banco-conta"
+                  type="text"
+                  class="input"
+                  placeholder="Ex: 12345-6"
+                  value={modalBanco.numeroConta || ""}
+                  onInput={(e) => setModalBanco({ ...modalBanco, numeroConta: (e.target as HTMLInputElement).value })}
+                />
+              </div>
+            </div>
+
+            <label
+              style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:var(--fs-sm); font-weight:500; margin-top: var(--sp-2);"
+            >
+              <input
+                type="checkbox"
+                checked={modalBanco.ativa !== false}
+                onChange={(e) => setModalBanco({ ...modalBanco, ativa: (e.target as HTMLInputElement).checked })}
+              />
+              <span>Conta bancária ativa (disponível para lançamentos e relatórios)</span>
+            </label>
+          </form>
         </Modal>
       )}
     </>

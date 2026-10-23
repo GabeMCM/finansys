@@ -13,8 +13,8 @@ import { RepeticaoSelector, type TipoRepeticaoReal } from "../components/lancame
 import { ResumoPainel } from "../components/lancamento/ResumoPainel.tsx";
 import { ValorCalculadoEditor } from "../components/lancamento/ValorCalculadoEditor.tsx";
 import { calcularBaseLancamentos, calcularPendencias, calcularValorVinculado, type ProjecaoPendente } from "../data/calc.ts";
-import { anos, categorias, contas, lancamentos, projecoes, reservaMovimentos, reservas } from "../data/repo.ts";
-import { type Conta, type Lancamento, type Natureza, NATUREZAS, type RegraVinculo, type Reserva, SINAL } from "../data/types.ts";
+import { anos, categorias, contas, contasBancarias, lancamentos, projecoes, reservaMovimentos, reservas } from "../data/repo.ts";
+import { type Conta, type ContaBancaria, type Lancamento, type Natureza, NATUREZAS, type RegraVinculo, type Reserva, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { money, MONTHS, signed } from "../lib/format.ts";
 import { calcularFormulaLancamentos, extrairVariaveis } from "../lib/formula.ts";
@@ -60,14 +60,15 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     if (!empId) return null;
     const ano = await anos.find(empId, anoNum);
     if (!ano) return null;
-    const [cs, ls, cats, ps, resList] = await Promise.all([
+    const [cs, ls, cats, ps, resList, bancoList] = await Promise.all([
       contas.byEmpresa(empId),
       lancamentos.byAno(ano.id),
       categorias.byEmpresa(empId),
       projecoes.byAno(ano.id),
       reservas.byEmpresa(empId),
+      contasBancarias.byEmpresa(empId),
     ]);
-    return { ano, cs, ls, cats, ps, resList };
+    return { ano, cs, ls, cats, ps, resList, bancoList };
   }, [empId, anoNum], null);
 
   useEffect(() => {
@@ -99,10 +100,11 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
     );
   }
 
-  const { ano, cs, ls, cats, ps, resList } = dados;
+  const { ano, cs, ls, cats, ps, resList, bancoList } = dados;
   const contaMap = new Map<string, Conta>(cs.map((c) => [c.id, c]));
   const catMap = new Map<string, string>(cats.map((c) => [c.id, c.nome]));
   const reservaMap = new Map<string, string>(resList.map((r) => [r.id, r.nome]));
+  const bancoMap = new Map<string, string>(bancoList.map((b) => [b.id, b.nome]));
 
   const getValorProjetadoContaMes = (contaId: string, dataStr: string): number => {
     if (!contaId || !dataStr) return 0;
@@ -207,6 +209,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         valor: centavos,
         descricao: modalLanc.descricao?.trim() || "",
         obs: modalLanc.obs?.trim() || undefined,
+        bancoId: modalLanc.bancoId || undefined,
         reservaId: modalLanc.reservaId || undefined,
         tipoReserva: tipoRes,
       });
@@ -222,6 +225,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             data: modalLanc.data,
             mes: mesCalculado,
             contaId: modalLanc.contaId,
+            bancoId: modalLanc.bancoId || undefined,
             obs: modalLanc.descricao || modalLanc.obs,
           });
         } else {
@@ -234,6 +238,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             data: modalLanc.data,
             mes: mesCalculado,
             contaId: modalLanc.contaId,
+            bancoId: modalLanc.bancoId || undefined,
             obs: modalLanc.descricao || modalLanc.obs,
             lancamentoId: modalLanc.id,
           });
@@ -256,6 +261,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         valor: centavos,
         descricao: modalLanc.descricao?.trim() || "",
         obs: modalLanc.obs?.trim() || undefined,
+        bancoId: modalLanc.bancoId || undefined,
         reservaId: modalLanc.reservaId || undefined,
         tipoReserva: tipoRes,
       });
@@ -270,6 +276,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           data: modalLanc.data,
           mes: mesCalculado,
           contaId: modalLanc.contaId,
+          bancoId: modalLanc.bancoId || undefined,
           obs: modalLanc.descricao || modalLanc.obs,
           lancamentoId: createdLanc.id,
         });
@@ -360,6 +367,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           valorCentavos: 0,
           descricao: "",
           obs: "",
+          bancoId: modalLanc.bancoId || undefined,
           natureza: natAtualModal,
         });
         setTipoRepeticao("unico");
@@ -410,6 +418,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           valor: valorParcela,
           descricao: modalLanc.descricao?.trim() || "",
           obs: modalLanc.obs?.trim() || undefined,
+          bancoId: modalLanc.bancoId || undefined,
           recorrenciaId,
           parcela: i,
           totalParcelas: totalRepeticoes,
@@ -427,6 +436,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
             data: dataFormatada,
             mes: targetMonth,
             contaId: modalLanc.contaId,
+            bancoId: modalLanc.bancoId || undefined,
             obs: modalLanc.descricao || modalLanc.obs,
             lancamentoId: createdRep.id,
           });
@@ -449,6 +459,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           valorCentavos: 0,
           descricao: "",
           obs: "",
+          bancoId: modalLanc.bancoId || undefined,
           natureza: natAtualModal,
         });
         setTipoRepeticao("unico");
@@ -975,6 +986,16 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                                 <Icon name="wallet" style="width:11px;height:11px;" /> {reservaMap.get(l.reservaId)}
                               </span>
                             )}
+                            {l.bancoId && bancoMap.get(l.bancoId) && (
+                              <span
+                                class="badge badge--neutral"
+                                style="font-size:0.68rem;padding:0 6px;display:inline-flex;align-items:center;gap:3px;"
+                                title={`Conta Bancária: ${bancoMap.get(l.bancoId)}`}
+                              >
+                                <Icon name="bank" style="width:11px;height:11px;color:var(--text-muted);" />
+                                <span>{bancoMap.get(l.bancoId)}</span>
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -1088,6 +1109,16 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                               <Icon name="wallet" style="width:10px;height:10px;" /> {reservaMap.get(l.reservaId)}
                             </span>
                           )}
+                          {l.bancoId && bancoMap.get(l.bancoId) && (
+                            <span
+                              class="badge badge--neutral"
+                              style="font-size:0.65rem;padding:0 5px;display:inline-flex;align-items:center;gap:3px;"
+                              title={`Conta Bancária: ${bancoMap.get(l.bancoId)}`}
+                            >
+                              <Icon name="bank" style="width:10px;height:10px;color:var(--text-muted);" />
+                              <span>{bancoMap.get(l.bancoId)}</span>
+                            </span>
+                          )}
                         </div>
                         {l.obs && (
                           <div class="muted" style="font-size:0.7rem;font-style:italic;">
@@ -1177,6 +1208,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                 projetado: projCatModalMes,
                 realizadoSemEste: realCatModalMes,
               }}
+              bancoNome={modalLanc.bancoId ? bancoMap.get(modalLanc.bancoId) : undefined}
               descricao={modalLanc.descricao}
               obs={modalLanc.obs}
             />
@@ -1408,6 +1440,37 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                 <button type="button" class="date-chip" onClick={aplicarDataPrimeiroDoMes}>1º do Mês</button>
               </div>
             </div>
+
+            {/* Conta Bancária (Opcional) */}
+            {bancoList.length > 0 && (
+              <div class="form-group" style="margin-top:var(--sp-2);margin-bottom:0;">
+                <label class="form-label" for="lanc-banco" style="font-size:var(--fs-xs);margin-bottom:2px;display:flex;align-items:center;gap:6px;">
+                  <Icon name="bank" style="width:13px;height:13px;color:var(--primary);" />
+                  <span>
+                    {natAtualModal === "receber" || natAtualModal === "aporte"
+                      ? "Entrou em qual Conta Bancária? (Opcional)"
+                      : "Saiu de qual Conta Bancária? (Opcional)"}
+                  </span>
+                </label>
+                <select
+                  id="lanc-banco"
+                  class="input"
+                  style="font-size:var(--fs-xs);"
+                  value={modalLanc?.bancoId || ""}
+                  onChange={(e) => {
+                    const val = (e.target as HTMLSelectElement).value;
+                    setModalLanc({ ...modalLanc, bancoId: val || undefined });
+                  }}
+                >
+                  <option value="">Nenhuma conta bancária vinculada</option>
+                  {bancoList.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </FormSection>
 
           {/* Seção 3: Repetição (somente na criação de novo lançamento) */}

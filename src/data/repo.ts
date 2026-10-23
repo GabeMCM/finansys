@@ -5,6 +5,7 @@ import type {
   Base,
   Categoria,
   Conta,
+  ContaBancaria,
   Empresa,
   Lancamento,
   Natureza,
@@ -97,6 +98,12 @@ export const lancamentos = {
     db.lancamentos.where({ anoId, mes }).filter(alive).reverse().sortBy("data"),
   byRecorrencia: (recorrenciaId: string) =>
     db.lancamentos.filter((l) => l.recorrenciaId === recorrenciaId && alive(l)).toArray(),
+};
+
+export const contasBancarias = {
+  ...repo<ContaBancaria>(db.contasBancarias),
+  byEmpresa: (empresaId: string) =>
+    db.contasBancarias.where({ empresaId }).filter(alive).sortBy("nome"),
 };
 
 export const reservas = {

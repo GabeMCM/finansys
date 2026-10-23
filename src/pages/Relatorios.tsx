@@ -1,9 +1,10 @@
 import { useState } from "preact/hooks";
 import { Icon } from "../components/Icon.tsx";
 import { ModalReplicacao } from "../components/ModalReplicacao.tsx";
+import { calcularPosicaoBancos } from "../data/calc.ts";
 import { db } from "../data/db.ts";
-import { anos, categorias, contas, empresas, reservas } from "../data/repo.ts";
-import { type Ano, type Conta, SINAL } from "../data/types.ts";
+import { anos, categorias, contas, contasBancarias, empresas, reservas } from "../data/repo.ts";
+import { type Ano, type Conta, type ContaBancaria, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { labelCpfCnpj, money, signed } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
@@ -34,16 +35,17 @@ export function Relatorios() {
     if (!emp || todosAnos.length === 0) return null;
 
     const anoIds = todosAnos.map((a) => a.id);
-    const [cs, cats, ps, ls, resList, movList] = await Promise.all([
+    const [cs, cats, ps, ls, resList, movList, bancoList] = await Promise.all([
       contas.byEmpresa(empId),
       categorias.byEmpresa(empId),
       db.projecoes.where("anoId").anyOf(anoIds).filter((p) => !p.deletedAt).toArray(),
       db.lancamentos.where("anoId").anyOf(anoIds).filter((l) => !l.deletedAt).toArray(),
       reservas.byEmpresa(empId),
       db.reservaMovimentos.where("empresaId").equals(empId).filter((m) => !m.deletedAt).toArray(),
+      contasBancarias.byEmpresa(empId),
     ]);
 
-    return { emp, todosAnos, cs, cats, ps, ls, resList, movList };
+    return { emp, todosAnos, cs, cats, ps, ls, resList, movList, bancoList };
   }, [empId], null);
 
   if (!empId) {
@@ -66,7 +68,7 @@ export function Relatorios() {
     );
   }
 
-  const { emp, todosAnos, cs, cats, ps, ls, resList, movList } = dados;
+  const { emp, todosAnos, cs, cats, ps, ls, resList, movList, bancoList } = dados;
   const anoIdParaAnoNum = new Map<string, number>(todosAnos.map((a) => [a.id, a.ano]));
   const catMap = new Map<string, string>(cats.map((c) => [c.id, c.nome]));
   const contaMap = new Map<string, Conta>(cs.map((c) => [c.id, c]));
@@ -173,6 +175,12 @@ export function Relatorios() {
   }
   const patrimonioConsolidadoReal = saldoFinalReal + totalReservasAteFim;
 
+  // 7. Posição e Movimentação das Contas Bancárias
+  const lsAteFim = ls.filter((l) => l.data <= dFim);
+  const movsAteFim = movList.filter((m) => m.data <= dFim);
+  const posicaoBancosAteFim = calcularPosicaoBancos(bancoList, lsAteFim, cs, movsAteFim);
+  const posicaoBancosPeriodo = calcularPosicaoBancos(bancoList, lsNoPeriodo, cs, movsPeriodoRes);
+
   // Presets rápidos de intervalo
   const aplicarPreset = (tipo: string) => {
     setPresetAtivo(tipo);
@@ -245,6 +253,26 @@ export function Relatorios() {
       csv += `Patrimônio Líquido Consolidado;;;;${(patrimonioConsolidadoReal / 100).toFixed(2).replace(".", ",")}\n`;
     }
 
+    if (bancoList.length > 0) {
+      csv += `\nPOSIÇÃO DAS CONTAS BANCÁRIAS\n`;
+      csv += `Conta Bancária;Saldo Inicial (R$);Entradas (+) (R$);Saídas (−) (R$);Saldo Atual (R$)\n`;
+      for (const b of bancoList) {
+        const bAteFim = posicaoBancosAteFim.bancos.find((x) => x.banco.id === b.id);
+        const bPeriodo = posicaoBancosPeriodo.bancos.find((x) => x.banco.id === b.id);
+        const saldoAtual = bAteFim ? bAteFim.saldoAtual : (b.saldoInicialCentavos || 0);
+        const entradas = bPeriodo ? bPeriodo.totalEntradas : 0;
+        const saidas = bPeriodo ? bPeriodo.totalSaidas : 0;
+        csv += [
+          `"${b.nome}"`,
+          ((b.saldoInicialCentavos || 0) / 100).toFixed(2).replace(".", ","),
+          (entradas / 100).toFixed(2).replace(".", ","),
+          (saidas / 100).toFixed(2).replace(".", ","),
+          (saldoAtual / 100).toFixed(2).replace(".", ","),
+        ].join(separador) + "\n";
+      }
+      csv += `Total Consolidado em Bancos;${(posicaoBancosAteFim.totalSaldoInicial / 100).toFixed(2).replace(".", ",")};${(posicaoBancosPeriodo.totalEntradas / 100).toFixed(2).replace(".", ",")};${(posicaoBancosPeriodo.totalSaidas / 100).toFixed(2).replace(".", ",")};${(posicaoBancosAteFim.totalSaldoAtual / 100).toFixed(2).replace(".", ",")}\n`;
+    }
+
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -272,6 +300,18 @@ export function Relatorios() {
         real: l.real,
         diferenca: l.diff,
       })),
+      contasBancarias: bancoList.map((b) => {
+        const bAteFim = posicaoBancosAteFim.bancos.find((x) => x.banco.id === b.id);
+        const bPeriodo = posicaoBancosPeriodo.bancos.find((x) => x.banco.id === b.id);
+        return {
+          id: b.id,
+          nome: b.nome,
+          saldoInicial: b.saldoInicialCentavos || 0,
+          entradasPeriodo: bPeriodo?.totalEntradas || 0,
+          saidasPeriodo: bPeriodo?.totalSaidas || 0,
+          saldoAtual: bAteFim?.saldoAtual || (b.saldoInicialCentavos || 0),
+        };
+      }),
       totais: {
         entradasProj: totEntradasProj,
         entradasReal: totEntradasReal,
@@ -279,6 +319,7 @@ export function Relatorios() {
         saidasReal: totSaidasReal,
         saldoFinalProj,
         saldoFinalReal,
+        totalSaldoBancos: posicaoBancosAteFim.totalSaldoAtual,
         reservasReal: totalReservasAteFim,
         patrimonioConsolidado: patrimonioConsolidadoReal,
       },
@@ -563,10 +604,10 @@ export function Relatorios() {
               </div>
 
               <div class="stat" style="background:var(--surface-solid);">
-                <div class="stat__label" style="color:#8b5cf6;">
+                <div class="stat__label" style="color:var(--rendimento);">
                   (+) Rendimentos Acumulados
                 </div>
-                <div class="stat__value num" style="color:#8b5cf6;">
+                <div class="stat__value num" style="color:var(--rendimento);">
                   {money(totRendimentosResReal)}
                 </div>
                 <div class="stat__sub">Juros, CDI e dividendos gerados</div>
@@ -581,6 +622,134 @@ export function Relatorios() {
                 </div>
                 <div class="stat__sub">Posição acumulada em {formatarDataBR(dataFim)}</div>
               </div>
+            </div>
+          </section>
+        )}
+
+        {/* Bloco de Posição das Contas Bancárias */}
+        {bancoList.length > 0 && (
+          <section class="card">
+            <div class="card__head" style="margin-bottom: var(--sp-2);">
+              <h2 class="card__title" style="display:flex; align-items:center; gap:8px;">
+                <Icon name="bank" /> Posição das Contas Bancárias
+              </h2>
+              <span class="muted" style="font-size: var(--fs-xs);">
+                {bancoList.length} conta{bancoList.length > 1 ? "s" : ""} cadastrada{bancoList.length > 1 ? "s" : ""} · Posição acumulada em {formatarDataBR(dataFim)}
+              </span>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--sp-3); padding: var(--sp-2) 0;">
+              <div class="stat" style="background:var(--surface-solid);">
+                <div class="stat__label" style="color:var(--text-muted);">
+                  Saldo Inicial Consolidado
+                </div>
+                <div class="stat__value num">
+                  {money(posicaoBancosAteFim.totalSaldoInicial)}
+                </div>
+                <div class="stat__sub">Soma das aberturas das contas</div>
+              </div>
+
+              <div class="stat" style="background:var(--surface-solid);">
+                <div class="stat__label" style="color:var(--in);">
+                  (+) Entradas no Período
+                </div>
+                <div class="stat__value num tone-in">
+                  {money(posicaoBancosPeriodo.totalEntradas)}
+                </div>
+                <div class="stat__sub">Recebimentos e resgates</div>
+              </div>
+
+              <div class="stat" style="background:var(--surface-solid);">
+                <div class="stat__label" style="color:var(--out);">
+                  (−) Saídas no Período
+                </div>
+                <div class="stat__value num tone-out">
+                  {money(posicaoBancosPeriodo.totalSaidas)}
+                </div>
+                <div class="stat__sub">Pagamentos e aportes</div>
+              </div>
+
+              <div class="stat" style="background:var(--surface-solid);">
+                <div class="stat__label" style="color:var(--primary);">
+                  Saldo Total Acumulado em Bancos
+                </div>
+                <div class="stat__value num" style="color:var(--primary);font-weight:800;">
+                  {money(posicaoBancosAteFim.totalSaldoAtual)}
+                </div>
+                <div class="stat__sub">Posição acumulada em {formatarDataBR(dataFim)}</div>
+              </div>
+            </div>
+
+            {/* Detalhamento Individual por Conta Bancária */}
+            <div class="table-wrap" style="margin-top: var(--sp-3);">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="text-align:left;">Conta Bancária</th>
+                    <th style="text-align:right;">Saldo Inicial</th>
+                    <th style="text-align:right;" title="Entradas no período selecionado">Entradas (+)</th>
+                    <th style="text-align:right;" title="Saídas no período selecionado">Saídas (−)</th>
+                    <th style="text-align:right;" title="Saldo acumulado até o final do período">Saldo Atual</th>
+                    <th style="text-align:center;">Movimentações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bancoList.map((b) => {
+                    const bAteFim = posicaoBancosAteFim.bancos.find((x) => x.banco.id === b.id);
+                    const bPeriodo = posicaoBancosPeriodo.bancos.find((x) => x.banco.id === b.id);
+                    const saldoAtual = bAteFim ? bAteFim.saldoAtual : (b.saldoInicialCentavos || 0);
+                    const entradas = bPeriodo ? bPeriodo.totalEntradas : 0;
+                    const saidas = bPeriodo ? bPeriodo.totalSaidas : 0;
+                    const qtd = bAteFim?.qtdLancamentos || 0;
+
+                    return (
+                      <tr key={b.id}>
+                        <td style="font-weight:600;display:flex;align-items:center;gap:8px;">
+                          <div class="list__icon" style="width:28px;height:28px;background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--r-sm);flex-shrink:0;">
+                            <Icon name="bank" style="width:14px;height:14px;color:var(--primary);" />
+                          </div>
+                          <span>{b.nome}</span>
+                        </td>
+                        <td class="num muted" style="text-align:right;">
+                          {money(b.saldoInicialCentavos || 0)}
+                        </td>
+                        <td class="num tone-in" style="text-align:right;font-weight:600;">
+                          {money(entradas)}
+                        </td>
+                        <td class="num tone-out" style="text-align:right;font-weight:600;">
+                          {money(saidas)}
+                        </td>
+                        <td class={`num ${saldoAtual >= 0 ? "tone-in" : "tone-out"}`} style="text-align:right;font-weight:800;font-size:var(--fs-sm);">
+                          {money(saldoAtual)}
+                        </td>
+                        <td style="text-align:center;">
+                          <span class="badge badge--neutral" style="font-size:0.7rem;">
+                            {qtd} {qtd === 1 ? "mov." : "movs."}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td style="font-weight:700;">Total Acumulado em Bancos</td>
+                    <td class="num muted" style="text-align:right;">
+                      {money(posicaoBancosAteFim.totalSaldoInicial)}
+                    </td>
+                    <td class="num tone-in" style="text-align:right;font-weight:700;">
+                      {money(posicaoBancosPeriodo.totalEntradas)}
+                    </td>
+                    <td class="num tone-out" style="text-align:right;font-weight:700;">
+                      {money(posicaoBancosPeriodo.totalSaidas)}
+                    </td>
+                    <td class={`num ${posicaoBancosAteFim.totalSaldoAtual >= 0 ? "tone-in" : "tone-out"}`} style="text-align:right;font-weight:800;font-size:var(--fs-md);">
+                      {money(posicaoBancosAteFim.totalSaldoAtual)}
+                    </td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </section>
         )}

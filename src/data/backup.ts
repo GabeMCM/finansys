@@ -29,6 +29,7 @@ export interface BackupPayload {
     anos: unknown[];
     categorias: unknown[];
     contas: unknown[];
+    contasBancarias?: unknown[];
     projecoes: unknown[];
     lancamentos: unknown[];
     reservas?: unknown[];
@@ -41,11 +42,12 @@ export interface BackupPayload {
  * Serializa todo o banco de dados em um payload JSON.
  */
 export async function dumpDatabase(): Promise<BackupPayload> {
-  const [empresas, anos, categorias, contas, projecoes, lancamentos, reservas, reservaMovimentos, reservaProjecoes] = await Promise.all([
+  const [empresas, anos, categorias, contas, contasBancarias, projecoes, lancamentos, reservas, reservaMovimentos, reservaProjecoes] = await Promise.all([
     db.empresas.toArray(),
     db.anos.toArray(),
     db.categorias.toArray(),
     db.contas.toArray(),
+    db.contasBancarias.toArray(),
     db.projecoes.toArray(),
     db.lancamentos.toArray(),
     db.reservas.toArray(),
@@ -54,13 +56,14 @@ export async function dumpDatabase(): Promise<BackupPayload> {
   ]);
 
   return {
-    version: 2,
+    version: 3,
     exportedAt: Date.now(),
     data: {
       empresas,
       anos,
       categorias,
       contas,
+      contasBancarias,
       projecoes,
       lancamentos,
       reservas,
@@ -86,6 +89,7 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
         db.anos,
         db.categorias,
         db.contas,
+        db.contasBancarias,
         db.projecoes,
         db.lancamentos,
         db.reservas,
@@ -100,6 +104,7 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
           { t: db.anos, itens: dataObj?.anos },
           { t: db.categorias, itens: dataObj?.categorias },
           { t: db.contas, itens: dataObj?.contas },
+          { t: db.contasBancarias, itens: dataObj?.contasBancarias },
           { t: db.projecoes, itens: dataObj?.projecoes },
           { t: db.lancamentos, itens: dataObj?.lancamentos },
           { t: db.reservas, itens: dataObj?.reservas },
