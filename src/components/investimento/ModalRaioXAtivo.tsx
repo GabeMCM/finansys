@@ -78,6 +78,15 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
                   ⭐ BESTT ({ativo.besttCategory})
                 </span>
               )}
+              {ativo.isAristocrat && (
+                <span
+                  class="badge"
+                  style="background: rgba(234, 179, 8, 0.15); color: #ca8a04; border: 1px solid rgba(234, 179, 8, 0.3); font-weight: 700;"
+                  title="Empresa do S&P 500 Dividend Aristocrats com mais de 25 anos consecutivos elevando proventos em dólar (Critério Graham)"
+                >
+                  👑 Aristocrata (25+ anos)
+                </span>
+              )}
             </div>
             <div class="muted" style="font-size: 0.85rem; margin-top: 4px;">
               {ativo.name}
@@ -130,7 +139,9 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
             style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; background: var(--surface-bg); padding: 12px; border-radius: var(--rad-md); border: 1px solid var(--border);"
           >
             <div>
-              <div class="muted" style="font-size: 0.75rem;">Preço Teto Bazin (DY 6%)</div>
+              <div class="muted" style="font-size: 0.75rem;">
+                Preço Teto Bazin ({ativo.market === "GLOBAL" ? "DY 2,5%" : "DY 6%"})
+              </div>
               <div style="font-size: 1.1rem; font-weight: 700; color: var(--text);">
                 {ativo.precoTetoBazin > 0 ? fmtMoney(ativo.precoTetoBazin) : "N/D"}
               </div>
@@ -173,6 +184,14 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
           </div>
 
           <div class="stat" style="padding: 10px;">
+            <span class="stat__label">P/L (Preço/Lucro)</span>
+            <div class="stat__value" style="font-size: 1.1rem;">
+              {ativo.pl !== undefined && ativo.pl > 0 ? `${ativo.pl}x` : "—"}
+            </div>
+            <div class="stat__sub">Anos p/ retorno</div>
+          </div>
+
+          <div class="stat" style="padding: 10px;">
             <span class="stat__label">Payout Ratio</span>
             <div
               class="stat__value"
@@ -184,13 +203,35 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
                     : "var(--text)",
               }}
             >
-              {ativo.payoutRatio !== undefined ? `${ativo.payoutRatio.toFixed(0)}%` : "N/D"}
+              {ativo.payoutRatio !== undefined ? `${ativo.payoutRatio.toFixed(0)}%` : "—"}
             </div>
             <div class="stat__sub">
               {ativo.payoutRatio !== undefined && ativo.payoutRatio > 100
                 ? "Alerta: >100%"
                 : "Lucro distribuído"}
             </div>
+          </div>
+
+          <div class="stat" style="padding: 10px;">
+            <span class="stat__label">ROE (Rentabilidade)</span>
+            <div
+              class="stat__value"
+              style={{
+                fontSize: "1.1rem",
+                color: ativo.roe !== undefined && ativo.roe < 0 ? "var(--out)" : "var(--primary)",
+              }}
+            >
+              {ativo.roe !== undefined ? `${ativo.roe.toFixed(1)}%` : "—"}
+            </div>
+            <div class="stat__sub">Retorno s/ Patrimônio</div>
+          </div>
+
+          <div class="stat" style="padding: 10px;">
+            <span class="stat__label">P/VP</span>
+            <div class="stat__value" style="font-size: 1.1rem;">
+              {ativo.pvp !== undefined ? `${ativo.pvp}x` : "—"}
+            </div>
+            <div class="stat__sub">Preço / Valor Patr.</div>
           </div>
 
           <div class="stat" style="padding: 10px;">
@@ -205,31 +246,17 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
                     : "var(--text)",
               }}
             >
-              {ativo.dividaEbitda !== undefined ? `${ativo.dividaEbitda}x` : "Baixa / N/D"}
+              {ativo.besttCategory === "Bancos" || ativo.besttCategory === "Seguros"
+                ? "Financeiro"
+                : ativo.dividaEbitda !== undefined
+                ? `${ativo.dividaEbitda}x`
+                : "Baixa / Estável"}
             </div>
-            <div class="stat__sub">Alavancagem</div>
-          </div>
-
-          <div class="stat" style="padding: 10px;">
-            <span class="stat__label">ROE (Rentabilidade)</span>
-            <div
-              class="stat__value"
-              style={{
-                fontSize: "1.1rem",
-                color: ativo.roe !== undefined && ativo.roe < 0 ? "var(--out)" : "var(--primary)",
-              }}
-            >
-              {ativo.roe !== undefined ? `${ativo.roe.toFixed(1)}%` : "N/D"}
+            <div class="stat__sub">
+              {ativo.besttCategory === "Bancos" || ativo.besttCategory === "Seguros"
+                ? "EBITDA não aplicável"
+                : "Alavancagem"}
             </div>
-            <div class="stat__sub">Retorno s/ Patrimônio</div>
-          </div>
-
-          <div class="stat" style="padding: 10px;">
-            <span class="stat__label">P/VP</span>
-            <div class="stat__value" style="font-size: 1.1rem;">
-              {ativo.pvp !== undefined ? `${ativo.pvp}x` : "N/D"}
-            </div>
-            <div class="stat__sub">Preço / Valor Patr.</div>
           </div>
         </div>
 
@@ -282,11 +309,11 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
                   value={rendaDesejadaMensal}
                   onChange={(e) => setRendaDesejadaMensal(Number((e.target as HTMLSelectElement).value))}
                 >
-                  <option value={100}>R$ 100/mês</option>
-                  <option value={500}>R$ 500/mês</option>
-                  <option value={1000}>R$ 1.000/mês</option>
-                  <option value={2000}>R$ 2.000/mês</option>
-                  <option value={5000}>R$ 5.000/mês</option>
+                  <option value={100}>{fmtMoney(100)}/mês</option>
+                  <option value={500}>{fmtMoney(500)}/mês</option>
+                  <option value={1000}>{fmtMoney(1000)}/mês</option>
+                  <option value={2000}>{fmtMoney(2000)}/mês</option>
+                  <option value={5000}>{fmtMoney(5000)}/mês</option>
                 </select>
               </div>
             </div>

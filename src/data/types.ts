@@ -192,6 +192,7 @@ export interface LongTermAnalysis {
   pl?: number;
   isBestt: boolean;
   besttCategory?: BesttCategory;
+  isAristocrat?: boolean;
   score: number; // 0 a 100
   status: "oportunidade" | "neutro" | "alerta";
   pontosFortes: string[];

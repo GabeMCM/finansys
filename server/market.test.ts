@@ -64,6 +64,40 @@ Deno.test("calcularAnaliseLongoPrazo gera Preço Teto Bazin e pontuação alta p
   assert(analise.score >= 80, "Score de boa pagadora sólida deve ser alto");
 });
 
+Deno.test("calcularAnaliseLongoPrazo aplica régua global de 2.5% para ativos internacionais e reconhece Aristocratas", () => {
+  const analiseKO = calcularAnaliseLongoPrazo({
+    symbol: "KO",
+    name: "The Coca-Cola Company",
+    currency: "USD",
+    price: 90.0,
+    previousClose: 90.0,
+    fiftyTwoWeekHigh: 95.0,
+    fiftyTwoWeekLow: 60.0,
+    sector: "Consumer Defensive",
+    industry: "Beverages - Non-Alcoholic",
+    dividendRate: 2.25,
+    dividendYield: 0.025,
+    trailingEps: 3.50,
+    bookValue: 8.0,
+    trailingPE: 25.7,
+    priceToBook: 11.25,
+  });
+
+  assertEquals(analiseKO.symbol, "KO");
+  assertEquals(analiseKO.market, "GLOBAL");
+  assertEquals(analiseKO.isAristocrat, true);
+  // Preço teto = 2.25 / 0.025 = 90.0
+  assertEquals(analiseKO.precoTetoBazin, 90.0);
+  assertEquals(analiseKO.margemSegurancaBazin, 0);
+  // Payout derivado = (2.25 / 3.50) * 100 = 64.3%
+  assertEquals(analiseKO.payoutRatio, 64.3);
+  // ROE derivado = (3.50 / 8.0) * 100 = 43.8%
+  assertEquals(analiseKO.roe, 43.8);
+  assertEquals(analiseKO.pl, 25.7);
+  assertEquals(analiseKO.pvp, 11.25);
+  assert(analiseKO.score >= 70, "Score de Coca-Cola Aristocrata deve ser alto");
+});
+
 Deno.test("calcularAnaliseLongoPrazo detecta empresa em crise/armadilha com score baixo e alerta", () => {
   const analise = calcularAnaliseLongoPrazo({
     symbol: "OIBR3.SA",

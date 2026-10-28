@@ -12,6 +12,7 @@ export function HotMarketView() {
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [filtroMercado, setFiltroMercado] = useState<"todos" | "B3" | "GLOBAL">("todos");
   const [filtroBestt, setFiltroBestt] = useState<boolean>(false);
+  const [filtroAristocratas, setFiltroAristocratas] = useState<boolean>(false);
   const [filtroStatus, setFiltroStatus] = useState<"todos" | "oportunidade" | "alerta">("todos");
   const [ordenacao, setOrdenacao] = useState<"score" | "margem" | "yield" | "pl">("score");
 
@@ -65,6 +66,7 @@ export function HotMarketView() {
       // Se houver filtros restritivos ativos que esconderiam o ativo, reseta-os
       if (filtroStatus !== "todos") setFiltroStatus("todos");
       if (filtroBestt && !data.isBestt) setFiltroBestt(false);
+      if (filtroAristocratas && !data.isAristocrat) setFiltroAristocratas(false);
 
       setBuscaTicker("");
     } catch (err: any) {
@@ -78,6 +80,7 @@ export function HotMarketView() {
   const filtrados = items.filter((it) => {
     if (filtroMercado !== "todos" && it.market !== filtroMercado) return false;
     if (filtroBestt && !it.isBestt) return false;
+    if (filtroAristocratas && !it.isAristocrat) return false;
     if (filtroStatus !== "todos" && it.status !== filtroStatus) return false;
     return true;
   });
@@ -201,6 +204,13 @@ export function HotMarketView() {
               ⭐ Apenas BESTT ({items.filter((i) => i.isBestt).length})
             </button>
             <button
+              class={`btn btn--sm ${filtroAristocratas ? "btn--primary" : "btn--secondary"}`}
+              onClick={() => setFiltroAristocratas(!filtroAristocratas)}
+              style={filtroAristocratas ? { background: "#ca8a04", borderColor: "#ca8a04" } : {}}
+            >
+              👑 Aristocratas ({items.filter((i) => i.isAristocrat).length})
+            </button>
+            <button
               class={`btn btn--sm ${filtroStatus === "oportunidade" ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroStatus(filtroStatus === "oportunidade" ? "todos" : "oportunidade")}
             >
@@ -246,7 +256,7 @@ export function HotMarketView() {
           </div>
 
           <span class="muted" style="font-size: 0.75rem;">
-            Critérios: Barsi (BESTT) + Bazin (DY 6%) + Anti-Armadilha
+            Critérios: Barsi (BESTT) + Bazin Brasil (6%) / Bazin Global (2,5% - Graham & Siegel) + Filtro Anti-Armadilha
           </span>
         </div>
 
@@ -315,6 +325,15 @@ export function HotMarketView() {
                               title={`Setor perene BESTT (${item.besttCategory})`}
                             >
                               ⭐ {item.besttCategory}
+                            </span>
+                          )}
+                          {item.isAristocrat && (
+                            <span
+                              class="badge"
+                              style="font-size: 0.65rem; padding: 1px 4px; background: rgba(234, 179, 8, 0.12); color: #ca8a04; border: 1px solid rgba(234, 179, 8, 0.3);"
+                              title="S&P 500 Dividend Aristocrat: mais de 25 anos consecutivos elevando proventos (Critério Graham)"
+                            >
+                              👑 Aristocrata
                             </span>
                           )}
                         </div>

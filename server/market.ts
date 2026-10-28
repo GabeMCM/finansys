@@ -1,8 +1,9 @@
 /**
  * Módulo de Integração com o Mercado Financeiro Global e Análise Fundamentalista de Longo Prazo.
- * Filosofia: Luiz Barsi (BESTT), Décio Bazin (Preço Teto 6%), e Filtro Anti-Armadilha (Anti-Dividend Trap).
+ * Filosofia: Luiz Barsi (BESTT), Décio Bazin (Preço Teto 6% B3 / 2.5% Global - Padrão Graham & Siegel),
+ * e Filtro Anti-Armadilha (Anti-Dividend Trap).
  *
- * Atualização Diária Dinâmica: Varre diariamente um universo amplo de mais de 150 ativos líquidos do Brasil e do mundo,
+ * Atualização Diária Dinâmica: Varre diariamente um universo amplo de ativos líquidos do Brasil e do mundo,
  * recalculando cotações, proventos reais pagos nos últimos 12 meses, Preço Teto Bazin e pontuação para gerar o HOT 100.
  */
 
@@ -29,6 +30,8 @@ export interface MarketTickerRaw {
   priceToBook?: number;
   trailingEps?: number;
   trailingPE?: number;
+  bookValue?: number;
+  marketCap?: number;
 }
 
 export interface LongTermAnalysis {
@@ -50,12 +53,25 @@ export interface LongTermAnalysis {
   pl?: number; // Preço / Lucro
   isBestt: boolean;
   besttCategory?: "Bancos" | "Energia" | "Saneamento" | "Telecom" | "Seguros";
+  isAristocrat?: boolean;
   score: number; // 0 a 100
   status: "oportunidade" | "neutro" | "alerta";
   pontosFortes: string[];
   pontosAtencao: string[];
   atualizadoEm: number;
 }
+
+// ---------------------------------------------------------------------------
+// Aristocratas de Dividendos Globais (S&P 500 Dividend Aristocrats & Kings)
+// Empresas com mais de 25 a 60 anos consecutivos de dividendos crescentes.
+// Critério #4 do Investidor Defensivo de Benjamin Graham em The Intelligent Investor.
+// ---------------------------------------------------------------------------
+export const DIVIDEND_ARISTOCRATS_SYMBOLS = new Set([
+  "KO", "PEP", "JNJ", "PG", "MMM", "ABBV", "CVX", "XOM", "MCD", "O", "IBM", "T", "VZ", "MO", "PM",
+  "CAT", "EMR", "GPC", "LOW", "WMT", "CL", "SYY", "ED", "BDX", "ITW", "PPG", "TGT", "ADM", "ADP",
+  "AFL", "APD", "BKH", "CINF", "DOV", "FRT", "HRL", "KMB", "NUE", "PNR", "SHW", "SWK", "ABT",
+  "CB", "CLX", "GD", "GWW", "LIN", "MDT", "MKC", "NEE", "ROP", "SPGI"
+]);
 
 // ---------------------------------------------------------------------------
 // Setores BESTT Mapeados (Metodologia Luiz Barsi)
@@ -123,7 +139,7 @@ export function normalizeSymbol(rawInput: string): string {
   let sym = (rawInput || "").trim().toUpperCase();
   if (!sym) return "";
 
-  // Aliases conhecidos de migrações da B3
+  // Aliases conhecidos de migrações societárias da B3
   if (sym === "CPLE6" || sym === "CPLE6.SA") return "CPLE3.SA";
 
   if (sym.includes(".")) return sym;
@@ -138,23 +154,24 @@ export function normalizeSymbol(rawInput: string): string {
 }
 
 /**
- * Motor de Cálculo de Longo Prazo (Barsi / Bazin / Anti-Armadilha)
+ * Motor de Cálculo de Longo Prazo (Barsi / Bazin / Anti-Armadilha / Graham / Siegel)
  */
 export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysis {
   const price = raw.price > 0 ? raw.price : raw.previousClose;
   const isB3 = raw.symbol.endsWith(".SA");
   const cleanSymbol = raw.symbol.replace(".SA", "");
 
-  // Setor BESTT
+  // Setor BESTT (Luiz Barsi) e Aristocrata de Dividendos (Benjamin Graham)
   const bestt = identificarSetorBESTT(raw.sector, raw.industry, raw.symbol);
+  const isAristocrat = DIVIDEND_ARISTOCRATS_SYMBOLS.has(cleanSymbol);
 
   // Dividendo anual por ação (prioriza proventos reais dos últimos 12 meses)
   let dividendRate = raw.trailingAnnualDividendRate || raw.dividendRate || 0;
   let dy = 0;
   if (raw.trailingAnnualDividendYield && raw.trailingAnnualDividendYield > 0) {
-    dy = raw.trailingAnnualDividendYield * 100;
+    dy = raw.trailingAnnualDividendYield * (raw.trailingAnnualDividendYield <= 1.0 ? 100 : 1);
   } else if (raw.dividendYield && raw.dividendYield > 0) {
-    dy = raw.dividendYield;
+    dy = raw.dividendYield * (raw.dividendYield <= 1.0 ? 100 : 1);
   }
 
   if (dy === 0 && dividendRate > 0 && price > 0) {
@@ -164,70 +181,117 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
     dividendRate = (dy / 100) * price;
   }
 
-  // 1. Preço Teto de Bazin (DY 6% a.a.)
+  // 1. Preço Teto Bazin:
+  // - Para B3 (Brasil): Taxa de corte clássica de 6.0% a.a. (Décio Bazin)
+  // - Para Globais (Moeda Forte / USD): Taxa de corte calibrada para 2.5% a.a.
+  //   (Fundamentação: Jeremy Siegel em "The Future for Investors", média histórica do S&P 500 Dividend Aristocrats
+  //   e taxa real de juros em dólar de Benjamin Graham).
   let dpaRef = dividendRate;
   if (raw.fiveYearAvgDividendYield && raw.fiveYearAvgDividendYield > 0 && price > 0) {
     const avg5yRate = (raw.fiveYearAvgDividendYield / 100) * price;
     dpaRef = (dividendRate + avg5yRate) / 2;
   }
 
-  const precoTetoBazin = dpaRef > 0 ? Number((dpaRef / 0.06).toFixed(2)) : 0;
+  const taxaCorteBazin = isB3 ? 0.06 : 0.025;
+  const precoTetoBazin = dpaRef > 0 ? Number((dpaRef / taxaCorteBazin).toFixed(2)) : 0;
   const margemSegurancaBazin = precoTetoBazin > 0 && price > 0
     ? Number((((precoTetoBazin - price) / price) * 100).toFixed(1))
     : -100;
 
-  // 2. Métricas de Saúde Financeira
-  const payout = raw.payoutRatio !== undefined && raw.payoutRatio !== null && !isNaN(raw.payoutRatio)
-    ? Number((raw.payoutRatio * 100).toFixed(1))
-    : undefined;
+  // 2. Indicadores Fundamentalistas Derivados (Sem N/D)
+  // Payout Ratio: se não veio direto, calcula matematicamente (DPA / EPS) * 100
+  let payout: number | undefined = undefined;
+  if (raw.payoutRatio !== undefined && raw.payoutRatio !== null && !isNaN(raw.payoutRatio)) {
+    payout = Number((raw.payoutRatio * (raw.payoutRatio <= 1.0 ? 100 : 1)).toFixed(1));
+  } else if (raw.trailingEps && raw.trailingEps > 0 && dividendRate > 0) {
+    payout = Number(((dividendRate / raw.trailingEps) * 100).toFixed(1));
+  }
 
+  // Dívida / EBITDA
   let dividaEbitda: number | undefined = undefined;
   if (raw.totalDebt && raw.ebitda && raw.ebitda > 0) {
     dividaEbitda = Number((raw.totalDebt / raw.ebitda).toFixed(2));
   }
 
-  const roe = raw.returnOnEquity !== undefined && raw.returnOnEquity !== null && !isNaN(raw.returnOnEquity)
-    ? Number((raw.returnOnEquity * 100).toFixed(1))
+  // ROE (Return on Equity): se não veio direto, calcula (EPS / BookValue) * 100 ou (P/VP / P/L) * 100
+  let roe: number | undefined = undefined;
+  if (raw.returnOnEquity !== undefined && raw.returnOnEquity !== null && !isNaN(raw.returnOnEquity)) {
+    roe = Number((raw.returnOnEquity * (raw.returnOnEquity <= 1.0 ? 100 : 1)).toFixed(1));
+  } else if (raw.trailingEps && raw.bookValue && raw.bookValue > 0) {
+    roe = Number(((raw.trailingEps / raw.bookValue) * 100).toFixed(1));
+  } else if (raw.priceToBook && raw.trailingPE && raw.trailingPE > 0) {
+    roe = Number(((raw.priceToBook / raw.trailingPE) * 100).toFixed(1));
+  }
+
+  // P/VP (Preço sobre Valor Patrimonial)
+  const pvp = raw.priceToBook
+    ? Number(raw.priceToBook.toFixed(2))
+    : raw.bookValue && raw.bookValue > 0 && price > 0
+    ? Number((price / raw.bookValue).toFixed(2))
     : undefined;
 
-  const pvp = raw.priceToBook ? Number(raw.priceToBook.toFixed(2)) : undefined;
+  // P/L (Preço sobre Lucro)
   const pl = raw.trailingPE
     ? Number(raw.trailingPE.toFixed(1))
     : raw.trailingEps && raw.trailingEps > 0 && price > 0
     ? Number((price / raw.trailingEps).toFixed(1))
     : undefined;
 
-  // 3. Algoritmo de Score (0 a 100)
+  // Identifica se é instituição financeira (Bancos e Seguradoras não possuem dívida operacional ou EBITDA)
+  const isFinancial = bestt.category === "Bancos" || bestt.category === "Seguros" ||
+    (raw.sector && raw.sector.toLowerCase().includes("financial"));
+
+  // 3. Algoritmo de Score de Longo Prazo (0 a 100)
   let score = 50; // Base neutra
   const pontosFortes: string[] = [];
   const pontosAtencao: string[] = [];
 
-  // A. Setor BESTT (Bônus de até +12 pts)
+  // A. Setor Perene BESTT (Barsi) ou Aristocrata de Dividendos (Graham)
   if (bestt.isBestt) {
     score += 12;
     pontosFortes.push(`Setor Perene BESTT (${bestt.category}): demanda essencial e receita previsível.`);
+  } else if (isAristocrat) {
+    score += 12;
+    pontosFortes.push("S&P 500 Dividend Aristocrat: histórico ininterrupto de 25+ anos aumentando dividendos em dólar.");
   }
 
-  // B. Dividend Yield
-  if (dy >= 6) {
-    score += Math.min(18, Math.round((dy - 6) * 2 + 10));
-    pontosFortes.push(`Dividend Yield atraente de ${dy.toFixed(1)}% a.a. (acima do corte mínimo de 6%).`);
-  } else if (dy >= 4) {
-    score += 5;
-    pontosAtencao.push(`Yield atual de ${dy.toFixed(1)}% a.a. está um pouco abaixo do patamar ideal de Bazin (6%).`);
-  } else if (dy > 0) {
-    score -= 10;
-    pontosAtencao.push(`Yield baixo de ${dy.toFixed(1)}% a.a.`);
+  // B. Dividend Yield (Calibrado por mercado)
+  if (isB3) {
+    if (dy >= 6) {
+      score += Math.min(18, Math.round((dy - 6) * 2 + 10));
+      pontosFortes.push(`Dividend Yield atraente de ${dy.toFixed(1)}% a.a. (acima do corte mínimo de 6% de Bazin).`);
+    } else if (dy >= 4) {
+      score += 5;
+      pontosAtencao.push(`Yield atual de ${dy.toFixed(1)}% a.a. está abaixo da régua ideal de Bazin (6%).`);
+    } else if (dy > 0) {
+      score -= 10;
+      pontosAtencao.push(`Yield baixo de ${dy.toFixed(1)}% a.a.`);
+    } else {
+      score -= 25;
+      pontosAtencao.push("Não paga dividendos ou sem proventos registrados recentemente.");
+    }
   } else {
-    score -= 25;
-    pontosAtencao.push("Não paga dividendos ou sem proventos registrados recentemente.");
+    // Mercado Global (Moeda Forte USD - Padrão Graham & Siegel)
+    if (dy >= 2.5) {
+      score += Math.min(18, Math.round((dy - 2.5) * 3 + 10));
+      pontosFortes.push(`Dividend Yield sólido em moeda forte de ${dy.toFixed(1)}% a.a. (acima da régua global de 2,5%).`);
+    } else if (dy >= 1.8) {
+      score += 5;
+      pontosAtencao.push(`Yield em dólar de ${dy.toFixed(1)}% a.a. (acima da média do S&P 500, mas abaixo do alvo de 2,5%).`);
+    } else if (dy > 0) {
+      score -= 10;
+      pontosAtencao.push(`Yield baixo em dólar de ${dy.toFixed(1)}% a.a.`);
+    } else {
+      score -= 25;
+      pontosAtencao.push("Não paga dividendos ou sem proventos registrados recentemente.");
+    }
   }
 
   // C. Margem de Segurança Bazin
   if (margemSegurancaBazin > 15) {
     score += 18;
     pontosFortes.push(`Negociando com grande desconto vs Preço Teto Bazin (+${margemSegurancaBazin.toFixed(0)}% de margem).`);
-  } else if (margemSegurancaBazin > 0) {
+  } else if (margemSegurancaBazin >= 0) {
     score += 10;
     pontosFortes.push(`Abaixo do Preço Teto Bazin (+${margemSegurancaBazin.toFixed(0)}% de margem de segurança).`);
   } else if (margemSegurancaBazin > -20) {
@@ -235,25 +299,28 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
     pontosAtencao.push(`Preço atual está acima do teto de Bazin (${Math.abs(margemSegurancaBazin).toFixed(0)}% mais cara).`);
   } else {
     score -= 15;
-    pontosAtencao.push(`Muito acima do Preço Teto Bazin. Aguardar recuo de cotação para aportar.`);
+    pontosAtencao.push("Muito acima do Preço Teto Bazin. Aguardar recuo de cotação para aportar.");
   }
 
   // D. Payout (Sustentabilidade dos Dividendos)
   if (payout !== undefined) {
-    if (payout >= 35 && payout <= 85) {
+    const tetoPayout = isB3 ? 85 : 80;
+    if (payout >= 30 && payout <= tetoPayout) {
       score += 10;
       pontosFortes.push(`Payout saudável de ${payout.toFixed(0)}% (distribui dividendos sem queimar caixa).`);
     } else if (payout > 100) {
       score -= 25;
       pontosAtencao.push(`Alerta de Armadilha: Payout de ${payout.toFixed(0)}% excede o lucro gerado pela empresa!`);
-    } else if (payout > 85) {
+    } else if (payout > tetoPayout) {
       score -= 5;
-      pontosAtencao.push(`Payout elevado (${payout.toFixed(0)}%), retenção pequena para novos investimentos.`);
+      pontosAtencao.push(`Payout elevado (${payout.toFixed(0)}%), retenção pequena para reinvestimento.`);
     }
   }
 
   // E. Alavancagem e Dívida
-  if (dividaEbitda !== undefined) {
+  if (isFinancial) {
+    pontosFortes.push("Instituição Financeira: solidez regulada por solvência e índice de Basileia (EBITDA não aplicável).");
+  } else if (dividaEbitda !== undefined) {
     const limiteSeguro = bestt.category === "Energia" || bestt.category === "Saneamento" ? 3.5 : 2.5;
     if (dividaEbitda <= limiteSeguro) {
       score += 10;
@@ -286,7 +353,7 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
 
   // Status consolidado
   let status: "oportunidade" | "neutro" | "alerta" = "neutro";
-  if (score >= 75 && margemSegurancaBazin >= 0) {
+  if (score >= 70 && margemSegurancaBazin >= 0) {
     status = "oportunidade";
   } else if (score < 50 || margemSegurancaBazin < -25 || (roe !== undefined && roe < 0)) {
     status = "alerta";
@@ -311,6 +378,7 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
     pl,
     isBestt: bestt.isBestt,
     besttCategory: bestt.category,
+    isAristocrat,
     score,
     status,
     pontosFortes,
@@ -321,6 +389,153 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+
+// ---------------------------------------------------------------------------
+// Gerenciador de Sessão e Crumb do Yahoo Finance
+// ---------------------------------------------------------------------------
+let _cachedCookie = "";
+let _cachedCrumb = "";
+let _crumbExpiresAt = 0;
+
+async function getYahooCrumb(): Promise<{ cookie: string; crumb: string } | null> {
+  const now = Date.now();
+  if (_cachedCrumb && _cachedCookie && now < _crumbExpiresAt) {
+    return { cookie: _cachedCookie, crumb: _cachedCrumb };
+  }
+
+  try {
+    const cookieRes = await fetch("https://fc.yahoo.com", {
+      headers: { "User-Agent": USER_AGENT },
+      redirect: "manual",
+    });
+    const setCookie = cookieRes.headers.get("set-cookie") || "";
+    if (!setCookie) return null;
+
+    const crumbRes = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Cookie": setCookie,
+      },
+    });
+    if (!crumbRes.ok) return null;
+    const crumb = (await crumbRes.text()).trim();
+    if (!crumb || crumb.includes("Unauthorized") || crumb.length > 50) return null;
+
+    _cachedCookie = setCookie;
+    _cachedCrumb = crumb;
+    _crumbExpiresAt = now + 1000 * 60 * 60; // 1 hora de cache
+    return { cookie: _cachedCookie, crumb: _cachedCrumb };
+  } catch (err) {
+    console.warn("[Market Engine] Falha ao obter crumb do Yahoo:", err);
+    return null;
+  }
+}
+
+/**
+ * Consulta de cotações em bloco (batch quotes) trazendo indicadores fundamentalistas completos
+ * (P/L, P/VP, LPA, VPA, dividendos e taxas).
+ */
+export async function fetchBatchQuotes(symbols: string[]): Promise<Map<string, MarketTickerRaw>> {
+  const results = new Map<string, MarketTickerRaw>();
+  if (symbols.length === 0) return results;
+
+  const auth = await getYahooCrumb();
+  if (!auth) {
+    console.warn("[Market Engine] Crumb indisponível, usando fallback de chart.");
+    return results;
+  }
+
+  const chunkSize = 40;
+  for (let i = 0; i < symbols.length; i += chunkSize) {
+    const chunk = symbols.slice(i, i + chunkSize);
+    try {
+      const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(chunk.join(","))}&crumb=${encodeURIComponent(auth.crumb)}`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": USER_AGENT,
+          "Cookie": auth.cookie,
+        },
+      });
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          _cachedCrumb = "";
+        }
+        continue;
+      }
+
+      const json = await res.json();
+      const quoteList = json.quoteResponse?.result || [];
+
+      for (const q of quoteList) {
+        const symb = q.symbol;
+        const price = q.regularMarketPrice || q.regularMarketPreviousClose || 0;
+        if (price <= 0) continue;
+
+        const raw: MarketTickerRaw = {
+          symbol: symb,
+          name: q.longName || q.shortName || symb,
+          currency: q.currency || (symb.endsWith(".SA") ? "BRL" : "USD"),
+          price,
+          previousClose: q.regularMarketPreviousClose || price,
+          fiftyTwoWeekHigh: q.fiftyTwoWeekHigh || price,
+          fiftyTwoWeekLow: q.fiftyTwoWeekLow || price,
+          dividendRate: q.dividendRate || q.trailingAnnualDividendRate,
+          dividendYield: q.dividendYield,
+          trailingAnnualDividendRate: q.trailingAnnualDividendRate,
+          trailingAnnualDividendYield: q.trailingAnnualDividendYield,
+          priceToBook: q.priceToBook,
+          trailingPE: q.trailingPE,
+          trailingEps: q.epsTrailingTwelveMonths,
+          bookValue: q.bookValue,
+          marketCap: q.marketCap,
+          debtToEquity: q.debtToEquity,
+        };
+
+        results.set(symb, raw);
+      }
+    } catch (err) {
+      console.warn(`[Market Engine] Erro no batch quote do bloco ${i}:`, err);
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Consulta de detalhamento financeiro complementar (Dívida Total, EBITDA) para ativos individuais.
+ */
+export async function fetchQuoteSummary(symbol: string): Promise<Partial<MarketTickerRaw> | null> {
+  const auth = await getYahooCrumb();
+  if (!auth) return null;
+
+  try {
+    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=financialData,defaultKeyStatistics&crumb=${encodeURIComponent(auth.crumb)}`;
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": USER_AGENT,
+        "Cookie": auth.cookie,
+      },
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const fd = json.quoteSummary?.result?.[0]?.financialData;
+    const ks = json.quoteSummary?.result?.[0]?.defaultKeyStatistics;
+
+    return {
+      totalDebt: fd?.totalDebt?.raw,
+      ebitda: fd?.ebitda?.raw,
+      debtToEquity: fd?.debtToEquity?.raw,
+      returnOnEquity: fd?.returnOnEquity?.raw,
+      payoutRatio: ks?.payoutRatio?.raw,
+      priceToBook: ks?.priceToBook?.raw,
+      trailingEps: ks?.trailingEps?.raw,
+      fiveYearAvgDividendYield: ks?.fiveYearAverageDividendYield?.raw,
+    };
+  } catch (_err) {
+    return null;
+  }
+}
 
 /**
  * Consulta de alta confiabilidade via endpoint de Chart do Yahoo Finance (sem autenticação/cookies).
@@ -412,21 +627,35 @@ export const MARKET_UNIVERSE_SYMBOLS: string[] = [
 // ---------------------------------------------------------------------------
 // Varredura Diária Paralela com Controle de Concorrência
 // ---------------------------------------------------------------------------
-async function scanMarketInBatches(symbols: string[], batchSize = 25): Promise<LongTermAnalysis[]> {
+async function scanMarketInBatches(symbols: string[]): Promise<LongTermAnalysis[]> {
   const analyzed: LongTermAnalysis[] = [];
 
-  for (let i = 0; i < symbols.length; i += batchSize) {
-    const chunk = symbols.slice(i, i + batchSize);
-    const rawQuotes = await Promise.all(chunk.map((s) => fetchChartTicker(s)));
+  // 1. Busca cotações em bloco (batch quotes) trazendo indicadores completos (P/L, P/VP, LPA, VPA)
+  const batchQuotes = await fetchBatchQuotes(symbols);
 
-    for (const raw of rawQuotes) {
-      if (raw && raw.price > 0) {
-        try {
-          const res = calcularAnaliseLongoPrazo(raw);
-          analyzed.push(res);
-        } catch (_err) {
-          // Ignora falha de ativo individual
+  // 2. Processa cada ativo com fallback para chart caso falte provento ou cotação
+  for (const sym of symbols) {
+    let raw = batchQuotes.get(sym);
+
+    if (!raw || !raw.price || raw.dividendRate === undefined) {
+      const chartRaw = await fetchChartTicker(sym);
+      if (chartRaw && chartRaw.price > 0) {
+        if (raw) {
+          raw.price = raw.price || chartRaw.price;
+          raw.dividendRate = raw.dividendRate ?? chartRaw.dividendRate;
+          raw.dividendYield = raw.dividendYield ?? chartRaw.dividendYield;
+        } else {
+          raw = chartRaw;
         }
+      }
+    }
+
+    if (raw && raw.price > 0) {
+      try {
+        const item = calcularAnaliseLongoPrazo(raw);
+        analyzed.push(item);
+      } catch (_err) {
+        // Ignora erro em ativo isolado
       }
     }
   }
@@ -470,7 +699,7 @@ export async function runDailyMarketScanner(db?: any): Promise<{
   console.log(`[Market Engine] Iniciando varredura diária de ${MARKET_UNIVERSE_SYMBOLS.length} ativos...`);
 
   try {
-    const analyzed = await scanMarketInBatches(MARKET_UNIVERSE_SYMBOLS, 25);
+    const analyzed = await scanMarketInBatches(MARKET_UNIVERSE_SYMBOLS);
     const top100 = analyzed.slice(0, 100);
     const now = Date.now();
 
@@ -571,17 +800,38 @@ export async function fetchMarketTicker(rawSymbol: string): Promise<LongTermAnal
     throw new Error("Símbolo do ativo inválido.");
   }
 
-  // 1. Verifica se já está no Hot 100 carregado
+  // 1. Verifica se já está no Hot 100 em cache
   if (_cachedHot100) {
     const clean = symbol.replace(".SA", "");
     const found = _cachedHot100.find((it) => it.symbol === clean || it.symbol === symbol);
     if (found) return found;
   }
 
-  // 2. Consulta via chart público com cálculo de proventos dos últimos 12 meses
-  const chartQuote = await fetchChartTicker(symbol);
-  if (chartQuote && chartQuote.price > 0) {
-    return calcularAnaliseLongoPrazo(chartQuote);
+  // 2. Consulta via batch quote
+  const batchMap = await fetchBatchQuotes([symbol]);
+  let raw = batchMap.get(symbol) || null;
+
+  // 3. Se faltou cotação ou dividendo, enriquece com chart
+  if (!raw || !raw.price || raw.dividendRate === undefined) {
+    const chartQuote = await fetchChartTicker(symbol);
+    if (chartQuote && chartQuote.price > 0) {
+      if (raw) {
+        raw.price = raw.price || chartQuote.price;
+        raw.dividendRate = raw.dividendRate ?? chartQuote.dividendRate;
+        raw.dividendYield = raw.dividendYield ?? chartQuote.dividendYield;
+      } else {
+        raw = chartQuote;
+      }
+    }
+  }
+
+  // 4. Se encontrou, enriquece com quoteSummary para Dívida/EBITDA e calcula
+  if (raw && raw.price > 0) {
+    const summary = await fetchQuoteSummary(symbol);
+    if (summary) {
+      raw = { ...raw, ...summary };
+    }
+    return calcularAnaliseLongoPrazo(raw);
   }
 
   throw new Error(`Não foi possível localizar cotações e indicadores para o ativo ${rawSymbol}.`);
