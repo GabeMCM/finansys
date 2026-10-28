@@ -5,9 +5,9 @@ import { HotMarketView } from "../components/investimento/HotMarketView.tsx";
 import { ModalOperacaoInvestimento } from "../components/investimento/ModalOperacaoInvestimento.tsx";
 import { calcularCarteiraInvestimentos } from "../data/calcInvestimentos.ts";
 import { anos, empresas, operacoesInvestimento } from "../data/repo.ts";
-import type { LongTermAnalysis, OperacaoInvestimento } from "../data/types.ts";
+import type { LongTermAnalysis } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
-import { fetchHotlist } from "../lib/marketApi.ts";
+import { fetchHotlist, searchTicker } from "../lib/marketApi.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
 
 export function Investimentos() {
@@ -20,6 +20,7 @@ export function Investimentos() {
 
   const [modalOperacaoAberta, setModalOperacaoAberta] = useState<boolean>(false);
   const [marketQuotesMap, setMarketQuotesMap] = useState<Map<string, LongTermAnalysis>>(new Map());
+  const [taxaCambioUsd, setTaxaCambioUsd] = useState<number>(5.35);
   const [carregandoMercado, setCarregandoMercado] = useState<boolean>(false);
   const [refreshKey, setRefreshKey] = useState<number>(0);
 
@@ -28,19 +29,31 @@ export function Investimentos() {
     localStorage.setItem("finansys_investimentos_aba", aba);
   };
 
-  // Carrega cotações e inteligência do Hot Market para alimentar a carteira
+  // Carrega cotações e inteligência do radar de mercado
   const carregarCotacoesMercado = async (forceRefresh = false) => {
     setCarregandoMercado(true);
     try {
       const res = await fetchHotlist(forceRefresh);
-      const map = new Map<string, LongTermAnalysis>();
-      for (const it of res.items) {
-        map.set(it.symbol, it);
-        map.set(it.symbol.replace(".SA", ""), it);
+      setMarketQuotesMap((prev) => {
+        const map = new Map(prev);
+        for (const it of res.items) {
+          map.set(it.symbol, it);
+          map.set(it.symbol.replace(".SA", ""), it);
+        }
+        return map;
+      });
+
+      // Busca taxa de câmbio USD/BRL
+      try {
+        const usdData = await searchTicker("USDBRL=X");
+        if (usdData && usdData.price > 0) {
+          setTaxaCambioUsd(usdData.price);
+        }
+      } catch (_cambioErr) {
+        // Mantém fallback seguro
       }
-      setMarketQuotesMap(map);
     } catch (err) {
-      console.warn("[Investimentos] Aviso ao carregar cotações de mercado:", err);
+      console.warn("[Investimentos] Falha ao sincronizar cotações:", err);
     } finally {
       setCarregandoMercado(false);
     }
@@ -60,6 +73,33 @@ export function Investimentos() {
     return { emp, ano, ops } as const;
   }, [empId, anoNum, refreshKey], undefined);
 
+  // Efeito ativo para buscar cotações de TODOS os ativos presentes na carteira do investidor
+  useEffect(() => {
+    if (!dados || !dados.ops || dados.ops.length === 0) return;
+
+    const tickers = Array.from(new Set(dados.ops.map((o) => (o.ticker || "").trim().toUpperCase()))).filter(Boolean);
+    const faltantes = tickers.filter((sym) => {
+      const clean = sym.replace(".SA", "");
+      return !marketQuotesMap.has(clean) && !marketQuotesMap.has(sym);
+    });
+
+    if (faltantes.length > 0) {
+      Promise.allSettled(faltantes.map((sym) => searchTicker(sym))).then((results) => {
+        setMarketQuotesMap((prev) => {
+          const next = new Map(prev);
+          for (const res of results) {
+            if (res.status === "fulfilled" && res.value) {
+              const it = res.value;
+              next.set(it.symbol, it);
+              next.set(it.symbol.replace(".SA", ""), it);
+            }
+          }
+          return next;
+        });
+      });
+    }
+  }, [dados?.ops, marketQuotesMap.size]);
+
   if (dados === undefined) return null; // Carregando
   if (!dados || !dados.emp) {
     return (
@@ -73,28 +113,28 @@ export function Investimentos() {
 
   const { emp, ano, ops } = dados;
 
-  // Cálculo consolidado da carteira com base nas operações e cotações ao vivo
-  const carteiraConsolidada = calcularCarteiraInvestimentos(ops, marketQuotesMap);
+  // Cálculo consolidado da carteira com base nas operações, cotações em tempo real e taxa cambial
+  const carteiraConsolidada = calcularCarteiraInvestimentos(ops, marketQuotesMap, taxaCambioUsd);
 
   return (
     <>
-      {/* Cabeçalho da Página */}
+      {/* Cabeçalho Institucional da Página */}
       <div class="page-head">
         <div>
           <h1>Ações & Investimentos</h1>
           <p>
             {abaAtiva === "carteira"
-              ? "Gestão de Carteira de Longo Prazo, Preço Médio, Yield on Cost e Efeito Bola de Neve"
-              : "Hot 100 Diário: Melhores Oportunidades Mundiais (Barsi, Bazin 6% B3 / 2,5% Global e Graham)"}
+              ? "Gestão de Ativos de Longo Prazo, Retorno Consolidado, Preço Médio e Efeito Bola de Neve"
+              : "Radar de Mercado: Oportunidades Globais de Valor e Dividendos (Bazin, Graham e Barsi)"}
           </p>
         </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items: center;">
           <button
             type="button"
             class="btn btn--secondary btn--sm"
             onClick={() => carregarCotacoesMercado(true)}
             disabled={carregandoMercado}
-            title="Atualiza cotações e dividendos em tempo real"
+            title="Atualizar cotações e dividendos em tempo real"
           >
             <Icon name="refresh" />
             {carregandoMercado ? "Atualizando..." : "Sincronizar Cotações"}
@@ -110,42 +150,22 @@ export function Investimentos() {
         </div>
       </div>
 
-      {/* Switcher de Visão Superior */}
+      {/* Switcher Executivo de Abas */}
       <div style="display: flex; gap: 8px; margin-bottom: var(--sp-4); flex-wrap: wrap;">
         <button
           type="button"
           class={`btn ${abaAtiva === "carteira" ? "btn--primary" : "btn--secondary"}`}
           onClick={() => trocarAba("carteira")}
-          style={
-            abaAtiva === "carteira"
-              ? {
-                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                  color: "#fff",
-                  borderColor: "#059669",
-                  boxShadow: "0 2px 8px rgba(16, 185, 129, 0.25)",
-                }
-              : {}
-          }
         >
-          <Icon name="chart" /> Minha Carteira ({carteiraConsolidada.posicoes.length} ativos)
+          <Icon name="chart" /> Minha Carteira ({carteiraConsolidada.posicoes.length} {carteiraConsolidada.posicoes.length === 1 ? "ativo" : "ativos"})
         </button>
 
         <button
           type="button"
           class={`btn ${abaAtiva === "hotmarket" ? "btn--primary" : "btn--secondary"}`}
           onClick={() => trocarAba("hotmarket")}
-          style={
-            abaAtiva === "hotmarket"
-              ? {
-                  background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                  color: "#fff",
-                  borderColor: "#d97706",
-                  boxShadow: "0 2px 8px rgba(245, 158, 11, 0.25)",
-                }
-              : {}
-          }
         >
-          <Icon name="sparkles" /> 🔥 Hot Market & Análise de Ações
+          <Icon name="sparkles" /> Radar de Mercado & Oportunidades
         </button>
       </div>
 
@@ -156,6 +176,7 @@ export function Investimentos() {
           operacoes={ops}
           empresaId={emp.id}
           anoId={ano?.id}
+          cambioUsd={taxaCambioUsd}
           onRefresh={() => setRefreshKey((k) => k + 1)}
         />
       ) : (

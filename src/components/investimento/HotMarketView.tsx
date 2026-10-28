@@ -166,8 +166,8 @@ export function HotMarketView() {
           </form>
 
           {erroBusca && (
-            <div style="color: var(--out); font-size: 0.82rem; margin-top: 4px;">
-              ⚠️ {erroBusca}
+            <div style="color: var(--out); font-size: 0.82rem; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+              <Icon name="alertTriangle" style="width: 14px; height: 14px;" /> {erroBusca}
             </div>
           )}
         </div>
@@ -182,46 +182,46 @@ export function HotMarketView() {
               class={`btn btn--sm ${filtroMercado === "todos" ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroMercado("todos")}
             >
-              Hot 100 Geral ({items.length})
+              Top 100 Geral ({items.length})
             </button>
             <button
               class={`btn btn--sm ${filtroMercado === "B3" ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroMercado("B3")}
             >
-              🇧🇷 B3 Brasil ({items.filter((i) => i.market === "B3").length})
+              B3 (Brasil) ({items.filter((i) => i.market === "B3").length})
             </button>
             <button
               class={`btn btn--sm ${filtroMercado === "GLOBAL" ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroMercado("GLOBAL")}
             >
-              🇺🇸 Globais ({items.filter((i) => i.market === "GLOBAL").length})
+              Globais ({items.filter((i) => i.market === "GLOBAL").length})
             </button>
             <button
               class={`btn btn--sm ${filtroBestt ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroBestt(!filtroBestt)}
-              style={filtroBestt ? { background: "#9333ea", borderColor: "#9333ea" } : {}}
+              style={filtroBestt ? { background: "#2563eb", borderColor: "#2563eb" } : {}}
             >
-              ⭐ Apenas BESTT ({items.filter((i) => i.isBestt).length})
+              Setores Perenes ({items.filter((i) => i.isBestt).length})
             </button>
             <button
               class={`btn btn--sm ${filtroAristocratas ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroAristocratas(!filtroAristocratas)}
               style={filtroAristocratas ? { background: "#ca8a04", borderColor: "#ca8a04" } : {}}
             >
-              👑 Aristocratas ({items.filter((i) => i.isAristocrat).length})
+              Aristocratas S&P ({items.filter((i) => i.isAristocrat).length})
             </button>
             <button
               class={`btn btn--sm ${filtroStatus === "oportunidade" ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroStatus(filtroStatus === "oportunidade" ? "todos" : "oportunidade")}
             >
-              🟢 Abaixo do Teto ({items.filter((i) => i.status === "oportunidade").length})
+              Abaixo do Teto ({items.filter((i) => i.status === "oportunidade").length})
             </button>
             <button
               class={`btn btn--sm ${filtroStatus === "alerta" ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroStatus(filtroStatus === "alerta" ? "todos" : "alerta")}
               style={filtroStatus === "alerta" ? { background: "var(--out)", borderColor: "var(--out)" } : {}}
             >
-              🔴 Alerta de Risco ({items.filter((i) => i.status === "alerta").length})
+              Alerta Fundamentalista ({items.filter((i) => i.status === "alerta").length})
             </button>
           </div>
 
@@ -243,12 +243,12 @@ export function HotMarketView() {
         </div>
       </section>
 
-      {/* Tabela Ranqueada: Hot 100 Diário */}
+      {/* Tabela Ranqueada: Top 100 Diário */}
       <section class="card card--table">
         <div class="card__head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
           <div>
             <h2 class="card__title" style="display: flex; align-items: center; gap: 6px;">
-              🔥 Hot 100: Melhores Oportunidades do Mercado ({ordenados.length} listados)
+              <Icon name="chart" /> Top 100: Melhores Oportunidades de Mercado ({ordenados.length} listados)
             </h2>
             <div class="muted" style="font-size: 0.75rem; margin-top: 2px;">
               Varredura diária de {totalScanned > 0 ? totalScanned : "160+"} empresas da B3 e Bolsas Globais • Atualizado em {formatHoraAtualizacao(updatedAt)}
@@ -307,7 +307,7 @@ export function HotMarketView() {
                       onClick={() => setAtivoSelecionado(item)}
                     >
                       <td style="text-align: center; font-weight: 700; color: var(--text-muted); font-size: 0.8rem;">
-                        {index === 0 && item.score >= 80 ? "🥇" : index === 1 && item.score >= 80 ? "🥈" : index === 2 && item.score >= 80 ? "🥉" : `#${index + 1}`}
+                        #{index + 1}
                       </td>
 
                       <td class="col-reserva">
@@ -321,10 +321,10 @@ export function HotMarketView() {
                           {item.isBestt && (
                             <span
                               class="badge"
-                              style="font-size: 0.65rem; padding: 1px 4px; background: rgba(147, 51, 234, 0.12); color: #9333ea; border: 1px solid rgba(147, 51, 234, 0.3);"
+                              style="font-size: 0.65rem; padding: 1px 4px; background: rgba(37, 99, 235, 0.12); color: #2563eb; border: 1px solid rgba(37, 99, 235, 0.3);"
                               title={`Setor perene BESTT (${item.besttCategory})`}
                             >
-                              ⭐ {item.besttCategory}
+                              Perene: {item.besttCategory}
                             </span>
                           )}
                           {item.isAristocrat && (
@@ -333,7 +333,7 @@ export function HotMarketView() {
                               style="font-size: 0.65rem; padding: 1px 4px; background: rgba(234, 179, 8, 0.12); color: #ca8a04; border: 1px solid rgba(234, 179, 8, 0.3);"
                               title="S&P 500 Dividend Aristocrat: mais de 25 anos consecutivos elevando proventos (Critério Graham)"
                             >
-                              👑 Aristocrata
+                              Aristocrata S&P
                             </span>
                           )}
                         </div>

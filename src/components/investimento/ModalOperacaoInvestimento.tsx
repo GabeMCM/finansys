@@ -76,10 +76,20 @@ export function ModalOperacaoInvestimento({
     }
   }, [ticker]);
 
+  // Função auxiliar para conversão financeira tolerante a vírgula e ponto decimal
+  const parseMoney = (str: string): number => {
+    const limpo = (str || "").trim();
+    if (!limpo) return 0;
+    if (limpo.includes(",")) {
+      return parseFloat(limpo.replace(/\./g, "").replace(",", ".")) || 0;
+    }
+    return parseFloat(limpo) || 0;
+  };
+
   // Cálculos de Total
   const qtdNum = parseFloat(quantidadeStr.replace(",", ".")) || 0;
-  const precoNum = parseFloat(precoStr.replace(".", "").replace(",", ".")) || 0;
-  const taxasNum = parseFloat(taxasStr.replace(".", "").replace(",", ".")) || 0;
+  const precoNum = parseMoney(precoStr);
+  const taxasNum = parseMoney(taxasStr);
   const totalFinanceiro = qtdNum * precoNum + (tipo === "compra" ? taxasNum : -taxasNum);
 
   const handleSubmit = async (e: Event) => {
@@ -293,8 +303,8 @@ export function ModalOperacaoInvestimento({
         </div>
 
         {erro && (
-          <div style="color: var(--out); font-size: 0.82rem;">
-            ⚠️ {erro}
+          <div style="color: var(--out); font-size: 0.82rem; display: flex; align-items: center; gap: 6px;">
+            <Icon name="alertTriangle" style="width: 14px; height: 14px;" /> {erro}
           </div>
         )}
 

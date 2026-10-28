@@ -234,13 +234,15 @@ export interface PosicaoInvestimento {
   totalInvestidoCentavos: number;
   cotacaoAtualCentavos: number;
   valorMercadoAtualCentavos: number;
-  lucroPrejuizoCentavos: number;
+  lucroPrejuizoCentavos: number; // Lucro não realizado da posição em custódia
   rentabilidadePct: number;
+  lucroRealizadoCentavos: number; // Lucro realizado em vendas anteriores
   // Métricas Fundamentalistas ao Vivo
   precoTetoBazinCentavos: number;
   margemBazinPM: number; // Margem vs Preço Médio
   margemBazinAtual: number; // Margem vs Cotação Atual
   precoGrahamCentavos?: number;
+  margemGrahamAtual?: number; // Margem vs Graham (%)
   dyAtualPct: number;
   dpaAnualCentavos: number;
   proventosAnuaisEstimadosCentavos: number;
@@ -252,15 +254,38 @@ export interface PosicaoInvestimento {
   isAristocrat?: boolean;
   totalCompras: number;
   totalVendas: number;
+  // Valores convertidos para BRL com base no câmbio
+  valorMercadoBrlCentavos: number;
+  totalInvestidoBrlCentavos: number;
+  proventosAnuaisBrlCentavos: number;
+}
+
+export interface ProjecaoBolaDeNeve {
+  em1AnoCentavos: number;
+  em3AnosCentavos: number;
+  em5AnosCentavos: number;
+  em10AnosCentavos: number;
+  rendaMensalEm5AnosCentavos: number;
 }
 
 export interface CarteiraInvestimentosConsolidada {
   posicoes: PosicaoInvestimento[];
-  totalInvestidoCentavos: number;
-  valorMercadoAtualCentavos: number;
-  lucroPrejuizoTotalCentavos: number;
+  totalInvestidoCentavos: number; // Consolidado em BRL
+  valorMercadoAtualCentavos: number; // Consolidado em BRL
+  lucroNaoRealizadoTotalCentavos: number;
+  lucroRealizadoTotalCentavos: number;
+  lucroPrejuizoTotalCentavos: number; // Lucro Total = Realizado + Não Realizado
   rentabilidadeTotalPct: number;
-  proventosAnuaisTotalCentavos: number;
+  crescimentoPatrimonialPct: number;
+  proventosAnuaisTotalCentavos: number; // Consolidado em BRL
   rendaMensalEstimadaCentavos: number;
+  rendaDiariaEstimadaCentavos: number;
   yieldOnCostMedioPct: number;
+  cambioUsdBrl: number;
+  // Totais separados por moeda de custódia
+  totalInvestidoBrlCentavos: number;
+  totalInvestidoUsdCentavos: number;
+  valorMercadoBrlCentavos: number;
+  valorMercadoUsdCentavos: number;
+  projecaoBolaDeNeve: ProjecaoBolaDeNeve;
 }

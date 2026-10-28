@@ -247,7 +247,7 @@ export function ValorCalculadoEditor({
       ) : (
         <div style="display:flex;flex-direction:column;gap:8px;">
           <div class="muted" style="font-size:11px;line-height:1.4;">
-            💡 Insira contas entre colchetes como <code>[Salário]</code>. Exemplo: <code>([Vendas] - [Taxas]) * 10%</code>
+            Insira contas entre colchetes como <code>[Salário]</code>. Exemplo: <code>([Vendas] - [Taxas]) * 10%</code>
           </div>
 
           <div>
@@ -303,8 +303,8 @@ export function ValorCalculadoEditor({
               style="padding:6px 10px;font-size:var(--fs-xs);margin:0;border-radius:var(--r-sm);"
             >
               {resultadoMesAtivo.ok
-                ? `✓ Fórmula válida! Prévia em ${MONTHS[mesAtivo]}: ${money(resultadoMesAtivo.valorCentavos)}`
-                : `⚠️ ${resultadoMesAtivo.erro}`}
+                ? `Fórmula válida! Prévia em ${MONTHS[mesAtivo]}: ${money(resultadoMesAtivo.valorCentavos)}`
+                : `${resultadoMesAtivo.erro}`}
             </div>
           )}
         </div>

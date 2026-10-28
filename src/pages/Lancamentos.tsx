@@ -1764,7 +1764,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                   style="font-size:var(--fs-xs);padding:2px 8px;"
                   onClick={() => setOrigemValorReal("calculado")}
                 >
-                  Calculado (fx / 🔗)
+                  Calculado (Fórmula)
                 </button>
               </div>
             </div>
@@ -2000,9 +2000,9 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                 <span style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; display: block;">
                   {modalLanc?.reservaId
                     ? natAtualModal === "saida" || natAtualModal === "pagar"
-                      ? "✓ O valor sairá do caixa diário e será registrado como Aplicação na reserva escolhida."
-                      : "✓ O valor entrará no caixa diário e será registrado como Resgate da reserva para recompor o saldo."
-                    : "ℹ️ Opcional: selecione caso esta movimentação envolva uma de suas caixinhas patrimoniais."}
+                      ? "O valor sairá do caixa diário e será registrado como Aplicação na reserva escolhida."
+                      : "O valor entrará no caixa diário e será registrado como Resgate da reserva para recompor o saldo."
+                    : "Opcional: selecione caso esta movimentação envolva uma de suas caixinhas patrimoniais."}
                 </span>
               </div>
             )}

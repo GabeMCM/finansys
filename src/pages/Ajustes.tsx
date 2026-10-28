@@ -1962,7 +1962,9 @@ export function Ajustes() {
                         setModalBanco({ ...modalBanco, formasPagamento: novas });
                       }}
                     >
-                      {isChecked ? "✓ " : "+ "}{f}
+                      {isChecked && <Icon name="check" style="width: 10px; height: 10px; margin-right: 4px;" />}
+                      {!isChecked && "+ "}
+                      {f}
                     </button>
                   );
                 })}

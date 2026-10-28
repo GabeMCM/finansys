@@ -389,9 +389,9 @@ export function ModalMovimentoReserva({
               <span style="font-size: var(--fs-xs); color: var(--text-muted); margin-top: 6px; display: block;">
                 {contaId
                   ? tipo === "aporte"
-                    ? "✓ O valor sairá do plano de contas operacional e entrará na reserva patrimonial."
-                    : "✓ O valor sairá da reserva e entrará como recurso disponível no plano de contas operacional."
-                  : "ℹ️ Operação direta: atualiza o saldo da reserva sem duplicar lançamentos no fluxo de caixa diário."}
+                    ? "O valor sairá do plano de contas operacional e entrará na reserva patrimonial."
+                    : "O valor sairá da reserva e entrará como recurso disponível no plano de contas operacional."
+                  : "Operação direta: atualiza o saldo da reserva sem duplicar lançamentos no fluxo de caixa diário."}
               </span>
             </div>
           </div>

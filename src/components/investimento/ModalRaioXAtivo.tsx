@@ -72,19 +72,19 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
               {ativo.isBestt && (
                 <span
                   class="badge"
-                  style="background: rgba(147, 51, 234, 0.15); color: #9333ea; border: 1px solid rgba(147, 51, 234, 0.3); font-weight: 700;"
+                  style="background: rgba(37, 99, 235, 0.12); color: #2563eb; border: 1px solid rgba(37, 99, 235, 0.3); font-weight: 700;"
                   title="Empresa em setor perene da metodologia Luiz Barsi"
                 >
-                  ⭐ BESTT ({ativo.besttCategory})
+                  Setor Perene BESTT ({ativo.besttCategory})
                 </span>
               )}
               {ativo.isAristocrat && (
                 <span
                   class="badge"
-                  style="background: rgba(234, 179, 8, 0.15); color: #ca8a04; border: 1px solid rgba(234, 179, 8, 0.3); font-weight: 700;"
+                  style="background: rgba(234, 179, 8, 0.12); color: #ca8a04; border: 1px solid rgba(234, 179, 8, 0.3); font-weight: 700;"
                   title="Empresa do S&P 500 Dividend Aristocrats com mais de 25 anos consecutivos elevando proventos em dólar (Critério Graham)"
                 >
-                  👑 Aristocrata (25+ anos)
+                  Aristocrata S&P (25+ anos)
                 </span>
               )}
             </div>

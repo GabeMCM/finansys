@@ -125,7 +125,7 @@ export function RepeticaoSelector(props: RepeticaoSelectorProps) {
               />
             </div>
             <div style="display:flex;align-items:center;font-size:var(--fs-xs);color:var(--text-muted);min-height:36px;">
-              💡 Repetirá todo mês no mesmo dia de vencimento.
+              Repetirá todo mês no mesmo dia de vencimento.
             </div>
           </div>
         )}
