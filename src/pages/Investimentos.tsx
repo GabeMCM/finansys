@@ -4,6 +4,7 @@ import { CustomSelect } from "../components/CustomSelect.tsx";
 import { ModalReserva } from "../components/investimento/ModalReserva.tsx";
 import { ModalMovimentoReserva } from "../components/investimento/ModalMovimentoReserva.tsx";
 import { ModalProjecaoReserva } from "../components/investimento/ModalProjecaoReserva.tsx";
+import { HotMarketView } from "../components/investimento/HotMarketView.tsx";
 import { toast } from "../components/Toast.tsx";
 import { calcularCarteiraReservas } from "../data/calc.ts";
 import { anos, contas, contasBancarias, empresas, reservaMovimentos, reservaProjecoes, reservas } from "../data/repo.ts";
@@ -35,6 +36,9 @@ export function Investimentos() {
   const [modalProjecaoReserva, setModalProjecaoReserva] = useState<Reserva | null>(null);
 
   // Filtros e Visualização
+  const [abaPrincipal, setAbaPrincipal] = useState<"reservas" | "hotmarket">(() => {
+    return (localStorage.getItem("finansys_investimentos_aba_principal") as "reservas" | "hotmarket") || "reservas";
+  });
   const [modoVisao, setModoVisao] = useState<"cards" | "lista">(() => {
     return (localStorage.getItem("finansys_investimentos_visao") as "cards" | "lista") || "cards";
   });
@@ -109,30 +113,87 @@ export function Investimentos() {
       {/* Cabeçalho da Página */}
       <div class="page-head">
         <div>
-          <h1>Investimentos & Reservas</h1>
-          <p>Gestão patrimonial e caixinhas estratégicas — Exercício {ano.ano}</p>
+          <h1>Investimentos & Mercado</h1>
+          <p>
+            {abaPrincipal === "reservas"
+              ? `Gestão patrimonial e caixinhas estratégicas — Exercício ${ano.ano}`
+              : "Inteligência de Longo Prazo, Bazin (DY 6%), Barsi (BESTT) e Hot Market"}
+          </p>
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          {resList.length > 0 && (
+          {abaPrincipal === "reservas" ? (
+            <>
+              {resList.length > 0 && (
+                <button
+                  type="button"
+                  class="btn"
+                  onClick={() => setModalMovimento({ tipo: "aporte" })}
+                >
+                  <Icon name="plus" /> Nova Movimentação
+                </button>
+              )}
+              <button
+                type="button"
+                class="btn btn--primary"
+                onClick={() => setModalReservaAberta("nova")}
+              >
+                <Icon name="wallet" /> Nova Reserva
+              </button>
+            </>
+          ) : (
             <button
               type="button"
-              class="btn"
-              onClick={() => setModalMovimento({ tipo: "aporte" })}
+              class="btn btn--secondary"
+              onClick={() => {
+                setAbaPrincipal("reservas");
+                localStorage.setItem("finansys_investimentos_aba_principal", "reservas");
+              }}
             >
-              <Icon name="plus" /> Nova Movimentação
+              <Icon name="wallet" /> Ver Reservas & Caixinhas
             </button>
           )}
-          <button
-            type="button"
-            class="btn btn--primary"
-            onClick={() => setModalReservaAberta("nova")}
-          >
-            <Icon name="wallet" /> Nova Reserva
-          </button>
         </div>
       </div>
 
-      <div class="stack" style="gap: var(--sp-4);">
+      {/* Switcher de Visão Superior */}
+      <div style="display: flex; gap: 8px; margin-bottom: var(--sp-4); flex-wrap: wrap;">
+        <button
+          type="button"
+          class={`btn ${abaPrincipal === "reservas" ? "btn--primary" : "btn--secondary"}`}
+          onClick={() => {
+            setAbaPrincipal("reservas");
+            localStorage.setItem("finansys_investimentos_aba_principal", "reservas");
+          }}
+        >
+          <Icon name="wallet" /> Reservas & Metas
+        </button>
+
+        <button
+          type="button"
+          class={`btn ${abaPrincipal === "hotmarket" ? "btn--primary" : "btn--secondary"}`}
+          onClick={() => {
+            setAbaPrincipal("hotmarket");
+            localStorage.setItem("finansys_investimentos_aba_principal", "hotmarket");
+          }}
+          style={
+            abaPrincipal === "hotmarket"
+              ? {
+                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  color: "#fff",
+                  borderColor: "#059669",
+                  boxShadow: "0 2px 8px rgba(16, 185, 129, 0.25)",
+                }
+              : {}
+          }
+        >
+          <Icon name="sparkles" /> Hot Market & Análise de Ações
+        </button>
+      </div>
+
+      {abaPrincipal === "hotmarket" ? (
+        <HotMarketView />
+      ) : (
+        <div class="stack" style="gap: var(--sp-4);">
         {/* Cockpit Patrimonial (2x2 Mobile, 4 Colunas Desktop) */}
         <section class="grid grid--stats">
           <div class="stat">
@@ -727,7 +788,8 @@ export function Investimentos() {
             )}
           </section>
         )}
-      </div>
+        </div>
+      )}
 
       {/* Modais da Página */}
       <ModalReserva

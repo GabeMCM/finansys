@@ -166,3 +166,35 @@ export interface Setting {
   key: string;
   value: unknown;
 }
+
+/* ==========================================================
+   Inteligência de Mercado & Análise de Ações (Longo Prazo / Barsi / Bazin)
+   ========================================================== */
+
+export type BesttCategory = "Bancos" | "Energia" | "Saneamento" | "Telecom" | "Seguros";
+
+export interface LongTermAnalysis {
+  symbol: string;
+  name: string;
+  currency: string;
+  market: "B3" | "GLOBAL";
+  price: number;
+  precoTetoBazin: number;
+  margemSegurancaBazin: number; // Porcentagem de desconto (+15.5%) ou ágio (-10%)
+  dividendYield: number; // Porcentagem (ex: 8.5)
+  dividendRateAnual: number; // Valor financeiro por cota (ex: 2.50)
+  fiveYearAvgDividendYield?: number;
+  payoutRatio?: number; // Porcentagem (ex: 65)
+  dividaEbitda?: number; // Múltiplo (ex: 1.8)
+  debtToEquity?: number;
+  roe?: number; // Porcentagem (ex: 18.5)
+  pvp?: number;
+  pl?: number;
+  isBestt: boolean;
+  besttCategory?: BesttCategory;
+  score: number; // 0 a 100
+  status: "oportunidade" | "neutro" | "alerta";
+  pontosFortes: string[];
+  pontosAtencao: string[];
+  atualizadoEm: number;
+}

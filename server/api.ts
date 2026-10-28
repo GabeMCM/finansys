@@ -1,4 +1,5 @@
 import { MongoClient, type Db } from "mongodb";
+import { getHotlist, fetchMarketTicker } from "./market.ts";
 
 /**
  * Backend da API de Autenticação e Sincronização em Nuvem (Finansys Cloud Vault).
@@ -404,6 +405,30 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           ...CORS_HEADERS,
         },
       });
+    }
+
+    // 10. GET /api/market/hotlist (Ranking de Longo Prazo do Melhor ao Pior Ativo)
+    if (url.pathname === "/api/market/hotlist" && req.method === "GET") {
+      try {
+        const items = await getHotlist();
+        return json({ ok: true, items, total: items.length });
+      } catch (err: any) {
+        return json({ error: "Erro ao gerar ranking de mercado: " + String(err?.message || err) }, 500);
+      }
+    }
+
+    // 11. GET /api/market/ticker (Busca e analisa qualquer ativo do Brasil ou do Mundo)
+    if (url.pathname === "/api/market/ticker" && req.method === "GET") {
+      const symbol = url.searchParams.get("symbol");
+      if (!symbol) {
+        return json({ error: "Parâmetro 'symbol' obrigatório na consulta." }, 400);
+      }
+      try {
+        const data = await fetchMarketTicker(symbol);
+        return json({ ok: true, data });
+      } catch (err: any) {
+        return json({ error: String(err?.message || err) }, 404);
+      }
     }
 
     return json({ error: "Rota não encontrada." }, 404);
