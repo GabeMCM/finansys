@@ -32,6 +32,8 @@ export interface MarketTickerRaw {
   trailingPE?: number;
   bookValue?: number;
   marketCap?: number;
+  profitMargins?: number;
+  currentRatio?: number;
 }
 
 export interface LongTermAnalysis {
@@ -42,6 +44,9 @@ export interface LongTermAnalysis {
   price: number;
   precoTetoBazin: number;
   margemSegurancaBazin: number; // Porcentagem de desconto (+15.5%) ou ágio (-10%)
+  precoGraham?: number; // Preço Justo de Graham: raiz(22.5 * LPA * VPA)
+  margemLiquida?: number; // Em porcentagem (ex: 28.5)
+  liquidezCorrente?: number; // Múltiplo (ex: 1.8)
   dividendYield: number; // Em porcentagem (ex: 8.5)
   dividendRateAnual: number; // Valor financeiro por cota (ex: 2.50)
   fiveYearAvgDividendYield?: number;
@@ -237,6 +242,24 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
     ? Number((price / raw.trailingEps).toFixed(1))
     : undefined;
 
+  // Preço Justo de Graham: raiz(22.5 * LPA * VPA)
+  let precoGraham: number | undefined = undefined;
+  const epsVal = raw.trailingEps || (raw.trailingPE && price > 0 ? price / raw.trailingPE : 0);
+  const bvVal = raw.bookValue || (raw.priceToBook && price > 0 ? price / raw.priceToBook : 0);
+  if (epsVal > 0 && bvVal > 0) {
+    precoGraham = Number(Math.sqrt(22.5 * epsVal * bvVal).toFixed(2));
+  }
+
+  // Margem Líquida
+  const margemLiquida = raw.profitMargins !== undefined && raw.profitMargins !== null && !isNaN(raw.profitMargins)
+    ? Number((raw.profitMargins * (raw.profitMargins <= 1.0 ? 100 : 1)).toFixed(1))
+    : undefined;
+
+  // Liquidez Corrente
+  const liquidezCorrente = raw.currentRatio !== undefined && raw.currentRatio !== null && !isNaN(raw.currentRatio)
+    ? Number(raw.currentRatio.toFixed(2))
+    : undefined;
+
   // Identifica se é instituição financeira (Bancos e Seguradoras não possuem dívida operacional ou EBITDA)
   const isFinancial = bestt.category === "Bancos" || bestt.category === "Seguros" ||
     (raw.sector && raw.sector.toLowerCase().includes("financial"));
@@ -348,7 +371,35 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
     }
   }
 
-  // G. Limites do Score (0 a 100)
+  // G. Preço Justo de Graham
+  if (precoGraham && precoGraham > price) {
+    const descGraham = Number((((precoGraham - price) / price) * 100).toFixed(0));
+    pontosFortes.push(`Abaixo do Preço Justo de Graham (+${descGraham}% de margem contábil/patrimonial).`);
+  }
+
+  // H. Margem Líquida (Poder de Precificação / Fosso Econômico)
+  if (margemLiquida !== undefined) {
+    if (margemLiquida >= 18) {
+      score += 4;
+      pontosFortes.push(`Alta Margem Líquida (${margemLiquida}%): forte fosso econômico e poder de precificação.`);
+    } else if (margemLiquida < 5) {
+      score -= 6;
+      pontosAtencao.push(`Margem líquida apertada (${margemLiquida}%): vulnerável a aumentos de custos operacionais.`);
+    }
+  }
+
+  // I. Liquidez Corrente (Solvência Imediata)
+  if (liquidezCorrente !== undefined) {
+    if (liquidezCorrente >= 1.5) {
+      score += 4;
+      pontosFortes.push(`Excelente Liquidez Corrente (${liquidezCorrente}x): caixa folgado para compromissos de curto prazo (Graham).`);
+    } else if (liquidezCorrente < 1.0) {
+      score -= 8;
+      pontosAtencao.push(`Alerta de Liquidez: Passivo de curto prazo supera o ativo circulante (${liquidezCorrente}x).`);
+    }
+  }
+
+  // J. Limites do Score (0 a 100)
   score = Math.max(5, Math.min(99, score));
 
   // Status consolidado
@@ -367,6 +418,9 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
     price: Number(price.toFixed(2)),
     precoTetoBazin,
     margemSegurancaBazin,
+    precoGraham,
+    margemLiquida,
+    liquidezCorrente,
     dividendYield: Number(dy.toFixed(2)),
     dividendRateAnual: Number(dividendRate.toFixed(2)),
     fiveYearAvgDividendYield: raw.fiveYearAvgDividendYield ? Number(raw.fiveYearAvgDividendYield.toFixed(2)) : undefined,
@@ -531,6 +585,8 @@ export async function fetchQuoteSummary(symbol: string): Promise<Partial<MarketT
       priceToBook: ks?.priceToBook?.raw,
       trailingEps: ks?.trailingEps?.raw,
       fiveYearAvgDividendYield: ks?.fiveYearAverageDividendYield?.raw,
+      profitMargins: fd?.profitMargins?.raw,
+      currentRatio: fd?.currentRatio?.raw,
     };
   } catch (_err) {
     return null;

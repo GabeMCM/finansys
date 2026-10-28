@@ -13,6 +13,7 @@ import type {
   Reserva,
   ReservaMovimento,
   ReservaProjecao,
+  OperacaoInvestimento,
 } from "./types.ts";
 
 type New<T extends Base> = Omit<T, keyof Base>;
@@ -152,6 +153,14 @@ export const reservaProjecoes = {
       obs: valores.obs,
     });
   },
+};
+
+export const operacoesInvestimento = {
+  ...repo<OperacaoInvestimento>(db.operacoesInvestimento),
+  byEmpresa: (empresaId: string) =>
+    db.operacoesInvestimento.where({ empresaId }).filter(alive).reverse().sortBy("data"),
+  byTicker: (empresaId: string, ticker: string) =>
+    db.operacoesInvestimento.where({ empresaId, ticker }).filter(alive).reverse().sortBy("data"),
 };
 
 export const settings = {

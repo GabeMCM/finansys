@@ -7,6 +7,7 @@ import { Lancamentos } from "./pages/Lancamentos.tsx";
 import { Placeholder } from "./pages/Placeholder.tsx";
 import { Projecoes } from "./pages/Projecoes.tsx";
 import { Relatorios } from "./pages/Relatorios.tsx";
+import { Reservas } from "./pages/Reservas.tsx";
 import { initCloudSync } from "./data/cloudSync.ts";
 import { initInactivityGuard } from "./data/inactivityGuard.ts";
 import { loadState } from "./state.ts";
@@ -23,6 +24,7 @@ function App() {
   else if (route.startsWith("/projecoes")) page = <Projecoes />;
   else if (route === "/realizacoes/novo" || route === "/lancamentos/novo") page = <Lancamentos openNewOnMount={true} />;
   else if (route.startsWith("/realizacoes") || route.startsWith("/lancamentos")) page = <Lancamentos />;
+  else if (route.startsWith("/reservas")) page = <Reservas />;
   else if (route.startsWith("/investimentos")) page = <Investimentos />;
   else if (route.startsWith("/ajustes")) page = <Ajustes />;
   else page = <Placeholder title="Página não encontrada" desc={route} icon="home" etapa={1} />;

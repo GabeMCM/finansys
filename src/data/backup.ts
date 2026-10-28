@@ -35,6 +35,7 @@ export interface BackupPayload {
     reservas?: unknown[];
     reservaMovimentos?: unknown[];
     reservaProjecoes?: unknown[];
+    operacoesInvestimento?: unknown[];
   };
 }
 
@@ -42,7 +43,7 @@ export interface BackupPayload {
  * Serializa todo o banco de dados em um payload JSON.
  */
 export async function dumpDatabase(): Promise<BackupPayload> {
-  const [empresas, anos, categorias, contas, contasBancarias, projecoes, lancamentos, reservas, reservaMovimentos, reservaProjecoes] = await Promise.all([
+  const [empresas, anos, categorias, contas, contasBancarias, projecoes, lancamentos, reservas, reservaMovimentos, reservaProjecoes, operacoesInvestimento] = await Promise.all([
     db.empresas.toArray(),
     db.anos.toArray(),
     db.categorias.toArray(),
@@ -53,10 +54,11 @@ export async function dumpDatabase(): Promise<BackupPayload> {
     db.reservas.toArray(),
     db.reservaMovimentos.toArray(),
     db.reservaProjecoes.toArray(),
+    db.operacoesInvestimento.toArray(),
   ]);
 
   return {
-    version: 3,
+    version: 4,
     exportedAt: Date.now(),
     data: {
       empresas,
@@ -69,6 +71,7 @@ export async function dumpDatabase(): Promise<BackupPayload> {
       reservas,
       reservaMovimentos,
       reservaProjecoes,
+      operacoesInvestimento,
     },
   };
 }
@@ -95,6 +98,7 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
         db.reservas,
         db.reservaMovimentos,
         db.reservaProjecoes,
+        db.operacoesInvestimento,
       ],
       async () => {
         // deno-lint-ignore no-explicit-any
@@ -110,6 +114,7 @@ export async function restoreDatabase(payload: BackupPayload, strategy: "merge" 
           { t: db.reservas, itens: dataObj?.reservas },
           { t: db.reservaMovimentos, itens: dataObj?.reservaMovimentos },
           { t: db.reservaProjecoes, itens: dataObj?.reservaProjecoes },
+          { t: db.operacoesInvestimento, itens: dataObj?.operacoesInvestimento },
         ];
 
       for (const { t, itens } of tabelas) {

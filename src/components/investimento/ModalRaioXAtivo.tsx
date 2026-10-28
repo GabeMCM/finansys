@@ -143,12 +143,12 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
                 Preço Teto Bazin ({ativo.market === "GLOBAL" ? "DY 2,5%" : "DY 6%"})
               </div>
               <div style="font-size: 1.1rem; font-weight: 700; color: var(--text);">
-                {ativo.precoTetoBazin > 0 ? fmtMoney(ativo.precoTetoBazin) : "N/D"}
+                {ativo.precoTetoBazin > 0 ? fmtMoney(ativo.precoTetoBazin) : "—"}
               </div>
             </div>
 
             <div>
-              <div class="muted" style="font-size: 0.75rem;">Margem de Segurança</div>
+              <div class="muted" style="font-size: 0.75rem;">Margem Bazin</div>
               <div
                 style={{
                   fontSize: "1.1rem",
@@ -159,6 +159,15 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
                 {ativo.margemSegurancaBazin > -100
                   ? `${ativo.margemSegurancaBazin >= 0 ? "+" : ""}${ativo.margemSegurancaBazin.toFixed(1)}%`
                   : "Sem margem"}
+              </div>
+            </div>
+
+            <div>
+              <div class="muted" style="font-size: 0.75rem;" title="Fórmula de Benjamin Graham: raiz(22.5 * LPA * VPA)">
+                Preço Graham
+              </div>
+              <div style="font-size: 1.1rem; font-weight: 700; color: var(--text);">
+                {ativo.precoGraham && ativo.precoGraham > 0 ? fmtMoney(ativo.precoGraham) : "—"}
               </div>
             </div>
 
@@ -257,6 +266,40 @@ export function ModalRaioXAtivo({ ativo, onClose }: Props) {
                 ? "EBITDA não aplicável"
                 : "Alavancagem"}
             </div>
+          </div>
+
+          <div class="stat" style="padding: 10px;">
+            <span class="stat__label">Margem Líquida</span>
+            <div
+              class="stat__value"
+              style={{
+                fontSize: "1.1rem",
+                color:
+                  ativo.margemLiquida !== undefined && ativo.margemLiquida >= 15
+                    ? "var(--in)"
+                    : "var(--text)",
+              }}
+            >
+              {ativo.margemLiquida !== undefined ? `${ativo.margemLiquida.toFixed(1)}%` : "—"}
+            </div>
+            <div class="stat__sub">Poder de Precificação</div>
+          </div>
+
+          <div class="stat" style="padding: 10px;">
+            <span class="stat__label">Liquidez Corrente</span>
+            <div
+              class="stat__value"
+              style={{
+                fontSize: "1.1rem",
+                color:
+                  ativo.liquidezCorrente !== undefined && ativo.liquidezCorrente >= 1.5
+                    ? "var(--in)"
+                    : "var(--text)",
+              }}
+            >
+              {ativo.liquidezCorrente !== undefined ? `${ativo.liquidezCorrente.toFixed(2)}x` : "—"}
+            </div>
+            <div class="stat__sub">Solvência Curto Prazo</div>
           </div>
         </div>
 

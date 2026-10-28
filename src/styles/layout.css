@@ -238,7 +238,9 @@
   position: fixed; inset: auto 0 0 0; z-index: 40;
   height: calc(var(--bottomnav-h) + var(--safe-b));
   padding-bottom: var(--safe-b);
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   background: var(--chrome-bg);
   backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
   border-top: 1px solid var(--border);

@@ -10,6 +10,7 @@ import type {
   Reserva,
   ReservaMovimento,
   ReservaProjecao,
+  OperacaoInvestimento,
   Setting,
 } from "./types.ts";
 
@@ -24,6 +25,7 @@ export class FinansysDB extends Dexie {
   reservas!: EntityTable<Reserva, "id">;
   reservaMovimentos!: EntityTable<ReservaMovimento, "id">;
   reservaProjecoes!: EntityTable<ReservaProjecao, "id">;
+  operacoesInvestimento!: EntityTable<OperacaoInvestimento, "id">;
   settings!: EntityTable<Setting, "key">;
 
   constructor(name = "finansys") {
@@ -47,6 +49,10 @@ export class FinansysDB extends Dexie {
     this.version(3).stores({
       contasBancarias: "id, empresaId, nome, updatedAt",
       lancamentos: "id, anoId, contaId, [anoId+mes], data, bancoId, updatedAt",
+    });
+
+    this.version(4).stores({
+      operacoesInvestimento: "id, empresaId, ticker, data, tipo, updatedAt",
     });
   }
 }

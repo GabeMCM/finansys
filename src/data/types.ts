@@ -190,6 +190,9 @@ export interface LongTermAnalysis {
   roe?: number; // Porcentagem (ex: 18.5)
   pvp?: number;
   pl?: number;
+  precoGraham?: number; // Preço Justo de Benjamin Graham: raiz(22.5 * LPA * VPA)
+  margemLiquida?: number; // Em porcentagem (ex: 24.5)
+  liquidezCorrente?: number; // Múltiplo de solvência de curto prazo (ex: 1.8)
   isBestt: boolean;
   besttCategory?: BesttCategory;
   isAristocrat?: boolean;
@@ -198,4 +201,66 @@ export interface LongTermAnalysis {
   pontosFortes: string[];
   pontosAtencao: string[];
   atualizadoEm: number;
+}
+
+/* ==========================================================
+   Gestão de Carteira de Ações & Registro de Compras (Longo Prazo)
+   ========================================================== */
+
+export type TipoOperacaoInvestimento = "compra" | "venda";
+
+export interface OperacaoInvestimento extends Base {
+  empresaId: string;
+  anoId?: string;
+  data: string; // ISO yyyy-mm-dd
+  ticker: string; // Ex: "BBAS3", "KO", "TAEE11"
+  nome?: string;
+  tipo: TipoOperacaoInvestimento;
+  quantidade: number; // Quantidade de cotas compradas ou vendidas
+  precoUnitarioCentavos: number; // Preço pago por cota em centavos (moeda do ativo)
+  taxasCentavos?: number; // Taxas/corretagem em centavos
+  moeda: "BRL" | "USD";
+  corretora?: string;
+  obs?: string;
+}
+
+export interface PosicaoInvestimento {
+  ticker: string;
+  nome: string;
+  moeda: "BRL" | "USD";
+  market: "B3" | "GLOBAL";
+  quantidadeTotal: number;
+  precoMedioCentavos: number;
+  totalInvestidoCentavos: number;
+  cotacaoAtualCentavos: number;
+  valorMercadoAtualCentavos: number;
+  lucroPrejuizoCentavos: number;
+  rentabilidadePct: number;
+  // Métricas Fundamentalistas ao Vivo
+  precoTetoBazinCentavos: number;
+  margemBazinPM: number; // Margem vs Preço Médio
+  margemBazinAtual: number; // Margem vs Cotação Atual
+  precoGrahamCentavos?: number;
+  dyAtualPct: number;
+  dpaAnualCentavos: number;
+  proventosAnuaisEstimadosCentavos: number;
+  yieldOnCostPct: number; // (Proventos Anuais / Total Investido) * 100
+  score: number;
+  status: "oportunidade" | "neutro" | "alerta";
+  isBestt: boolean;
+  besttCategory?: BesttCategory;
+  isAristocrat?: boolean;
+  totalCompras: number;
+  totalVendas: number;
+}
+
+export interface CarteiraInvestimentosConsolidada {
+  posicoes: PosicaoInvestimento[];
+  totalInvestidoCentavos: number;
+  valorMercadoAtualCentavos: number;
+  lucroPrejuizoTotalCentavos: number;
+  rentabilidadeTotalPct: number;
+  proventosAnuaisTotalCentavos: number;
+  rendaMensalEstimadaCentavos: number;
+  yieldOnCostMedioPct: number;
 }

@@ -17,7 +17,8 @@ export const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/", label: "Início", icon: "chart" },
   { href: "/projecoes", label: "Projeções", icon: "grid" },
   { href: "/realizacoes", label: "Realizações", icon: "list" },
-  { href: "/investimentos", label: "Investimentos", icon: "wallet" },
+  { href: "/reservas", label: "Reservas", icon: "wallet" },
+  { href: "/investimentos", label: "Investimentos", icon: "sparkles" },
   { href: "/ajustes", label: "Ajustes", icon: "settings" },
 ];
 
