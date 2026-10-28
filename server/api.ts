@@ -411,7 +411,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
     if (url.pathname === "/api/market/hotlist" && req.method === "GET") {
       try {
         const forceRefresh = url.searchParams.get("refresh") === "true";
-        const res = await getHot100(forceRefresh);
+        const res = await getHot100(forceRefresh, db);
         return json({
           ok: true,
           items: res.items,

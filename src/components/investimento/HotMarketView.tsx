@@ -52,6 +52,20 @@ export function HotMarketView() {
     try {
       const data = await searchTicker(query);
       setAtivoSelecionado(data);
+
+      // Insere o ativo pesquisado na lista caso ainda não esteja presente
+      setItems((prev) => {
+        const jaExiste = prev.some((it) => it.symbol === data.symbol);
+        if (!jaExiste) {
+          return [data, ...prev];
+        }
+        return prev;
+      });
+
+      // Se houver filtros restritivos ativos que esconderiam o ativo, reseta-os
+      if (filtroStatus !== "todos") setFiltroStatus("todos");
+      if (filtroBestt && !data.isBestt) setFiltroBestt(false);
+
       setBuscaTicker("");
     } catch (err: any) {
       setErroBusca(err?.message || "Não foi possível carregar os dados deste ativo.");

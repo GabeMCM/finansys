@@ -2,8 +2,8 @@
  * Módulo de Integração com o Mercado Financeiro Global e Análise Fundamentalista de Longo Prazo.
  * Filosofia: Luiz Barsi (BESTT), Décio Bazin (Preço Teto 6%), e Filtro Anti-Armadilha (Anti-Dividend Trap).
  *
- * Atualização Diária Dinâmica: Varre um universo amplo de mais de 150 ativos líquidos do Brasil e do mundo,
- * recalculando cotações, dividendos reais, Preço Teto Bazin e pontuação para gerar o verdadeiro HOT 100 do dia.
+ * Atualização Diária Dinâmica: Varre diariamente um universo amplo de mais de 150 ativos líquidos do Brasil e do mundo,
+ * recalculando cotações, proventos reais pagos nos últimos 12 meses, Preço Teto Bazin e pontuação para gerar o HOT 100.
  */
 
 export interface MarketTickerRaw {
@@ -90,7 +90,7 @@ export function identificarSetorBESTT(sector?: string, industry?: string, symbol
     ind.includes("electric") ||
     ind.includes("renewable") ||
     (s.includes("utilities") && !ind.includes("water")) ||
-    ["TAEE11", "TRPL4", "CPLE6", "EGIE3", "ALUP11", "CMIG4", "CMIG3", "NEOE3", "EQTL3", "ENGI11", "CPFE3", "AURE3", "ELET3", "ELET6"].some((t) => symb.includes(t))
+    ["TAEE11", "TRPL4", "CPLE6", "CPLE3", "EGIE3", "ALUP11", "CMIG4", "CMIG3", "NEOE3", "EQTL3", "ENGI11", "CPFE3", "AURE3", "ELET3", "ELET6"].some((t) => symb.includes(t))
   ) {
     return { isBestt: true, category: "Energia" };
   }
@@ -123,7 +123,7 @@ export function normalizeSymbol(rawInput: string): string {
   let sym = (rawInput || "").trim().toUpperCase();
   if (!sym) return "";
 
-  // Aliases conhecidos de migrações societárias da B3
+  // Aliases conhecidos de migrações da B3
   if (sym === "CPLE6" || sym === "CPLE6.SA") return "CPLE3.SA";
 
   if (sym.includes(".")) return sym;
@@ -319,53 +319,51 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
   };
 }
 
-// ---------------------------------------------------------------------------
-// Sessão e Cookie Yahoo Finance
-// ---------------------------------------------------------------------------
-let _cachedCookie: string | null = null;
-let _cachedCrumb: string | null = null;
-let _crumbExpiry = 0;
-
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
-async function getYahooCrumb(): Promise<{ cookie: string; crumb: string } | null> {
-  const now = Date.now();
-  if (_cachedCookie && _cachedCrumb && now < _crumbExpiry) {
-    return { cookie: _cachedCookie, crumb: _cachedCrumb };
-  }
-
+/**
+ * Consulta de alta confiabilidade via endpoint de Chart do Yahoo Finance (sem autenticação/cookies).
+ * Retorna preço em tempo real e todos os proventos em dinheiro dos últimos 12 meses.
+ */
+export async function fetchChartTicker(symbol: string): Promise<MarketTickerRaw | null> {
   try {
-    const fcRes = await fetch("https://fc.yahoo.com", {
-      headers: { "User-Agent": USER_AGENT },
-    });
-    const cookie = fcRes.headers.get("set-cookie");
-    if (!cookie) return null;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y&events=div`;
+    const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    if (!res.ok) return null;
 
-    const crumbRes = await fetch("https://query1.finance.yahoo.com/v1/test/getcrumb", {
-      headers: {
-        "User-Agent": USER_AGENT,
-        "Cookie": cookie,
-      },
-    });
+    const data = await res.json();
+    const meta = data.chart?.result?.[0]?.meta;
+    const price = meta?.regularMarketPrice || meta?.chartPreviousClose || 0;
+    if (!meta || price <= 0) return null;
 
-    if (!crumbRes.ok) return null;
-    const crumb = (await crumbRes.text()).trim();
-    if (!crumb || crumb.includes("<html>")) return null;
+    const divs = data.chart?.result?.[0]?.events?.dividends || {};
+    let sumDivs = 0;
+    for (const k of Object.keys(divs)) {
+      if (typeof divs[k]?.amount === "number") {
+        sumDivs += divs[k].amount;
+      }
+    }
 
-    _cachedCookie = cookie;
-    _cachedCrumb = crumb;
-    _crumbExpiry = now + 1000 * 60 * 60 * 24; // 24h
-    return { cookie, crumb };
+    return {
+      symbol,
+      name: meta.longName || meta.shortName || symbol,
+      currency: meta.currency || (symbol.endsWith(".SA") ? "BRL" : "USD"),
+      price,
+      previousClose: meta.chartPreviousClose || price,
+      fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || price,
+      fiftyTwoWeekLow: meta.fiftyTwoWeekLow || price,
+      dividendRate: sumDivs,
+      dividendYield: price > 0 ? (sumDivs / price) * 100 : 0,
+    };
   } catch (err) {
-    console.warn("[Market Engine] Aviso ao obter crumb Yahoo Finance:", err);
+    console.warn(`[Market Engine] Falha ao consultar chart para ${symbol}:`, err);
     return null;
   }
 }
 
 // ---------------------------------------------------------------------------
 // Universo de Ativos Monitorados Diariamente (B3 & Bolsas Mundiais)
-// Mais de 160 empresas líquidas varridas diariamente pelo algoritmo.
 // ---------------------------------------------------------------------------
 export const MARKET_UNIVERSE_SYMBOLS: string[] = [
   // 1. B3 - Bancos & Financeiro
@@ -411,115 +409,25 @@ export const MARKET_UNIVERSE_SYMBOLS: string[] = [
   "SCHD", "VYM", "VIG"
 ];
 
-/**
- * Consulta cotações e indicadores em lote de múltiplos ativos via API externa com sessão autenticada.
- */
-export async function fetchBatchQuotes(symbols: string[]): Promise<MarketTickerRaw[]> {
-  const session = await getYahooCrumb();
-  const results: MarketTickerRaw[] = [];
+// ---------------------------------------------------------------------------
+// Varredura Diária Paralela com Controle de Concorrência
+// ---------------------------------------------------------------------------
+async function scanMarketInBatches(symbols: string[], batchSize = 25): Promise<LongTermAnalysis[]> {
+  const analyzed: LongTermAnalysis[] = [];
 
-  // Yahoo Finance aceita até 45-50 símbolos por requisição HTTP
-  const CHUNK_SIZE = 45;
-  const chunks: string[][] = [];
-  for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
-    chunks.push(symbols.slice(i, i + CHUNK_SIZE));
-  }
+  for (let i = 0; i < symbols.length; i += batchSize) {
+    const chunk = symbols.slice(i, i + batchSize);
+    const rawQuotes = await Promise.all(chunk.map((s) => fetchChartTicker(s)));
 
-  for (const chunk of chunks) {
-    try {
-      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${chunk.join(",")}${
-        session?.crumb ? `&crumb=${encodeURIComponent(session.crumb)}` : ""
-      }`;
-
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": USER_AGENT,
-          ...(session?.cookie ? { "Cookie": session.cookie } : {}),
-        },
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        const list = json.quoteResponse?.result || [];
-
-        for (const r of list) {
-          const price = r.regularMarketPrice || r.previousClose || 0;
-          if (price <= 0) continue;
-
-          results.push({
-            symbol: r.symbol,
-            name: r.longName || r.shortName || r.symbol,
-            currency: r.currency || (r.symbol.endsWith(".SA") ? "BRL" : "USD"),
-            price,
-            previousClose: r.regularMarketPreviousClose || r.previousClose || price,
-            fiftyTwoWeekHigh: r.fiftyTwoWeekHigh || price,
-            fiftyTwoWeekLow: r.fiftyTwoWeekLow || price,
-            dividendRate: r.dividendRate,
-            dividendYield: r.dividendYield,
-            trailingAnnualDividendRate: r.trailingAnnualDividendRate,
-            trailingAnnualDividendYield: r.trailingAnnualDividendYield,
-            trailingPE: r.trailingPE,
-            priceToBook: r.priceToBook,
-            trailingEps: r.epsTrailingTwelveMonths,
-            totalDebt: r.totalDebt,
-            ebitda: r.ebitda,
-          });
+    for (const raw of rawQuotes) {
+      if (raw && raw.price > 0) {
+        try {
+          const res = calcularAnaliseLongoPrazo(raw);
+          analyzed.push(res);
+        } catch (_err) {
+          // Ignora falha de ativo individual
         }
       }
-    } catch (chunkErr) {
-      console.warn("[Market Engine] Aviso ao consultar lote de cotações:", chunkErr);
-    }
-  }
-
-  return results;
-}
-
-// ---------------------------------------------------------------------------
-// Cache Global da Hotlist Diária (Hot 100)
-// ---------------------------------------------------------------------------
-let _cachedHot100: LongTermAnalysis[] | null = null;
-let _hot100LastUpdated = 0;
-const HOT100_TTL_MS = 1000 * 60 * 60 * 12; // 12 horas
-
-/**
- * Retorna o verdadeiro HOT 100 atualizado diariamente:
- * Varre todo o universo de mercado (>160 ativos), calcula os múltiplos de hoje e ranqueia do #1 ao #100.
- */
-export async function getHot100(forceRefresh = false): Promise<{
-  items: LongTermAnalysis[];
-  updatedAt: number;
-  totalScanned: number;
-}> {
-  const now = Date.now();
-
-  if (!forceRefresh && _cachedHot100 && _cachedHot100.length > 0 && now - _hot100LastUpdated < HOT100_TTL_MS) {
-    return {
-      items: _cachedHot100,
-      updatedAt: _hot100LastUpdated,
-      totalScanned: MARKET_UNIVERSE_SYMBOLS.length,
-    };
-  }
-
-  console.log(`[Market Engine] Iniciando varredura diária de ${MARKET_UNIVERSE_SYMBOLS.length} ativos para o Hot 100...`);
-  const rawList = await fetchBatchQuotes(MARKET_UNIVERSE_SYMBOLS);
-
-  if (rawList.length === 0 && _cachedHot100 && _cachedHot100.length > 0) {
-    // Se a API estiver instável, preserva o último cache diário
-    return {
-      items: _cachedHot100,
-      updatedAt: _hot100LastUpdated,
-      totalScanned: MARKET_UNIVERSE_SYMBOLS.length,
-    };
-  }
-
-  // Processa e calcula o Score de Longo Prazo e Bazin para todos os ativos retornados
-  const analyzed: LongTermAnalysis[] = [];
-  for (const raw of rawList) {
-    try {
-      const calc = calcularAnaliseLongoPrazo(raw);
-      analyzed.push(calc);
-    } catch (_err) {
-      // Continua se um cálculo específico falhar
     }
   }
 
@@ -531,59 +439,127 @@ export async function getHot100(forceRefresh = false): Promise<{
     return b.margemSegurancaBazin - a.margemSegurancaBazin;
   });
 
-  // Seleciona o Top 100
-  const top100 = analyzed.slice(0, 100);
-
-  _cachedHot100 = top100;
-  _hot100LastUpdated = now;
-
-  console.log(`[Market Engine] Varredura diária concluída: ${analyzed.length} ativos analisados, Top 100 gerado com sucesso.`);
-
-  return {
-    items: top100,
-    updatedAt: now,
-    totalScanned: analyzed.length,
-  };
+  return analyzed;
 }
 
+// ---------------------------------------------------------------------------
+// Cache Global e Persistência do Hot 100
+// ---------------------------------------------------------------------------
+let _cachedHot100: LongTermAnalysis[] | null = null;
+let _hot100LastUpdated = 0;
+let _isScanningInProgress = false;
+const HOT100_TTL_MS = 1000 * 60 * 60 * 24; // 24 horas
+
 /**
- * Fallback resiliente usando o endpoint de Chart do Yahoo Finance (não requer crumb nem cookie).
- * Obtém preço em tempo real e soma todos os dividendos em dinheiro distribuídos nos últimos 12 meses.
+ * Executa a varredura diária no mercado e persiste no banco de dados MongoDB (se disponível) e em memória.
  */
-async function fetchChartTicker(symbol: string): Promise<MarketTickerRaw | null> {
+export async function runDailyMarketScanner(db?: any): Promise<{
+  items: LongTermAnalysis[];
+  updatedAt: number;
+  totalScanned: number;
+}> {
+  if (_isScanningInProgress && _cachedHot100) {
+    return {
+      items: _cachedHot100,
+      updatedAt: _hot100LastUpdated,
+      totalScanned: _cachedHot100.length,
+    };
+  }
+
+  _isScanningInProgress = true;
+  console.log(`[Market Engine] Iniciando varredura diária de ${MARKET_UNIVERSE_SYMBOLS.length} ativos...`);
+
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y&events=div`;
-    const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-    if (!res.ok) return null;
+    const analyzed = await scanMarketInBatches(MARKET_UNIVERSE_SYMBOLS, 25);
+    const top100 = analyzed.slice(0, 100);
+    const now = Date.now();
 
-    const data = await res.json();
-    const meta = data.chart?.result?.[0]?.meta;
-    const price = meta?.regularMarketPrice || meta?.chartPreviousClose || 0;
-    if (!meta || price <= 0) return null;
+    _cachedHot100 = top100;
+    _hot100LastUpdated = now;
 
-    const divs = data.chart?.result?.[0]?.events?.dividends || {};
-    let sumDivs = 0;
-    for (const k of Object.keys(divs)) {
-      if (typeof divs[k]?.amount === "number") {
-        sumDivs += divs[k].amount;
+    // Persiste no MongoDB Atlas para sobrevivência a reinicializações de container
+    if (db) {
+      try {
+        await db.collection("market_hot100").updateOne(
+          { _id: "daily_hot100" },
+          {
+            $set: {
+              items: top100,
+              updatedAt: now,
+              totalScanned: analyzed.length,
+            },
+          },
+          { upsert: true }
+        );
+        console.log(`[Market Engine] Hot 100 persistido no MongoDB com sucesso (${top100.length} ativos).`);
+      } catch (dbErr) {
+        console.warn("[Market Engine] Aviso ao gravar Hot 100 no MongoDB:", dbErr);
       }
     }
 
     return {
-      symbol,
-      name: meta.longName || meta.shortName || symbol,
-      currency: meta.currency || (symbol.endsWith(".SA") ? "BRL" : "USD"),
-      price,
-      previousClose: meta.chartPreviousClose || price,
-      fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || price,
-      fiftyTwoWeekLow: meta.fiftyTwoWeekLow || price,
-      dividendRate: sumDivs,
-      dividendYield: price > 0 ? (sumDivs / price) * 100 : 0,
+      items: top100,
+      updatedAt: now,
+      totalScanned: analyzed.length,
     };
-  } catch (err) {
-    console.warn(`[Market Engine] Fallback de chart falhou para ${symbol}:`, err);
-    return null;
+  } finally {
+    _isScanningInProgress = false;
   }
+}
+
+/**
+ * Retorna o HOT 100 diário com carregamento instantâneo:
+ * 1. Verifica memória ou MongoDB Atlas (0ms).
+ * 2. Se não existir ou expirou (>24h), dispara a varredura diária em background.
+ */
+export async function getHot100(forceRefresh = false, db?: any): Promise<{
+  items: LongTermAnalysis[];
+  updatedAt: number;
+  totalScanned: number;
+}> {
+  const now = Date.now();
+
+  // 1. Se em memória e recente (<24h), retorna imediatamente
+  if (!forceRefresh && _cachedHot100 && _cachedHot100.length > 0 && now - _hot100LastUpdated < HOT100_TTL_MS) {
+    return {
+      items: _cachedHot100,
+      updatedAt: _hot100LastUpdated,
+      totalScanned: _cachedHot100.length,
+    };
+  }
+
+  // 2. Se temos conexão com MongoDB, tenta carregar o Hot 100 do banco
+  if (!forceRefresh && db) {
+    try {
+      const doc = await db.collection("market_hot100").findOne({ _id: "daily_hot100" });
+      if (doc && Array.isArray(doc.items) && doc.items.length > 0) {
+        _cachedHot100 = doc.items;
+        _hot100LastUpdated = doc.updatedAt || now;
+
+        // Se os dados no banco tiverem menos de 24h, retorna imediatamente
+        if (now - _hot100LastUpdated < HOT100_TTL_MS) {
+          return {
+            items: doc.items,
+            updatedAt: _hot100LastUpdated,
+            totalScanned: doc.totalScanned || doc.items.length,
+          };
+        }
+
+        // Se expirou, inicia varredura em background e retorna os dados existentes sem travar a requisição
+        runDailyMarketScanner(db).catch(console.error);
+        return {
+          items: doc.items,
+          updatedAt: _hot100LastUpdated,
+          totalScanned: doc.totalScanned || doc.items.length,
+        };
+      }
+    } catch (_loadErr) {
+      // Continua para varredura
+    }
+  }
+
+  // 3. Se forçado ou primeira execução, executa a varredura
+  return await runDailyMarketScanner(db);
 }
 
 /**
@@ -595,26 +571,16 @@ export async function fetchMarketTicker(rawSymbol: string): Promise<LongTermAnal
     throw new Error("Símbolo do ativo inválido.");
   }
 
-  // 1. Primeiro verifica se o ativo já foi analisado no Hot 100 recente
+  // 1. Verifica se já está no Hot 100 carregado
   if (_cachedHot100) {
     const clean = symbol.replace(".SA", "");
     const found = _cachedHot100.find((it) => it.symbol === clean || it.symbol === symbol);
     if (found) return found;
   }
 
-  // 2. Busca na API em lote com múltiplos completos
-  try {
-    const quotes = await fetchBatchQuotes([symbol]);
-    if (quotes.length > 0 && quotes[0].price > 0) {
-      return calcularAnaliseLongoPrazo(quotes[0]);
-    }
-  } catch (_batchErr) {
-    // Continua para o fallback de chart
-  }
-
-  // 3. Fallback resiliente via endpoint /v8/finance/chart (sempre disponível, sem crumb)
+  // 2. Consulta via chart público com cálculo de proventos dos últimos 12 meses
   const chartQuote = await fetchChartTicker(symbol);
-  if (chartQuote) {
+  if (chartQuote && chartQuote.price > 0) {
     return calcularAnaliseLongoPrazo(chartQuote);
   }
 

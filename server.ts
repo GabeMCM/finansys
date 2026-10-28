@@ -1,4 +1,5 @@
-import { handleApiRequest } from "./server/api.ts";
+import { handleApiRequest, getDb } from "./server/api.ts";
+import { getHot100 } from "./server/market.ts";
 
 /**
  * Servidor HTTP nativo do Deno para produção / Deno Deploy.
@@ -28,6 +29,27 @@ try {
 }
 
 const port = Number(Deno.env.get("PORT") || 8000);
+
+// Pré-aquece o Hot 100 diário em background e agenda atualização automática a cada 24h
+(async () => {
+  try {
+    const db = await getDb();
+    console.log("[Server Boot] Verificando Hot 100 diário de mercado...");
+    await getHot100(false, db);
+
+    // Agenda varredura diária automática a cada 24 horas
+    setInterval(async () => {
+      try {
+        console.log("[Daily Cron] Executando varredura diária agendada de 150+ ações...");
+        await getHot100(true, db);
+      } catch (cronErr) {
+        console.error("[Daily Cron] Erro na varredura diária agendada:", cronErr);
+      }
+    }, 1000 * 60 * 60 * 24);
+  } catch (bootErr) {
+    console.warn("[Server Boot] Aviso na inicialização do motor de mercado:", bootErr);
+  }
+})();
 
 Deno.serve({ port }, async (req: Request) => {
   const url = new URL(req.url);
