@@ -1,6 +1,9 @@
 /**
  * Módulo de Integração com o Mercado Financeiro Global e Análise Fundamentalista de Longo Prazo.
  * Filosofia: Luiz Barsi (BESTT), Décio Bazin (Preço Teto 6%), e Filtro Anti-Armadilha (Anti-Dividend Trap).
+ *
+ * Atualização Diária Dinâmica: Varre um universo amplo de mais de 150 ativos líquidos do Brasil e do mundo,
+ * recalculando cotações, dividendos reais, Preço Teto Bazin e pontuação para gerar o verdadeiro HOT 100 do dia.
  */
 
 export interface MarketTickerRaw {
@@ -25,6 +28,7 @@ export interface MarketTickerRaw {
   returnOnEquity?: number;
   priceToBook?: number;
   trailingEps?: number;
+  trailingPE?: number;
 }
 
 export interface LongTermAnalysis {
@@ -34,7 +38,7 @@ export interface LongTermAnalysis {
   market: "B3" | "GLOBAL";
   price: number;
   precoTetoBazin: number;
-  margemSegurancaBazin: number; // Em porcentagem (ex: 15.5 = +15.5% de desconto)
+  margemSegurancaBazin: number; // Porcentagem de desconto (+15.5%) ou ágio (-10%)
   dividendYield: number; // Em porcentagem (ex: 8.5)
   dividendRateAnual: number; // Valor financeiro por cota (ex: 2.50)
   fiveYearAvgDividendYield?: number;
@@ -53,7 +57,9 @@ export interface LongTermAnalysis {
   atualizadoEm: number;
 }
 
-// Setores BESTT mapeados a partir de Industry / Sector do Yahoo Finance
+// ---------------------------------------------------------------------------
+// Setores BESTT Mapeados (Metodologia Luiz Barsi)
+// ---------------------------------------------------------------------------
 export function identificarSetorBESTT(sector?: string, industry?: string, symbol?: string): {
   isBestt: boolean;
   category?: "Bancos" | "Energia" | "Saneamento" | "Telecom" | "Seguros";
@@ -62,7 +68,7 @@ export function identificarSetorBESTT(sector?: string, industry?: string, symbol
   const ind = (industry || "").toLowerCase();
   const symb = (symbol || "").toUpperCase();
 
-  // Seguros (verificado antes para não colidir com 'Insurance - Diversified')
+  // 1. Seguros (verificado antes para não colidir com 'Insurance - Diversified')
   if (
     ind.includes("insurance") ||
     ["BBSE3", "CXSE3", "PSSA3", "IRBR3"].some((t) => symb.includes(t))
@@ -70,38 +76,38 @@ export function identificarSetorBESTT(sector?: string, industry?: string, symbol
     return { isBestt: true, category: "Seguros" };
   }
 
-  // Bancos
+  // 2. Bancos
   if (
     ind.includes("bank") ||
     (s.includes("financial") && (ind.includes("regional") || ind.includes("banking") || (ind.includes("diversified") && !ind.includes("insurance")))) ||
-    ["BBAS3", "ITUB4", "BBDC4", "SANB11", "ITSA4", "JPM", "BAC"].some((t) => symb.includes(t))
+    ["BBAS3", "ITUB4", "BBDC4", "BBDC3", "SANB11", "ITSA4", "BPAC11", "BRSR6", "JPM", "BAC", "WFC"].some((t) => symb.includes(t))
   ) {
     return { isBestt: true, category: "Bancos" };
   }
 
-  // Energia Elétrica (Geração, Transmissão, Distribuição)
+  // 3. Energia Elétrica (Geração, Transmissão, Distribuição)
   if (
     ind.includes("electric") ||
     ind.includes("renewable") ||
     (s.includes("utilities") && !ind.includes("water")) ||
-    ["TAEE11", "TRPL4", "CPLE6", "EGIE3", "ALUP11", "CMIG4", "ENBR3", "NEOE3", "EQTL3", "AURE3"].some((t) => symb.includes(t))
+    ["TAEE11", "TRPL4", "CPLE6", "EGIE3", "ALUP11", "CMIG4", "CMIG3", "NEOE3", "EQTL3", "ENGI11", "CPFE3", "AURE3", "ELET3", "ELET6"].some((t) => symb.includes(t))
   ) {
     return { isBestt: true, category: "Energia" };
   }
 
-  // Saneamento e Água
+  // 4. Saneamento e Água
   if (
     ind.includes("water") ||
-    ["SAPR11", "CSMG3", "SBSP3", "AMBP3"].some((t) => symb.includes(t))
+    ["SAPR11", "SAPR4", "CSMG3", "SBSP3", "AMBP3"].some((t) => symb.includes(t))
   ) {
     return { isBestt: true, category: "Saneamento" };
   }
 
-  // Telecomunicações
+  // 5. Telecomunicações
   if (
     s.includes("communication") ||
     ind.includes("telecom") ||
-    ["VIVT3", "TIMS3", "FIQE3"].some((t) => symb.includes(t))
+    ["VIVT3", "TIMS3", "FIQE3", "VZ", "T"].some((t) => symb.includes(t))
   ) {
     return { isBestt: true, category: "Telecom" };
   }
@@ -116,11 +122,9 @@ export function identificarSetorBESTT(sector?: string, industry?: string, symbol
 export function normalizeSymbol(rawInput: string): string {
   let sym = (rawInput || "").trim().toUpperCase();
   if (!sym) return "";
-
-  // Se já possui sufixo de bolsa (ex: .SA, .L, .TO)
   if (sym.includes(".")) return sym;
 
-  // Padrão brasileiro da B3: 4 letras + 1 a 2 dígitos (ex: PETR4, TAEE11, MXRF11, BOVA11)
+  // Padrão brasileiro da B3: 4 letras + dígitos (ex: PETR4, TAEE11, MXRF11)
   const isB3Ticker = /^[A-Z]{4}(3|4|5|6|11|12|32|33|34|35)$/.test(sym);
   if (isB3Ticker) {
     return `${sym}.SA`;
@@ -140,17 +144,20 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
   // Setor BESTT
   const bestt = identificarSetorBESTT(raw.sector, raw.industry, raw.symbol);
 
-  // Dividendo anual por ação
+  // Dividendo anual por ação e Yield em porcentagem
   let dividendRate = raw.dividendRate ?? raw.trailingAnnualDividendRate ?? 0;
-  let dy = (raw.dividendYield ?? raw.trailingAnnualDividendYield ?? 0) * 100;
-
-  // Se dy veio em formato decimal 0.08, multiplicar por 100
-  if (dy > 0 && dy < 0.5) dy = dy * 100;
-  if (dividendRate === 0 && dy > 0 && price > 0) {
-    dividendRate = (dy / 100) * price;
+  let dy = 0;
+  if (raw.dividendYield !== undefined && raw.dividendYield !== null && raw.dividendYield > 0) {
+    dy = raw.dividendYield > 1.0 ? raw.dividendYield : raw.dividendYield * 100;
+  } else if (raw.trailingAnnualDividendYield !== undefined && raw.trailingAnnualDividendYield !== null && raw.trailingAnnualDividendYield > 0) {
+    dy = raw.trailingAnnualDividendYield > 1.0 ? raw.trailingAnnualDividendYield : raw.trailingAnnualDividendYield * 100;
   }
+
   if (dy === 0 && dividendRate > 0 && price > 0) {
     dy = (dividendRate / price) * 100;
+  }
+  if (dividendRate === 0 && dy > 0 && price > 0) {
+    dividendRate = (dy / 100) * price;
   }
 
   // 1. Preço Teto de Bazin (DY 6% a.a.)
@@ -180,7 +187,9 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
     : undefined;
 
   const pvp = raw.priceToBook ? Number(raw.priceToBook.toFixed(2)) : undefined;
-  const pl = raw.trailingEps && raw.trailingEps > 0 && price > 0
+  const pl = raw.trailingPE
+    ? Number(raw.trailingPE.toFixed(1))
+    : raw.trailingEps && raw.trailingEps > 0 && price > 0
     ? Number((price / raw.trailingEps).toFixed(1))
     : undefined;
 
@@ -351,13 +360,191 @@ async function getYahooCrumb(): Promise<{ cookie: string; crumb: string } | null
 }
 
 // ---------------------------------------------------------------------------
-// Cache em Memória de Ativos
+// Universo de Ativos Monitorados Diariamente (B3 & Bolsas Mundiais)
+// Mais de 160 empresas líquidas varridas diariamente pelo algoritmo.
 // ---------------------------------------------------------------------------
-const memoryCache = new Map<string, { data: LongTermAnalysis; expiresAt: number }>();
-const CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutos
+export const MARKET_UNIVERSE_SYMBOLS: string[] = [
+  // 1. B3 - Bancos & Financeiro
+  "BBAS3.SA", "ITUB4.SA", "BBDC4.SA", "BBDC3.SA", "SANB11.SA", "ITSA4.SA", "BPAC11.SA", "BRSR6.SA", "B3SA3.SA",
+
+  // 2. B3 - Seguros
+  "BBSE3.SA", "CXSE3.SA", "PSSA3.SA", "IRBR3.SA",
+
+  // 3. B3 - Energia Elétrica & Transmissão (BESTT)
+  "TAEE11.SA", "TRPL4.SA", "CPLE6.SA", "EGIE3.SA", "ALUP11.SA", "CMIG4.SA", "CMIG3.SA",
+  "NEOE3.SA", "EQTL3.SA", "ENGI11.SA", "CPFE3.SA", "AURE3.SA", "ELET3.SA", "ELET6.SA",
+
+  // 4. B3 - Saneamento e Água (BESTT)
+  "SAPR11.SA", "SAPR4.SA", "CSMG3.SA", "SBSP3.SA", "AMBP3.SA",
+
+  // 5. B3 - Telecomunicações (BESTT)
+  "VIVT3.SA", "TIMS3.SA", "FIQE3.SA",
+
+  // 6. B3 - Commodities, Mineração e Siderurgia
+  "VALE3.SA", "PETR4.SA", "PETR3.SA", "GGBR4.SA", "GOAU4.SA", "CSNA3.SA", "USIM5.SA",
+  "SUZB3.SA", "KLBN11.SA", "PRIO3.SA", "RECV3.SA", "UGPA3.SA", "VBBR3.SA", "RAIZ4.SA",
+
+  // 7. B3 - Consumo, Varejo, Indústria e Saúde
+  "ABEV3.SA", "WEGE3.SA", "VULC3.SA", "MDIA3.SA", "GRND3.SA", "CAML3.SA", "LEVE3.SA",
+  "SHUL4.SA", "KEPL3.SA", "TUPY3.SA", "POMO4.SA", "RAPT4.SA", "LREN3.SA", "ALOS3.SA",
+  "ASAI3.SA", "CRFB3.SA", "SMTO3.SA", "SLCE3.SA", "RADL3.SA", "HYPE3.SA", "FLRY3.SA",
+  "ODPV3.SA", "CYRE3.SA", "EZTC3.SA", "DIRR3.SA", "MRVE3.SA", "RENT3.SA", "EMBR3.SA",
+  "STBP3.SA", "RAIL3.SA", "CCRO3.SA",
+
+  // 8. B3 - Fundos Imobiliários (FIIs)
+  "HGLG11.SA", "MXRF11.SA", "KNCR11.SA", "XPML11.SA", "XPLG11.SA", "VISC11.SA", "BTLG11.SA", "KNRI11.SA", "HGRU11.SA", "CPTS11.SA",
+
+  // 9. B3 - Empresas em Alerta / Estresse
+  "OIBR3.SA", "AMER3.SA", "BHIA3.SA", "AZUL4.SA", "GOLL4.SA", "CVCB3.SA",
+
+  // 10. Globais - S&P 500 Dividend Aristocrats & Kings (25 a 50+ anos de dividendos crescentes)
+  "KO", "PEP", "JNJ", "PG", "MMM", "ABBV", "CVX", "XOM", "MCD", "O", "IBM", "T", "VZ", "MO", "PM",
+  "CAT", "EMR", "GPC", "LOW", "WMT", "CL", "SYY", "ED", "BDX", "ITW", "PPG", "TGT", "ADM", "ADP",
+  "AFL", "APD", "BKH", "CINF", "DOV", "FRT", "HRL", "KMB", "NUE", "PNR", "SHW", "SWK", "WBA", "ABT",
+  "CB", "CLX", "GD", "GWW", "LIN", "MDT", "MKC", "NEE", "ROP", "SPGI",
+
+  // 11. Globais - Mega Caps & Finanças Globais
+  "JPM", "BAC", "WFC", "MS", "GS", "BLK", "TXN", "QCOM", "CSCO", "INTC", "ORCL", "MSFT", "AAPL", "V", "MA",
+  "SCHD", "VYM", "VIG"
+];
 
 /**
- * Consulta informações completas de um ativo mundial via API externa gratuita com cache.
+ * Consulta cotações e indicadores em lote de múltiplos ativos via API externa com sessão autenticada.
+ */
+export async function fetchBatchQuotes(symbols: string[]): Promise<MarketTickerRaw[]> {
+  const session = await getYahooCrumb();
+  const results: MarketTickerRaw[] = [];
+
+  // Yahoo Finance aceita até 45-50 símbolos por requisição HTTP
+  const CHUNK_SIZE = 45;
+  const chunks: string[][] = [];
+  for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
+    chunks.push(symbols.slice(i, i + CHUNK_SIZE));
+  }
+
+  for (const chunk of chunks) {
+    try {
+      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${chunk.join(",")}${
+        session?.crumb ? `&crumb=${encodeURIComponent(session.crumb)}` : ""
+      }`;
+
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": USER_AGENT,
+          ...(session?.cookie ? { "Cookie": session.cookie } : {}),
+        },
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const list = json.quoteResponse?.result || [];
+
+        for (const r of list) {
+          const price = r.regularMarketPrice || r.previousClose || 0;
+          if (price <= 0) continue;
+
+          results.push({
+            symbol: r.symbol,
+            name: r.longName || r.shortName || r.symbol,
+            currency: r.currency || (r.symbol.endsWith(".SA") ? "BRL" : "USD"),
+            price,
+            previousClose: r.regularMarketPreviousClose || r.previousClose || price,
+            fiftyTwoWeekHigh: r.fiftyTwoWeekHigh || price,
+            fiftyTwoWeekLow: r.fiftyTwoWeekLow || price,
+            dividendRate: r.dividendRate,
+            dividendYield: r.dividendYield,
+            trailingAnnualDividendRate: r.trailingAnnualDividendRate,
+            trailingAnnualDividendYield: r.trailingAnnualDividendYield,
+            trailingPE: r.trailingPE,
+            priceToBook: r.priceToBook,
+            trailingEps: r.epsTrailingTwelveMonths,
+            totalDebt: r.totalDebt,
+            ebitda: r.ebitda,
+          });
+        }
+      }
+    } catch (chunkErr) {
+      console.warn("[Market Engine] Aviso ao consultar lote de cotações:", chunkErr);
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Cache Global da Hotlist Diária (Hot 100)
+// ---------------------------------------------------------------------------
+let _cachedHot100: LongTermAnalysis[] | null = null;
+let _hot100LastUpdated = 0;
+const HOT100_TTL_MS = 1000 * 60 * 60 * 12; // 12 horas
+
+/**
+ * Retorna o verdadeiro HOT 100 atualizado diariamente:
+ * Varre todo o universo de mercado (>160 ativos), calcula os múltiplos de hoje e ranqueia do #1 ao #100.
+ */
+export async function getHot100(forceRefresh = false): Promise<{
+  items: LongTermAnalysis[];
+  updatedAt: number;
+  totalScanned: number;
+}> {
+  const now = Date.now();
+
+  if (!forceRefresh && _cachedHot100 && _cachedHot100.length > 0 && now - _hot100LastUpdated < HOT100_TTL_MS) {
+    return {
+      items: _cachedHot100,
+      updatedAt: _hot100LastUpdated,
+      totalScanned: MARKET_UNIVERSE_SYMBOLS.length,
+    };
+  }
+
+  console.log(`[Market Engine] Iniciando varredura diária de ${MARKET_UNIVERSE_SYMBOLS.length} ativos para o Hot 100...`);
+  const rawList = await fetchBatchQuotes(MARKET_UNIVERSE_SYMBOLS);
+
+  if (rawList.length === 0 && _cachedHot100 && _cachedHot100.length > 0) {
+    // Se a API estiver instável, preserva o último cache diário
+    return {
+      items: _cachedHot100,
+      updatedAt: _hot100LastUpdated,
+      totalScanned: MARKET_UNIVERSE_SYMBOLS.length,
+    };
+  }
+
+  // Processa e calcula o Score de Longo Prazo e Bazin para todos os ativos retornados
+  const analyzed: LongTermAnalysis[] = [];
+  for (const raw of rawList) {
+    try {
+      const calc = calcularAnaliseLongoPrazo(raw);
+      analyzed.push(calc);
+    } catch (_err) {
+      // Continua se um cálculo específico falhar
+    }
+  }
+
+  // Ordenação rigorosa: Maior Score primeiro (100 -> 0), desempate por Maior Margem de Segurança Bazin
+  analyzed.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return b.margemSegurancaBazin - a.margemSegurancaBazin;
+  });
+
+  // Seleciona o Top 100
+  const top100 = analyzed.slice(0, 100);
+
+  _cachedHot100 = top100;
+  _hot100LastUpdated = now;
+
+  console.log(`[Market Engine] Varredura diária concluída: ${analyzed.length} ativos analisados, Top 100 gerado com sucesso.`);
+
+  return {
+    items: top100,
+    updatedAt: now,
+    totalScanned: analyzed.length,
+  };
+}
+
+/**
+ * Consulta um ativo individual específico (da busca ou fora do Hot 100).
  */
 export async function fetchMarketTicker(rawSymbol: string): Promise<LongTermAnalysis> {
   const symbol = normalizeSymbol(rawSymbol);
@@ -365,657 +552,18 @@ export async function fetchMarketTicker(rawSymbol: string): Promise<LongTermAnal
     throw new Error("Símbolo do ativo inválido.");
   }
 
-  const cached = memoryCache.get(symbol);
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.data;
+  // Primeiro verifica se o ativo já foi analisado no Hot 100 recente
+  if (_cachedHot100) {
+    const clean = symbol.replace(".SA", "");
+    const found = _cachedHot100.find((it) => it.symbol === clean || it.symbol === symbol);
+    if (found) return found;
   }
 
-  // Busca dados na API externa com fallback gracioso
-  let rawData: MarketTickerRaw | null = null;
-  const session = await getYahooCrumb();
-
-  if (session) {
-    try {
-      const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?crumb=${encodeURIComponent(
-        session.crumb
-      )}&modules=summaryDetail,defaultKeyStatistics,financialData,assetProfile,price`;
-
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": USER_AGENT,
-          "Cookie": session.cookie,
-        },
-      });
-
-      if (res.ok) {
-        const json = await res.json();
-        const r = json.quoteSummary?.result?.[0];
-        if (r) {
-          rawData = {
-            symbol,
-            name: r.price?.longName || r.price?.shortName || symbol,
-            currency: r.price?.currency || (symbol.endsWith(".SA") ? "BRL" : "USD"),
-            price: r.price?.regularMarketPrice?.raw || r.summaryDetail?.previousClose?.raw || 0,
-            previousClose: r.summaryDetail?.previousClose?.raw || 0,
-            fiftyTwoWeekHigh: r.summaryDetail?.fiftyTwoWeekHigh?.raw || 0,
-            fiftyTwoWeekLow: r.summaryDetail?.fiftyTwoWeekLow?.raw || 0,
-            sector: r.assetProfile?.sector,
-            industry: r.assetProfile?.industry,
-            dividendRate: r.summaryDetail?.dividendRate?.raw,
-            dividendYield: r.summaryDetail?.dividendYield?.raw,
-            trailingAnnualDividendRate: r.summaryDetail?.trailingAnnualDividendRate?.raw,
-            trailingAnnualDividendYield: r.summaryDetail?.trailingAnnualDividendYield?.raw,
-            fiveYearAvgDividendYield: r.summaryDetail?.fiveYearAvgDividendYield?.raw,
-            payoutRatio: r.summaryDetail?.payoutRatio?.raw,
-            totalDebt: r.financialData?.totalDebt?.raw,
-            ebitda: r.financialData?.ebitda?.raw,
-            debtToEquity: r.financialData?.debtToEquity?.raw,
-            returnOnEquity: r.financialData?.returnOnEquity?.raw,
-            priceToBook: r.defaultKeyStatistics?.priceToBook?.raw,
-            trailingEps: r.defaultKeyStatistics?.trailingEps?.raw,
-          };
-        }
-      } else if (res.status === 401) {
-        // Invalida crumb e tenta recarregar na próxima chamada
-        _cachedCrumb = null;
-      }
-    } catch (fetchErr) {
-      console.warn(`[Market Engine] Erro ao consultar quoteSummary para ${symbol}:`, fetchErr);
-    }
+  // Caso contrário, busca na API externa
+  const quotes = await fetchBatchQuotes([symbol]);
+  if (quotes.length > 0) {
+    return calcularAnaliseLongoPrazo(quotes[0]);
   }
 
-  // Fallback 1: Se quoteSummary não respondeu, tenta endpoint /v8/finance/chart
-  if (!rawData || rawData.price === 0) {
-    try {
-      const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1mo`;
-      const chartRes = await fetch(chartUrl, { headers: { "User-Agent": USER_AGENT } });
-      if (chartRes.ok) {
-        const chartJson = await chartRes.json();
-        const meta = chartJson.chart?.result?.[0]?.meta;
-        if (meta) {
-          rawData = {
-            symbol,
-            name: meta.longName || meta.shortName || symbol,
-            currency: meta.currency || (symbol.endsWith(".SA") ? "BRL" : "USD"),
-            price: meta.regularMarketPrice || meta.chartPreviousClose || 0,
-            previousClose: meta.chartPreviousClose || 0,
-            fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || 0,
-            fiftyTwoWeekLow: meta.fiftyTwoWeekLow || 0,
-          };
-        }
-      }
-    } catch (_chartErr) {
-      // Ignora erro de fallback
-    }
-  }
-
-  // Fallback 2: Se ainda assim falhou, verifica se o ativo está no catálogo estático inicial de segurança
-  if (!rawData || rawData.price === 0) {
-    const fallbackSeed = HOTLIST_SEED.find((s) => s.symbol === symbol || s.symbol === symbol.replace(".SA", ""));
-    if (fallbackSeed) {
-      rawData = { ...fallbackSeed, symbol };
-    }
-  }
-
-  if (!rawData) {
-    throw new Error(`Não foi possível localizar cotações e indicadores para o ativo ${rawSymbol}.`);
-  }
-
-  const analysis = calcularAnaliseLongoPrazo(rawData);
-  memoryCache.set(symbol, { data: analysis, expiresAt: Date.now() + CACHE_TTL_MS });
-  return analysis;
-}
-
-// ---------------------------------------------------------------------------
-// Base Curada do Universo de Investimentos (Hotlist / Ranking Inicial)
-// ---------------------------------------------------------------------------
-export const HOTLIST_SEED: MarketTickerRaw[] = [
-  // 1. Bancos & Seguros (BESTT)
-  {
-    symbol: "BBAS3.SA",
-    name: "Banco do Brasil S.A.",
-    currency: "BRL",
-    price: 27.40,
-    previousClose: 27.50,
-    fiftyTwoWeekHigh: 31.00,
-    fiftyTwoWeekLow: 24.10,
-    sector: "Financial Services",
-    industry: "Banks - Diversified",
-    dividendRate: 2.72,
-    dividendYield: 0.099,
-    fiveYearAvgDividendYield: 9.4,
-    payoutRatio: 0.44,
-    returnOnEquity: 0.21,
-    priceToBook: 0.86,
-    trailingEps: 5.80,
-  },
-  {
-    symbol: "BBSE3.SA",
-    name: "BB Seguridade Participações",
-    currency: "BRL",
-    price: 35.80,
-    previousClose: 35.70,
-    fiftyTwoWeekHigh: 38.50,
-    fiftyTwoWeekLow: 31.00,
-    sector: "Financial Services",
-    industry: "Insurance - Diversified",
-    dividendRate: 3.45,
-    dividendYield: 0.096,
-    fiveYearAvgDividendYield: 8.8,
-    payoutRatio: 0.82,
-    returnOnEquity: 0.65,
-    priceToBook: 6.2,
-    trailingEps: 4.10,
-  },
-  {
-    symbol: "CXSE3.SA",
-    name: "Caixa Seguridade",
-    currency: "BRL",
-    price: 14.50,
-    previousClose: 14.60,
-    fiftyTwoWeekHigh: 16.20,
-    fiftyTwoWeekLow: 12.10,
-    sector: "Financial Services",
-    industry: "Insurance - Diversified",
-    dividendRate: 1.28,
-    dividendYield: 0.088,
-    fiveYearAvgDividendYield: 8.1,
-    payoutRatio: 0.88,
-    returnOnEquity: 0.48,
-    priceToBook: 3.8,
-    trailingEps: 1.45,
-  },
-  {
-    symbol: "ITUB4.SA",
-    name: "Itaú Unibanco Holding",
-    currency: "BRL",
-    price: 34.20,
-    previousClose: 34.10,
-    fiftyTwoWeekHigh: 37.00,
-    fiftyTwoWeekLow: 28.50,
-    sector: "Financial Services",
-    industry: "Banks - Diversified",
-    dividendRate: 2.65,
-    dividendYield: 0.077,
-    fiveYearAvgDividendYield: 6.8,
-    payoutRatio: 0.60,
-    returnOnEquity: 0.22,
-    priceToBook: 1.7,
-    trailingEps: 4.10,
-  },
-  {
-    symbol: "ITSA4.SA",
-    name: "Itaúsa S.A.",
-    currency: "BRL",
-    price: 10.40,
-    previousClose: 10.35,
-    fiftyTwoWeekHigh: 11.50,
-    fiftyTwoWeekLow: 9.10,
-    sector: "Financial Services",
-    industry: "Holding Companies",
-    dividendRate: 0.84,
-    dividendYield: 0.081,
-    fiveYearAvgDividendYield: 7.2,
-    payoutRatio: 0.62,
-    returnOnEquity: 0.18,
-    priceToBook: 1.15,
-    trailingEps: 1.35,
-  },
-  {
-    symbol: "SANB11.SA",
-    name: "Banco Santander Brasil",
-    currency: "BRL",
-    price: 28.10,
-    previousClose: 28.30,
-    fiftyTwoWeekHigh: 32.00,
-    fiftyTwoWeekLow: 25.50,
-    sector: "Financial Services",
-    industry: "Banks - Regional",
-    dividendRate: 1.95,
-    dividendYield: 0.069,
-    fiveYearAvgDividendYield: 7.5,
-    payoutRatio: 0.58,
-    returnOnEquity: 0.15,
-    priceToBook: 1.1,
-    trailingEps: 3.10,
-  },
-
-  // 2. Energia & Transmissão (BESTT)
-  {
-    symbol: "TAEE11.SA",
-    name: "Taesa - Transmissora Aliança de Energia",
-    currency: "BRL",
-    price: 34.80,
-    previousClose: 34.90,
-    fiftyTwoWeekHigh: 38.00,
-    fiftyTwoWeekLow: 32.80,
-    sector: "Utilities",
-    industry: "Utilities - Regulated Electric",
-    dividendRate: 3.10,
-    dividendYield: 0.089,
-    fiveYearAvgDividendYield: 9.8,
-    payoutRatio: 0.78,
-    totalDebt: 11000000000,
-    ebitda: 3200000000,
-    returnOnEquity: 0.21,
-    priceToBook: 1.65,
-    trailingEps: 3.60,
-  },
-  {
-    symbol: "CPLE6.SA",
-    name: "Copel - Companhia Paranaense de Energia",
-    currency: "BRL",
-    price: 9.90,
-    previousClose: 9.85,
-    fiftyTwoWeekHigh: 11.20,
-    fiftyTwoWeekLow: 8.40,
-    sector: "Utilities",
-    industry: "Utilities - Regulated Electric",
-    dividendRate: 0.76,
-    dividendYield: 0.077,
-    fiveYearAvgDividendYield: 7.9,
-    payoutRatio: 0.65,
-    totalDebt: 14500000000,
-    ebitda: 5600000000,
-    returnOnEquity: 0.16,
-    priceToBook: 1.18,
-    trailingEps: 1.15,
-  },
-  {
-    symbol: "TRPL4.SA",
-    name: "ISA Cteep - Transmissão Paulista",
-    currency: "BRL",
-    price: 25.60,
-    previousClose: 25.50,
-    fiftyTwoWeekHigh: 27.80,
-    fiftyTwoWeekLow: 23.10,
-    sector: "Utilities",
-    industry: "Utilities - Regulated Electric",
-    dividendRate: 2.20,
-    dividendYield: 0.086,
-    fiveYearAvgDividendYield: 8.9,
-    payoutRatio: 0.75,
-    totalDebt: 9800000000,
-    ebitda: 3400000000,
-    returnOnEquity: 0.19,
-    priceToBook: 1.12,
-    trailingEps: 3.10,
-  },
-  {
-    symbol: "EGIE3.SA",
-    name: "Engie Brasil Energia",
-    currency: "BRL",
-    price: 43.20,
-    previousClose: 43.10,
-    fiftyTwoWeekHigh: 47.00,
-    fiftyTwoWeekLow: 39.80,
-    sector: "Utilities",
-    industry: "Utilities - Renewable",
-    dividendRate: 3.10,
-    dividendYield: 0.072,
-    fiveYearAvgDividendYield: 7.1,
-    payoutRatio: 0.68,
-    totalDebt: 19000000000,
-    ebitda: 7400000000,
-    returnOnEquity: 0.32,
-    priceToBook: 3.2,
-    trailingEps: 4.40,
-  },
-  {
-    symbol: "ALUP11.SA",
-    name: "Alupar Investimento",
-    currency: "BRL",
-    price: 29.50,
-    previousClose: 29.40,
-    fiftyTwoWeekHigh: 32.00,
-    fiftyTwoWeekLow: 26.50,
-    sector: "Utilities",
-    industry: "Utilities - Regulated Electric",
-    dividendRate: 2.15,
-    dividendYield: 0.073,
-    fiveYearAvgDividendYield: 6.8,
-    payoutRatio: 0.55,
-    totalDebt: 10500000000,
-    ebitda: 3800000000,
-    returnOnEquity: 0.15,
-    priceToBook: 1.15,
-    trailingEps: 3.50,
-  },
-
-  // 3. Saneamento (BESTT)
-  {
-    symbol: "SAPR11.SA",
-    name: "Sanepar - Companhia de Saneamento do Paraná",
-    currency: "BRL",
-    price: 29.80,
-    previousClose: 29.70,
-    fiftyTwoWeekHigh: 33.50,
-    fiftyTwoWeekLow: 24.20,
-    sector: "Utilities",
-    industry: "Utilities - Regulated Water",
-    dividendRate: 2.10,
-    dividendYield: 0.070,
-    fiveYearAvgDividendYield: 6.9,
-    payoutRatio: 0.50,
-    totalDebt: 5800000000,
-    ebitda: 2900000000,
-    returnOnEquity: 0.16,
-    priceToBook: 0.95,
-    trailingEps: 3.80,
-  },
-  {
-    symbol: "CSMG3.SA",
-    name: "Copasa - Companhia de Saneamento de Minas Gerais",
-    currency: "BRL",
-    price: 21.40,
-    previousClose: 21.20,
-    fiftyTwoWeekHigh: 24.00,
-    fiftyTwoWeekLow: 18.50,
-    sector: "Utilities",
-    industry: "Utilities - Regulated Water",
-    dividendRate: 1.85,
-    dividendYield: 0.086,
-    fiveYearAvgDividendYield: 7.2,
-    payoutRatio: 0.50,
-    totalDebt: 4500000000,
-    ebitda: 2600000000,
-    returnOnEquity: 0.14,
-    priceToBook: 0.92,
-    trailingEps: 2.80,
-  },
-
-  // 4. Telecomunicações (BESTT)
-  {
-    symbol: "VIVT3.SA",
-    name: "Telefônica Brasil (Vivo)",
-    currency: "BRL",
-    price: 52.40,
-    previousClose: 52.60,
-    fiftyTwoWeekHigh: 56.00,
-    fiftyTwoWeekLow: 44.00,
-    sector: "Communication Services",
-    industry: "Telecom Services",
-    dividendRate: 3.85,
-    dividendYield: 0.073,
-    fiveYearAvgDividendYield: 7.0,
-    payoutRatio: 0.85,
-    totalDebt: 18000000000,
-    ebitda: 21000000000,
-    returnOnEquity: 0.08,
-    priceToBook: 1.25,
-    trailingEps: 3.20,
-  },
-
-  // 5. Outras Grandes Pagadoras / Blue Chips B3
-  {
-    symbol: "VALE3.SA",
-    name: "Vale S.A.",
-    currency: "BRL",
-    price: 61.20,
-    previousClose: 61.50,
-    fiftyTwoWeekHigh: 76.00,
-    fiftyTwoWeekLow: 54.00,
-    sector: "Basic Materials",
-    industry: "Other Industrial Metals & Mining",
-    dividendRate: 6.20,
-    dividendYield: 0.101,
-    fiveYearAvgDividendYield: 10.5,
-    payoutRatio: 0.60,
-    totalDebt: 72000000000,
-    ebitda: 85000000000,
-    returnOnEquity: 0.19,
-    priceToBook: 1.35,
-    trailingEps: 9.40,
-  },
-  {
-    symbol: "PETR4.SA",
-    name: "Petróleo Brasileiro S.A. - Petrobras",
-    currency: "BRL",
-    price: 36.80,
-    previousClose: 36.90,
-    fiftyTwoWeekHigh: 42.50,
-    fiftyTwoWeekLow: 32.00,
-    sector: "Energy",
-    industry: "Oil & Gas Integrated",
-    dividendRate: 5.60,
-    dividendYield: 0.152,
-    fiveYearAvgDividendYield: 18.2,
-    payoutRatio: 0.55,
-    totalDebt: 310000000000,
-    ebitda: 250000000000,
-    returnOnEquity: 0.28,
-    priceToBook: 1.1,
-    trailingEps: 9.80,
-  },
-  {
-    symbol: "KLBN11.SA",
-    name: "Klabin S.A.",
-    currency: "BRL",
-    price: 21.90,
-    previousClose: 21.80,
-    fiftyTwoWeekHigh: 25.00,
-    fiftyTwoWeekLow: 19.50,
-    sector: "Basic Materials",
-    industry: "Paper & Paper Products",
-    dividendRate: 1.45,
-    dividendYield: 0.066,
-    fiveYearAvgDividendYield: 6.4,
-    payoutRatio: 0.65,
-    totalDebt: 32000000000,
-    ebitda: 7100000000,
-    returnOnEquity: 0.15,
-    priceToBook: 2.1,
-    trailingEps: 2.10,
-  },
-  {
-    symbol: "VULC3.SA",
-    name: "Vulcabras S.A.",
-    currency: "BRL",
-    price: 18.40,
-    previousClose: 18.30,
-    fiftyTwoWeekHigh: 21.00,
-    fiftyTwoWeekLow: 15.20,
-    sector: "Consumer Cyclical",
-    industry: "Footwear & Accessories",
-    dividendRate: 1.75,
-    dividendYield: 0.095,
-    fiveYearAvgDividendYield: 8.2,
-    payoutRatio: 0.78,
-    totalDebt: 550000000,
-    ebitda: 520000000,
-    returnOnEquity: 0.26,
-    priceToBook: 2.3,
-    trailingEps: 1.95,
-  },
-
-  // 6. Empresas Caras ou Neutras (Para ordenação realista)
-  {
-    symbol: "WEGE3.SA",
-    name: "WEG S.A.",
-    currency: "BRL",
-    price: 54.10,
-    previousClose: 54.20,
-    fiftyTwoWeekHigh: 57.00,
-    fiftyTwoWeekLow: 34.00,
-    sector: "Industrials",
-    industry: "Specialty Industrial Machinery",
-    dividendRate: 0.95,
-    dividendYield: 0.018,
-    fiveYearAvgDividendYield: 1.6,
-    payoutRatio: 0.52,
-    totalDebt: 4500000000,
-    ebitda: 7900000000,
-    returnOnEquity: 0.35,
-    priceToBook: 12.5,
-    trailingEps: 1.45,
-  },
-
-  // 7. Globais / Dividend Aristocrats
-  {
-    symbol: "KO",
-    name: "The Coca-Cola Company",
-    currency: "USD",
-    price: 68.50,
-    previousClose: 68.20,
-    fiftyTwoWeekHigh: 73.00,
-    fiftyTwoWeekLow: 55.00,
-    sector: "Consumer Defensive",
-    industry: "Beverages - Non-Alcoholic",
-    dividendRate: 1.94,
-    dividendYield: 0.028,
-    fiveYearAvgDividendYield: 3.1,
-    payoutRatio: 0.72,
-    totalDebt: 42000000000,
-    ebitda: 14800000000,
-    returnOnEquity: 0.41,
-    priceToBook: 10.8,
-    trailingEps: 2.65,
-  },
-  {
-    symbol: "JNJ",
-    name: "Johnson & Johnson",
-    currency: "USD",
-    price: 161.20,
-    previousClose: 160.80,
-    fiftyTwoWeekHigh: 168.00,
-    fiftyTwoWeekLow: 144.00,
-    sector: "Healthcare",
-    industry: "Drug Manufacturers - General",
-    dividendRate: 4.96,
-    dividendYield: 0.031,
-    fiveYearAvgDividendYield: 2.9,
-    payoutRatio: 0.65,
-    totalDebt: 36000000000,
-    ebitda: 31000000000,
-    returnOnEquity: 0.28,
-    priceToBook: 5.4,
-    trailingEps: 6.10,
-  },
-  {
-    symbol: "O",
-    name: "Realty Income Corporation (Monthly Dividend)",
-    currency: "USD",
-    price: 54.80,
-    previousClose: 54.90,
-    fiftyTwoWeekHigh: 64.00,
-    fiftyTwoWeekLow: 49.00,
-    sector: "Real Estate",
-    industry: "REIT - Retail",
-    dividendRate: 3.16,
-    dividendYield: 0.058,
-    fiveYearAvgDividendYield: 4.9,
-    payoutRatio: 0.78,
-    totalDebt: 24000000000,
-    ebitda: 4200000000,
-    returnOnEquity: 0.04,
-    priceToBook: 1.25,
-    trailingEps: 1.40,
-  },
-
-  // 8. Empresas em Alerta / Distressed (Lanterna da Lista com Semáforo Vermelho)
-  {
-    symbol: "OIBR3.SA",
-    name: "Oi S.A. - Em Recuperação Judicial",
-    currency: "BRL",
-    price: 3.20,
-    previousClose: 3.25,
-    fiftyTwoWeekHigh: 18.00,
-    fiftyTwoWeekLow: 2.10,
-    sector: "Communication Services",
-    industry: "Telecom Services",
-    dividendRate: 0,
-    dividendYield: 0,
-    payoutRatio: 0,
-    totalDebt: 18000000000,
-    ebitda: -1200000000,
-    returnOnEquity: -0.85,
-    trailingEps: -8.50,
-  },
-  {
-    symbol: "AMER3.SA",
-    name: "Americanas S.A. - Em Recuperação Judicial",
-    currency: "BRL",
-    price: 0.45,
-    previousClose: 0.46,
-    fiftyTwoWeekHigh: 1.80,
-    fiftyTwoWeekLow: 0.35,
-    sector: "Consumer Cyclical",
-    industry: "Internet Retail",
-    dividendRate: 0,
-    dividendYield: 0,
-    payoutRatio: 0,
-    totalDebt: 45000000000,
-    ebitda: -3400000000,
-    returnOnEquity: -1.2,
-    trailingEps: -12.40,
-  },
-  {
-    symbol: "BHIA3.SA",
-    name: "Casas Bahia Group",
-    currency: "BRL",
-    price: 4.80,
-    previousClose: 4.90,
-    fiftyTwoWeekHigh: 12.00,
-    fiftyTwoWeekLow: 3.90,
-    sector: "Consumer Cyclical",
-    industry: "Specialty Retail",
-    dividendRate: 0,
-    dividendYield: 0,
-    payoutRatio: 0,
-    totalDebt: 8500000000,
-    ebitda: -450000000,
-    returnOnEquity: -0.45,
-    trailingEps: -6.20,
-  },
-  {
-    symbol: "AZUL4.SA",
-    name: "Azul Linhas Aéreas Brasileiras",
-    currency: "BRL",
-    price: 5.60,
-    previousClose: 5.80,
-    fiftyTwoWeekHigh: 15.50,
-    fiftyTwoWeekLow: 4.80,
-    sector: "Industrials",
-    industry: "Airlines",
-    dividendRate: 0,
-    dividendYield: 0,
-    payoutRatio: 0,
-    totalDebt: 24000000000,
-    ebitda: 3100000000,
-    returnOnEquity: -0.62,
-    trailingEps: -7.10,
-  },
-];
-
-/**
- * Retorna a Hotlist completa ranqueada do MELHOR (Top 1) ao PIOR (Último colocado),
- * enriquecida com cotações recentes e score consolidado.
- */
-export async function getHotlist(): Promise<LongTermAnalysis[]> {
-  const results: LongTermAnalysis[] = [];
-
-  for (const item of HOTLIST_SEED) {
-    try {
-      // Se já estiver no cache, usa o cache (que pode ter dados ao vivo)
-      const cached = memoryCache.get(item.symbol);
-      if (cached) {
-        results.push(cached.data);
-      } else {
-        const computed = calcularAnaliseLongoPrazo(item);
-        results.push(computed);
-      }
-    } catch (_err) {
-      // Continua se falhar um item
-    }
-  }
-
-  // Ordena por Score decrescente (100 -> 0), e desempata por Margem de Segurança Bazin decrescente
-  results.sort((a, b) => {
-    if (b.score !== a.score) {
-      return b.score - a.score;
-    }
-    return b.margemSegurancaBazin - a.margemSegurancaBazin;
-  });
-
-  return results;
+  throw new Error(`Não foi possível localizar cotações e indicadores para o ativo ${rawSymbol}.`);
 }

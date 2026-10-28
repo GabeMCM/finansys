@@ -3,7 +3,7 @@ import {
   calcularAnaliseLongoPrazo,
   identificarSetorBESTT,
   normalizeSymbol,
-  getHotlist,
+  getHot100,
 } from "./market.ts";
 
 Deno.test("normalizeSymbol normaliza tickers brasileiros para .SA e mantém globais", () => {
@@ -87,14 +87,14 @@ Deno.test("calcularAnaliseLongoPrazo detecta empresa em crise/armadilha com scor
   assert(analise.score <= 30, "Score de empresa com prejuízo crônico e sem dividendo deve ser baixo");
 });
 
-Deno.test("getHotlist retorna lista ordenada do melhor ao pior ativo", async () => {
-  const hotlist = await getHotlist();
-  assert(hotlist.length >= 10, "Hotlist deve conter catálogo curado");
+Deno.test("getHot100 retorna lista de Top 100 ativos ordenados do melhor ao pior", async () => {
+  const hot100 = await getHot100();
+  assert(hot100.items.length >= 10, "Hot 100 deve conter ativos analisados");
+  assert(hot100.updatedAt > 0, "Deve ter timestamp de atualização diária");
 
-  const primeiro = hotlist[0];
-  const ultimo = hotlist[hotlist.length - 1];
+  const primeiro = hot100.items[0];
+  const ultimo = hot100.items[hot100.items.length - 1];
 
   assert(primeiro.score >= ultimo.score, "Primeiro ativo deve ter score maior ou igual ao último");
-  assertEquals(primeiro.status, "oportunidade");
-  assertEquals(ultimo.status, "alerta");
+  assert(primeiro.score >= 70, "Primeiro colocado deve ter score alto");
 });

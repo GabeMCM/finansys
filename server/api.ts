@@ -1,5 +1,5 @@
 import { MongoClient, type Db } from "mongodb";
-import { getHotlist, fetchMarketTicker } from "./market.ts";
+import { getHot100, fetchMarketTicker } from "./market.ts";
 
 /**
  * Backend da API de Autenticação e Sincronização em Nuvem (Finansys Cloud Vault).
@@ -407,11 +407,18 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
       });
     }
 
-    // 10. GET /api/market/hotlist (Ranking de Longo Prazo do Melhor ao Pior Ativo)
+    // 10. GET /api/market/hotlist (Ranking Dinâmico de Longo Prazo do Melhor ao Pior Ativo - Hot 100)
     if (url.pathname === "/api/market/hotlist" && req.method === "GET") {
       try {
-        const items = await getHotlist();
-        return json({ ok: true, items, total: items.length });
+        const forceRefresh = url.searchParams.get("refresh") === "true";
+        const res = await getHot100(forceRefresh);
+        return json({
+          ok: true,
+          items: res.items,
+          updatedAt: res.updatedAt,
+          total: res.items.length,
+          scanned: res.totalScanned,
+        });
       } catch (err: any) {
         return json({ error: "Erro ao gerar ranking de mercado: " + String(err?.message || err) }, 500);
       }

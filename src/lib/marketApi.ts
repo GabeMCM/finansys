@@ -1,23 +1,36 @@
 import type { LongTermAnalysis } from "../data/types.ts";
 
 const HOTLIST_STORAGE_KEY = "finansys_market_hotlist";
+const HOTLIST_META_STORAGE_KEY = "finansys_market_hotlist_meta";
 const TICKER_CACHE_PREFIX = "finansys_market_ticker_";
 
+export interface HotlistResponse {
+  items: LongTermAnalysis[];
+  updatedAt: number;
+  scanned?: number;
+}
+
 /**
- * Busca o ranking completo da Hotlist do backend (ou do cache local se offline).
+ * Busca o ranking do HOT 100 do backend (com opção de forçar nova varredura diária no mercado).
  */
-export async function fetchHotlist(): Promise<LongTermAnalysis[]> {
+export async function fetchHotlist(forceRefresh = false): Promise<HotlistResponse> {
   try {
-    const res = await fetch("/api/market/hotlist");
+    const url = forceRefresh ? "/api/market/hotlist?refresh=true" : "/api/market/hotlist";
+    const res = await fetch(url);
     if (res.ok) {
       const data = await res.json();
       if (data.ok && Array.isArray(data.items)) {
         try {
           localStorage.setItem(HOTLIST_STORAGE_KEY, JSON.stringify(data.items));
+          localStorage.setItem(HOTLIST_META_STORAGE_KEY, JSON.stringify({ updatedAt: data.updatedAt || Date.now() }));
         } catch (_storageErr) {
           // Ignora quota cheia
         }
-        return data.items;
+        return {
+          items: data.items,
+          updatedAt: data.updatedAt || Date.now(),
+          scanned: data.scanned,
+        };
       }
     }
   } catch (err) {
@@ -27,14 +40,20 @@ export async function fetchHotlist(): Promise<LongTermAnalysis[]> {
   // Fallback offline a partir do cache persistente local
   try {
     const local = localStorage.getItem(HOTLIST_STORAGE_KEY);
+    const meta = localStorage.getItem(HOTLIST_META_STORAGE_KEY);
     if (local) {
-      return JSON.parse(local);
+      const items = JSON.parse(local);
+      const metaObj = meta ? JSON.parse(meta) : {};
+      return {
+        items,
+        updatedAt: metaObj.updatedAt || Date.now(),
+      };
     }
   } catch (_e) {
     // Ignora erro de parse
   }
 
-  return [];
+  return { items: [], updatedAt: Date.now() };
 }
 
 /**

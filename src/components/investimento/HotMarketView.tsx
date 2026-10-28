@@ -6,12 +6,14 @@ import type { LongTermAnalysis } from "../../data/types.ts";
 
 export function HotMarketView() {
   const [items, setItems] = useState<LongTermAnalysis[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<number>(0);
+  const [totalScanned, setTotalScanned] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [filtroMercado, setFiltroMercado] = useState<"todos" | "B3" | "GLOBAL">("todos");
   const [filtroBestt, setFiltroBestt] = useState<boolean>(false);
   const [filtroStatus, setFiltroStatus] = useState<"todos" | "oportunidade" | "alerta">("todos");
-  const [ordenacao, setOrdenacao] = useState<"score" | "margem" | "yield" | "divida">("score");
+  const [ordenacao, setOrdenacao] = useState<"score" | "margem" | "yield" | "pl">("score");
 
   // Busca individual de ativo
   const [buscaTicker, setBuscaTicker] = useState<string>("");
@@ -21,11 +23,15 @@ export function HotMarketView() {
   // Ativo selecionado para o Raio-X
   const [ativoSelecionado, setAtivoSelecionado] = useState<LongTermAnalysis | null>(null);
 
-  const carregarDados = async () => {
-    setLoading(true);
+  const carregarDados = async (forceRefresh = false) => {
+    if (forceRefresh) setRefreshing(true);
+    else setLoading(true);
+
     try {
-      const lista = await fetchHotlist();
-      setItems(lista);
+      const res = await fetchHotlist(forceRefresh);
+      setItems(res.items);
+      setUpdatedAt(res.updatedAt);
+      if (res.scanned) setTotalScanned(res.scanned);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -33,7 +39,7 @@ export function HotMarketView() {
   };
 
   useEffect(() => {
-    carregarDados();
+    carregarDados(false);
   }, []);
 
   const handleBuscarTicker = async (e: Event) => {
@@ -73,10 +79,10 @@ export function HotMarketView() {
     if (ordenacao === "yield") {
       return b.dividendYield - a.dividendYield;
     }
-    if (ordenacao === "divida") {
-      const divA = a.dividaEbitda ?? 99;
-      const divB = b.dividaEbitda ?? 99;
-      return divA - divB;
+    if (ordenacao === "pl") {
+      const plA = a.pl && a.pl > 0 ? a.pl : 999;
+      const plB = b.pl && b.pl > 0 ? b.pl : 999;
+      return plA - plB;
     }
     return 0;
   });
@@ -84,6 +90,12 @@ export function HotMarketView() {
   const fmtPreco = (v: number, cur: string) => {
     const symbol = cur === "BRL" ? "R$ " : "$ ";
     return symbol + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatHoraAtualizacao = (ts: number) => {
+    if (!ts) return "Hoje";
+    const d = new Date(ts);
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " às " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   };
 
   return (
@@ -95,23 +107,21 @@ export function HotMarketView() {
             <div>
               <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; display: flex; align-items: center; gap: 6px;">
                 <Icon name="search" style="color: var(--primary);" />
-                Pesquisar Ativo Mundial (B3, EUA e Bolsas Globais)
+                Pesquisar Qualquer Ativo Mundial (B3, EUA e Exterior)
               </h3>
               <p class="muted" style="font-size: 0.8rem; margin: 4px 0 0;">
-                Consulte qualquer ação, FII ou ETF fora da Hotlist para calcular o Preço Teto Bazin e Score de Longo Prazo.
+                O ativo não está no Hot 100? Digite o código para consultar cotação ao vivo, Preço Teto Bazin e Score instantaneamente.
               </p>
             </div>
 
             <button
               class="btn btn--secondary btn--sm"
-              onClick={() => {
-                setRefreshing(true);
-                carregarDados();
-              }}
-              disabled={refreshing}
+              onClick={() => carregarDados(true)}
+              disabled={refreshing || loading}
+              title="Dispara nova varredura completa de cotações em tempo real"
             >
               <Icon name="refresh" />
-              {refreshing ? "Atualizando..." : "Recarregar Lista"}
+              {refreshing ? "Varrendo Mercado..." : "Sincronizar Cotações de Hoje"}
             </button>
           </div>
 
@@ -146,7 +156,7 @@ export function HotMarketView() {
         </div>
       </section>
 
-      {/* Cockpit de Filosofia de Investimento & Filtros */}
+      {/* Cockpit de Filosofia & Filtros */}
       <section class="card" style="padding: var(--sp-3) var(--sp-4);">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           {/* Segmentos de Mercado */}
@@ -155,26 +165,26 @@ export function HotMarketView() {
               class={`btn btn--sm ${filtroMercado === "todos" ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroMercado("todos")}
             >
-              Todos ({items.length})
+              Hot 100 Geral ({items.length})
             </button>
             <button
               class={`btn btn--sm ${filtroMercado === "B3" ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroMercado("B3")}
             >
-              🇧🇷 B3 Brasil
+              🇧🇷 B3 Brasil ({items.filter((i) => i.market === "B3").length})
             </button>
             <button
               class={`btn btn--sm ${filtroMercado === "GLOBAL" ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroMercado("GLOBAL")}
             >
-              🇺🇸 Globais
+              🇺🇸 Globais ({items.filter((i) => i.market === "GLOBAL").length})
             </button>
             <button
               class={`btn btn--sm ${filtroBestt ? "btn--primary" : "btn--secondary"}`}
               onClick={() => setFiltroBestt(!filtroBestt)}
               style={filtroBestt ? { background: "#9333ea", borderColor: "#9333ea" } : {}}
             >
-              ⭐ Apenas BESTT
+              ⭐ Apenas BESTT ({items.filter((i) => i.isBestt).length})
             </button>
             <button
               class={`btn btn--sm ${filtroStatus === "oportunidade" ? "btn--primary" : "btn--secondary"}`}
@@ -201,20 +211,26 @@ export function HotMarketView() {
               style="padding: 4px 8px; font-size: 0.8rem; height: auto;"
             >
               <option value="score">Score Geral (Melhor ao Pior)</option>
-              <option value="margem">Maior Margem Bazin</option>
+              <option value="margem">Maior Margem de Segurança Bazin</option>
               <option value="yield">Maior Dividend Yield</option>
-              <option value="divida">Menor Dívida/EBITDA</option>
+              <option value="pl">Menor P/L (Preço sobre Lucro)</option>
             </select>
           </div>
         </div>
       </section>
 
-      {/* Tabela Ranqueada: Hot Market */}
+      {/* Tabela Ranqueada: Hot 100 Diário */}
       <section class="card card--table">
-        <div class="card__head" style="display: flex; justify-content: space-between; align-items: center;">
-          <h2 class="card__title">
-            Hot Market: Ranking do Melhor ao Pior Investimento ({ordenados.length} ativos)
-          </h2>
+        <div class="card__head" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h2 class="card__title" style="display: flex; align-items: center; gap: 6px;">
+              🔥 Hot 100: Melhores Oportunidades do Mercado ({ordenados.length} listados)
+            </h2>
+            <div class="muted" style="font-size: 0.75rem; margin-top: 2px;">
+              Varredura diária de {totalScanned > 0 ? totalScanned : "160+"} empresas da B3 e Bolsas Globais • Atualizado em {formatHoraAtualizacao(updatedAt)}
+            </div>
+          </div>
+
           <span class="muted" style="font-size: 0.75rem;">
             Critérios: Barsi (BESTT) + Bazin (DY 6%) + Anti-Armadilha
           </span>
@@ -222,7 +238,7 @@ export function HotMarketView() {
 
         <div class="matriz-scroll-hint only-mobile" style="margin-bottom:var(--sp-2);">
           <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
-          <span>Deslize para ver Preço Teto, Margem, Yield, Dívida e Score</span>
+          <span>Deslize para ver Preço Teto, Margem, Yield, P/L e Score</span>
         </div>
 
         {loading ? (
@@ -244,7 +260,8 @@ export function HotMarketView() {
                   <th style="text-align: right;">Preço Teto</th>
                   <th style="text-align: right;">Margem Bazin</th>
                   <th style="text-align: right;">DY Anual</th>
-                  <th style="text-align: right;">Dív./EBITDA</th>
+                  <th style="text-align: right;">P/L</th>
+                  <th style="text-align: right;">P/VP</th>
                   <th style="text-align: center;">Score</th>
                   <th style="text-align: center;">Veredito</th>
                   <th style="width: 80px; text-align: center;">Raio-X</th>
@@ -273,6 +290,9 @@ export function HotMarketView() {
                         <div style="display: flex; align-items: center; gap: 6px;">
                           <span style="font-weight: 800; font-size: 0.85rem; color: var(--text);">
                             {item.symbol}
+                          </span>
+                          <span class="badge" style="font-size: 0.62rem; padding: 1px 4px;">
+                            {item.market}
                           </span>
                           {item.isBestt && (
                             <span
@@ -318,7 +338,11 @@ export function HotMarketView() {
                       </td>
 
                       <td class="num muted" style="text-align: right;">
-                        {item.dividaEbitda !== undefined ? `${item.dividaEbitda}x` : "—"}
+                        {item.pl && item.pl > 0 ? `${item.pl}x` : "—"}
+                      </td>
+
+                      <td class="num muted" style="text-align: right;">
+                        {item.pvp ? `${item.pvp}x` : "—"}
                       </td>
 
                       <td style="text-align: center;">
