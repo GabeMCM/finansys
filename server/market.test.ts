@@ -4,6 +4,7 @@ import {
   identificarSetorBESTT,
   normalizeSymbol,
   getHot100,
+  fetchMarketTicker,
 } from "./market.ts";
 
 Deno.test("normalizeSymbol normaliza tickers brasileiros para .SA e mantém globais", () => {
@@ -97,4 +98,14 @@ Deno.test("getHot100 retorna lista de Top 100 ativos ordenados do melhor ao pior
 
   assert(primeiro.score >= ultimo.score, "Primeiro ativo deve ter score maior ou igual ao último");
   assert(primeiro.score >= 70, "Primeiro colocado deve ter score alto");
+});
+
+Deno.test("fetchMarketTicker busca ativos com sucesso mesmo fora do cache", async () => {
+  const bbas3 = await fetchMarketTicker("BBAS3");
+  assert(bbas3.price > 0, "BBAS3 deve ter preço válido");
+  assertEquals(bbas3.symbol, "BBAS3");
+
+  const aapl = await fetchMarketTicker("AAPL");
+  assert(aapl.price > 0, "AAPL deve ter preço válido");
+  assertEquals(aapl.symbol, "AAPL");
 });

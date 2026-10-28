@@ -122,6 +122,10 @@ export function identificarSetorBESTT(sector?: string, industry?: string, symbol
 export function normalizeSymbol(rawInput: string): string {
   let sym = (rawInput || "").trim().toUpperCase();
   if (!sym) return "";
+
+  // Aliases conhecidos de migrações societárias da B3
+  if (sym === "CPLE6" || sym === "CPLE6.SA") return "CPLE3.SA";
+
   if (sym.includes(".")) return sym;
 
   // Padrão brasileiro da B3: 4 letras + dígitos (ex: PETR4, TAEE11, MXRF11)
@@ -144,13 +148,13 @@ export function calcularAnaliseLongoPrazo(raw: MarketTickerRaw): LongTermAnalysi
   // Setor BESTT
   const bestt = identificarSetorBESTT(raw.sector, raw.industry, raw.symbol);
 
-  // Dividendo anual por ação e Yield em porcentagem
-  let dividendRate = raw.dividendRate ?? raw.trailingAnnualDividendRate ?? 0;
+  // Dividendo anual por ação (prioriza proventos reais dos últimos 12 meses)
+  let dividendRate = raw.trailingAnnualDividendRate || raw.dividendRate || 0;
   let dy = 0;
-  if (raw.dividendYield !== undefined && raw.dividendYield !== null && raw.dividendYield > 0) {
-    dy = raw.dividendYield > 1.0 ? raw.dividendYield : raw.dividendYield * 100;
-  } else if (raw.trailingAnnualDividendYield !== undefined && raw.trailingAnnualDividendYield !== null && raw.trailingAnnualDividendYield > 0) {
-    dy = raw.trailingAnnualDividendYield > 1.0 ? raw.trailingAnnualDividendYield : raw.trailingAnnualDividendYield * 100;
+  if (raw.trailingAnnualDividendYield && raw.trailingAnnualDividendYield > 0) {
+    dy = raw.trailingAnnualDividendYield * 100;
+  } else if (raw.dividendYield && raw.dividendYield > 0) {
+    dy = raw.dividendYield;
   }
 
   if (dy === 0 && dividendRate > 0 && price > 0) {
@@ -371,8 +375,8 @@ export const MARKET_UNIVERSE_SYMBOLS: string[] = [
   "BBSE3.SA", "CXSE3.SA", "PSSA3.SA", "IRBR3.SA",
 
   // 3. B3 - Energia Elétrica & Transmissão (BESTT)
-  "TAEE11.SA", "TRPL4.SA", "CPLE6.SA", "EGIE3.SA", "ALUP11.SA", "CMIG4.SA", "CMIG3.SA",
-  "NEOE3.SA", "EQTL3.SA", "ENGI11.SA", "CPFE3.SA", "AURE3.SA", "ELET3.SA", "ELET6.SA",
+  "TAEE11.SA", "CPLE3.SA", "EGIE3.SA", "ALUP11.SA", "CMIG4.SA", "CMIG3.SA",
+  "EQTL3.SA", "ENGI11.SA", "CPFE3.SA", "AURE3.SA",
 
   // 4. B3 - Saneamento e Água (BESTT)
   "SAPR11.SA", "SAPR4.SA", "CSMG3.SA", "SBSP3.SA", "AMBP3.SA",
@@ -387,20 +391,19 @@ export const MARKET_UNIVERSE_SYMBOLS: string[] = [
   // 7. B3 - Consumo, Varejo, Indústria e Saúde
   "ABEV3.SA", "WEGE3.SA", "VULC3.SA", "MDIA3.SA", "GRND3.SA", "CAML3.SA", "LEVE3.SA",
   "SHUL4.SA", "KEPL3.SA", "TUPY3.SA", "POMO4.SA", "RAPT4.SA", "LREN3.SA", "ALOS3.SA",
-  "ASAI3.SA", "CRFB3.SA", "SMTO3.SA", "SLCE3.SA", "RADL3.SA", "HYPE3.SA", "FLRY3.SA",
-  "ODPV3.SA", "CYRE3.SA", "EZTC3.SA", "DIRR3.SA", "MRVE3.SA", "RENT3.SA", "EMBR3.SA",
-  "STBP3.SA", "RAIL3.SA", "CCRO3.SA",
+  "ASAI3.SA", "SMTO3.SA", "SLCE3.SA", "RADL3.SA", "HYPE3.SA", "FLRY3.SA",
+  "CYRE3.SA", "EZTC3.SA", "DIRR3.SA", "MRVE3.SA", "RENT3.SA", "RAIL3.SA",
 
   // 8. B3 - Fundos Imobiliários (FIIs)
   "HGLG11.SA", "MXRF11.SA", "KNCR11.SA", "XPML11.SA", "XPLG11.SA", "VISC11.SA", "BTLG11.SA", "KNRI11.SA", "HGRU11.SA", "CPTS11.SA",
 
   // 9. B3 - Empresas em Alerta / Estresse
-  "OIBR3.SA", "AMER3.SA", "BHIA3.SA", "AZUL4.SA", "GOLL4.SA", "CVCB3.SA",
+  "OIBR3.SA", "AMER3.SA", "BHIA3.SA", "CVCB3.SA",
 
   // 10. Globais - S&P 500 Dividend Aristocrats & Kings (25 a 50+ anos de dividendos crescentes)
   "KO", "PEP", "JNJ", "PG", "MMM", "ABBV", "CVX", "XOM", "MCD", "O", "IBM", "T", "VZ", "MO", "PM",
   "CAT", "EMR", "GPC", "LOW", "WMT", "CL", "SYY", "ED", "BDX", "ITW", "PPG", "TGT", "ADM", "ADP",
-  "AFL", "APD", "BKH", "CINF", "DOV", "FRT", "HRL", "KMB", "NUE", "PNR", "SHW", "SWK", "WBA", "ABT",
+  "AFL", "APD", "BKH", "CINF", "DOV", "FRT", "HRL", "KMB", "NUE", "PNR", "SHW", "SWK", "ABT",
   "CB", "CLX", "GD", "GWW", "LIN", "MDT", "MKC", "NEE", "ROP", "SPGI",
 
   // 11. Globais - Mega Caps & Finanças Globais
@@ -544,6 +547,46 @@ export async function getHot100(forceRefresh = false): Promise<{
 }
 
 /**
+ * Fallback resiliente usando o endpoint de Chart do Yahoo Finance (não requer crumb nem cookie).
+ * Obtém preço em tempo real e soma todos os dividendos em dinheiro distribuídos nos últimos 12 meses.
+ */
+async function fetchChartTicker(symbol: string): Promise<MarketTickerRaw | null> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y&events=div`;
+    const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const meta = data.chart?.result?.[0]?.meta;
+    const price = meta?.regularMarketPrice || meta?.chartPreviousClose || 0;
+    if (!meta || price <= 0) return null;
+
+    const divs = data.chart?.result?.[0]?.events?.dividends || {};
+    let sumDivs = 0;
+    for (const k of Object.keys(divs)) {
+      if (typeof divs[k]?.amount === "number") {
+        sumDivs += divs[k].amount;
+      }
+    }
+
+    return {
+      symbol,
+      name: meta.longName || meta.shortName || symbol,
+      currency: meta.currency || (symbol.endsWith(".SA") ? "BRL" : "USD"),
+      price,
+      previousClose: meta.chartPreviousClose || price,
+      fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || price,
+      fiftyTwoWeekLow: meta.fiftyTwoWeekLow || price,
+      dividendRate: sumDivs,
+      dividendYield: price > 0 ? (sumDivs / price) * 100 : 0,
+    };
+  } catch (err) {
+    console.warn(`[Market Engine] Fallback de chart falhou para ${symbol}:`, err);
+    return null;
+  }
+}
+
+/**
  * Consulta um ativo individual específico (da busca ou fora do Hot 100).
  */
 export async function fetchMarketTicker(rawSymbol: string): Promise<LongTermAnalysis> {
@@ -552,17 +595,27 @@ export async function fetchMarketTicker(rawSymbol: string): Promise<LongTermAnal
     throw new Error("Símbolo do ativo inválido.");
   }
 
-  // Primeiro verifica se o ativo já foi analisado no Hot 100 recente
+  // 1. Primeiro verifica se o ativo já foi analisado no Hot 100 recente
   if (_cachedHot100) {
     const clean = symbol.replace(".SA", "");
     const found = _cachedHot100.find((it) => it.symbol === clean || it.symbol === symbol);
     if (found) return found;
   }
 
-  // Caso contrário, busca na API externa
-  const quotes = await fetchBatchQuotes([symbol]);
-  if (quotes.length > 0) {
-    return calcularAnaliseLongoPrazo(quotes[0]);
+  // 2. Busca na API em lote com múltiplos completos
+  try {
+    const quotes = await fetchBatchQuotes([symbol]);
+    if (quotes.length > 0 && quotes[0].price > 0) {
+      return calcularAnaliseLongoPrazo(quotes[0]);
+    }
+  } catch (_batchErr) {
+    // Continua para o fallback de chart
+  }
+
+  // 3. Fallback resiliente via endpoint /v8/finance/chart (sempre disponível, sem crumb)
+  const chartQuote = await fetchChartTicker(symbol);
+  if (chartQuote) {
+    return calcularAnaliseLongoPrazo(chartQuote);
   }
 
   throw new Error(`Não foi possível localizar cotações e indicadores para o ativo ${rawSymbol}.`);
