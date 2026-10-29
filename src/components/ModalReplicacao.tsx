@@ -153,6 +153,7 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
       title={modalTitle}
       isOpen={isOpen}
       onClose={onClose}
+      size="xl"
       subtela={true}
       footer={
         etapa === "config" ? (
@@ -343,7 +344,7 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
             Valores Mês a Mês ({anoDestino})
           </div>
 
-          <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--sp-2); max-height: 280px; overflow-y: auto; padding-right: 4px;">
+          <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-3); max-height: 480px; overflow-y: auto; padding-right: 6px;">
             {MONTHS.map((mNome, mIdx) => (
               <div key={mIdx} class="form-group" style="margin-bottom:0;">
                 <label class="form-label" style="font-size:11px;font-weight:600;margin-bottom:2px;">
@@ -398,16 +399,16 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
             </span>
           </div>
 
-          <div class="table-wrap" style="max-height:280px;overflow-y:auto;">
-            <table class="data-table">
+          <div class="table-wrap" style="max-height:480px;overflow-y:auto;width:100%;">
+            <table class="data-table" style="width:100%;">
               <thead>
                 <tr>
-                  <th>Conta</th>
-                  <th>Natureza</th>
-                  <th>Total Base</th>
-                  <th>Novo Total</th>
-                  <th>Diferença</th>
-                  <th style="text-align:center;min-width:90px;">Ações</th>
+                  <th style="min-width:180px;">Conta</th>
+                  <th style="min-width:100px;">Natureza</th>
+                  <th class="num" style="min-width:110px;">Total Base</th>
+                  <th class="num" style="min-width:110px;">Novo Total</th>
+                  <th class="num" style="min-width:110px;">Diferença</th>
+                  <th style="text-align:center;min-width:100px;">Ações</th>
                 </tr>
               </thead>
               <tbody>

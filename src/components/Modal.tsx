@@ -10,7 +10,7 @@ export interface ModalProps {
   footer?: ComponentChildren;
   subtela?: boolean;
   zIndex?: number;
-  size?: "md" | "lg";
+  size?: "md" | "lg" | "xl";
   aside?: ComponentChildren;
   onSubmitShortcut?: () => void;
 }
@@ -52,7 +52,7 @@ export function Modal({
       }}
     >
       <div
-        class={`modal ${size === "lg" ? "modal--lg" : ""} ${subtela ? "modal--subscreen" : ""}`}
+        class={`modal ${size === "xl" ? "modal--xl" : size === "lg" ? "modal--lg" : ""} ${subtela ? "modal--subscreen" : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"

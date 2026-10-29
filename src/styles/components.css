@@ -1080,6 +1080,10 @@
 .modal--lg {
   max-width: 940px;
 }
+.modal--xl {
+  max-width: 1200px;
+  width: 95vw;
+}
 .modal__layout {
   display: grid;
   grid-template-columns: 1fr 310px;
