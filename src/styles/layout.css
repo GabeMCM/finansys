@@ -18,6 +18,7 @@
   padding-left: calc(var(--page-pad) + var(--safe-l));
   padding-right: calc(var(--page-pad) + var(--safe-r));
   display: flex; align-items: center; gap: var(--sp-2);
+  flex-wrap: nowrap;
   background: var(--chrome-bg);
   backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
   border-bottom: 1px solid var(--border);

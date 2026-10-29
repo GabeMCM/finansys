@@ -41,8 +41,8 @@ export function ModalMovimentoReserva({
   const [tipo, setTipo] = useState<TipoMovimentoReserva>(initialTipo);
   const [valorCentavos, setValorCentavos] = useState<number>(0);
   const [data, setData] = useState<string>("");
-  const [bancoId, setBancoId] = useState<string>("");
-  const [bancoDestinoId, setBancoDestinoId] = useState<string>("");
+  const [bancoId, setBancoId] = useState<string>(""); // Origem (de onde sai)
+  const [bancoDestinoId, setBancoDestinoId] = useState<string>(""); // Destino (para onde vai)
   const [obs, setObs] = useState<string>("");
   const [salvando, setSalvando] = useState<boolean>(false);
 
@@ -64,18 +64,22 @@ export function ModalMovimentoReserva({
       setValorCentavos(0);
       setObs("");
 
-      // Se a reserva tem conta bancária vinculada, sugere como padrão
+      // Se a reserva tem conta bancária vinculada, sugere de forma inteligente
       const resObj = reservas.find((r) => r.id === defaultReservaId);
       const bancoVinculado = contasBancarias.find(
         (b) => (resObj?.contaBancariaId && b.id === resObj.contaBancariaId) || (b.reservaVinculadaId === defaultReservaId),
       );
 
+      const bancosValidos = contasBancarias.filter((b) => b.ativa !== false);
+
       if (initialTipo === "aporte") {
-        setBancoId(bancoVinculado ? bancoVinculado.id : "");
-        setBancoDestinoId("");
+        setBancoId(""); // Saída opcional (vazio = entrada livre / presente / aporte externo)
+        setBancoDestinoId(bancoVinculado ? bancoVinculado.id : "");
       } else if (initialTipo === "resgate") {
-        setBancoId(bancoVinculado ? bancoVinculado.id : (contasBancarias.length > 0 ? contasBancarias[0].id : ""));
-        setBancoDestinoId("");
+        setBancoId(bancoVinculado ? bancoVinculado.id : ""); // Origem do resgate
+        // Destino onde cai o resgate: primeira conta corrente disponível ou primeira ativa
+        const destinoSugerido = bancosValidos.find((b) => b.id !== bancoVinculado?.id) || bancosValidos[0];
+        setBancoDestinoId(destinoSugerido ? destinoSugerido.id : "");
       } else {
         setBancoId("");
         setBancoDestinoId("");
@@ -97,9 +101,13 @@ export function ModalMovimentoReserva({
       return;
     }
 
-    // Regra Contábil / Bancária: Em resgate, é obrigatório informar onde o dinheiro cai
-    if (tipo === "resgate" && !bancoId) {
+    // Regra Contábil / Bancária: Em resgate, é obrigatório informar a conta de destino onde o dinheiro cai
+    if (tipo === "resgate" && !bancoDestinoId && !bancoId) {
       toast.error("Informe a conta bancária onde o valor resgatado será depositado.");
+      return;
+    }
+    if (tipo === "resgate" && !bancoDestinoId) {
+      toast.error("Informe a conta bancária de destino onde o valor resgatado será depositado.");
       return;
     }
 
@@ -221,7 +229,7 @@ export function ModalMovimentoReserva({
               type="button"
               class="btn btn--primary"
               onClick={() => handleSubmit()}
-              disabled={salvando || valorCentavos <= 0 || !reservaId || (tipo === "resgate" && !bancoId)}
+              disabled={salvando || valorCentavos <= 0 || !reservaId || (tipo === "resgate" && !bancoDestinoId)}
             >
               <Icon name="check" /> {salvando ? "Salvando..." : "Confirmar Lançamento"}
             </button>
@@ -238,6 +246,11 @@ export function ModalMovimentoReserva({
               type="button"
               onClick={() => {
                 setTipo("aporte");
+                // Sugere destino vinculado à reserva se existir
+                const rSel = reservas.find((item) => item.id === reservaId);
+                if (rSel?.contaBancariaId) {
+                  setBancoDestinoId(rSel.contaBancariaId);
+                }
               }}
               class={`tab ${tipo === "aporte" ? "is-active" : ""}`}
               style={tipo === "aporte" ? "background: var(--in); color: #fff; font-weight:700;" : ""}
@@ -248,8 +261,13 @@ export function ModalMovimentoReserva({
               type="button"
               onClick={() => {
                 setTipo("resgate");
-                if (!bancoId && bancosAtivos.length > 0) {
-                  setBancoId(bancosAtivos[0].id);
+                const rSel = reservas.find((item) => item.id === reservaId);
+                if (rSel?.contaBancariaId) {
+                  setBancoId(rSel.contaBancariaId); // Origem de onde sai
+                }
+                if (!bancoDestinoId && bancosAtivos.length > 0) {
+                  const dest = bancosAtivos.find((b) => b.id !== rSel?.contaBancariaId) || bancosAtivos[0];
+                  setBancoDestinoId(dest.id);
                 }
               }}
               class={`tab ${tipo === "resgate" ? "is-active" : ""}`}
@@ -297,10 +315,13 @@ export function ModalMovimentoReserva({
               }))}
               onChange={(val) => {
                 setReservaId(val);
-                // Atualiza sugestão de banco se a reserva tiver vínculo
                 const rSel = reservas.find((item) => item.id === val);
                 if (rSel?.contaBancariaId) {
-                  setBancoId(rSel.contaBancariaId);
+                  if (tipo === "aporte") {
+                    setBancoDestinoId(rSel.contaBancariaId);
+                  } else if (tipo === "resgate") {
+                    setBancoId(rSel.contaBancariaId);
+                  }
                 }
               }}
               placeholder="Selecione a reserva..."
@@ -320,71 +341,126 @@ export function ModalMovimentoReserva({
           </div>
         </div>
 
-        {/* Bloco de Instituições Bancárias */}
+        {/* Bloco de Instituições Bancárias: Aporte / Aplicação (Origem e Destino) */}
         {tipo === "aporte" && (
           <div class="stack" style="gap:var(--sp-2);background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);">
             <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;display:flex;align-items:center;gap:6px;">
               <Icon name="bank" style="width:13px;height:13px;color:var(--primary);" />
-              <span>Instituição Bancária (Origem do Recurso)</span>
+              <span>Instituições Bancárias (Origem & Destino da Aplicação)</span>
             </div>
 
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" for="mov-banco-origem">
-                Conta Bancária de Saída
-              </label>
-              <CustomSelect
-                id="mov-banco-origem"
-                value={bancoId}
-                options={[
-                  { value: "", label: "Nenhuma (Entrada Livre / Presente / Aporte Externo)" },
-                  ...bancosAtivos.map((b) => ({
-                    value: b.id,
-                    label: `${b.nome} (${b.tipo === "investimento" ? "Investimento" : b.tipo === "poupanca" ? "Poupança" : "Conta Corrente"})`,
-                    icon: "bank" as const,
-                  })),
-                ]}
-                onChange={(val) => setBancoId(val)}
-                placeholder="Selecione a conta de onde saiu o valor..."
-              />
-              <span class="muted" style="font-size:var(--fs-xs);margin-top:6px;display:block;">
-                {bancoId
-                  ? `O valor de ${valorCentavos > 0 ? money(valorCentavos) : "R$ 0,00"} será debitado do saldo da conta bancária selecionada.`
-                  : "Entrada livre: o valor incrementará sua reserva diretamente, sem debitar de nenhuma conta bancária cadastrada."}
-              </span>
+            <div class="form-row form-row--2">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="mov-banco-origem">
+                  Conta de Saída (Origem)
+                </label>
+                <CustomSelect
+                  id="mov-banco-origem"
+                  value={bancoId}
+                  options={[
+                    { value: "", label: "Nenhuma (Entrada Livre / Presente / Aporte Externo)" },
+                    ...bancosAtivos.map((b) => ({
+                      value: b.id,
+                      label: `${b.nome} (${b.tipo === "investimento" ? "Invest." : b.tipo === "poupanca" ? "Poupança" : "Corrente"})`,
+                      icon: "bank" as const,
+                    })),
+                  ]}
+                  onChange={(val) => setBancoId(val)}
+                  placeholder="De onde saiu o dinheiro..."
+                />
+                <span class="muted" style="font-size:11px;margin-top:4px;display:block;">
+                  {bancoId
+                    ? `Saída de ${valorCentavos > 0 ? money(valorCentavos) : "R$ 0,00"} desta conta.`
+                    : "Entrada livre (não debita de nenhum banco cadastrado)."}
+                </span>
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="mov-banco-destino">
+                  Conta de Destino (Onde aplica)
+                </label>
+                <CustomSelect
+                  id="mov-banco-destino"
+                  value={bancoDestinoId}
+                  options={[
+                    { value: "", label: "Nenhuma (Custódia Direta na Reserva)" },
+                    ...bancosAtivos.map((b) => ({
+                      value: b.id,
+                      label: `${b.nome} (${b.tipo === "investimento" ? "Invest." : b.tipo === "poupanca" ? "Poupança" : "Corrente"})`,
+                      icon: "bank" as const,
+                    })),
+                  ]}
+                  onChange={(val) => setBancoDestinoId(val)}
+                  placeholder="Onde fica aplicado..."
+                />
+                <span class="muted" style="font-size:11px;margin-top:4px;display:block;">
+                  {bancoDestinoId
+                    ? "Creditado na posição desta conta/corretora."
+                    : "Registrado diretamente na caixinha patrimonial."}
+                </span>
+              </div>
             </div>
           </div>
         )}
 
+        {/* Bloco de Instituições Bancárias: Resgate / Retirada (Origem e Destino) */}
         {tipo === "resgate" && (
           <div class="stack" style="gap:var(--sp-2);background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);">
             <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;display:flex;align-items:center;gap:6px;">
               <Icon name="bank" style="width:13px;height:13px;color:var(--aporte);" />
-              <span>Instituição Bancária (Destino do Resgate) *</span>
+              <span>Instituições Bancárias (Origem do Resgate & Destino)</span>
             </div>
 
-            <div class="form-group" style="margin-bottom:0;">
-              <label class="form-label" for="mov-banco-destino">
-                Conta Bancária Onde Cai o Dinheiro *
-              </label>
-              <CustomSelect
-                id="mov-banco-destino"
-                value={bancoId}
-                options={[
-                  ...(bancosAtivos.length === 0 ? [{ value: "", label: "Nenhuma conta bancária cadastrada" }] : []),
-                  ...bancosAtivos.map((b) => ({
-                    value: b.id,
-                    label: `${b.nome} (${b.tipo === "investimento" ? "Investimento" : b.tipo === "poupanca" ? "Poupança" : "Conta Corrente"})`,
-                    icon: "bank" as const,
-                  })),
-                ]}
-                onChange={(val) => setBancoId(val)}
-                placeholder="Selecione onde o resgate será depositado..."
-              />
-              <span class="muted" style="font-size:var(--fs-xs);margin-top:6px;display:block;">
-                {bancoId
-                  ? `O valor de ${valorCentavos > 0 ? money(valorCentavos) : "R$ 0,00"} sairá da reserva e será creditado no saldo desta conta bancária.`
-                  : "Obrigatório: informe a conta bancária para manter a integridade dos seus saldos."}
-              </span>
+            <div class="form-row form-row--2">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="mov-banco-origem-resg">
+                  Conta de Origem (De onde sai)
+                </label>
+                <CustomSelect
+                  id="mov-banco-origem-resg"
+                  value={bancoId}
+                  options={[
+                    { value: "", label: "Nenhuma (Resgate Direto da Reserva)" },
+                    ...bancosAtivos.map((b) => ({
+                      value: b.id,
+                      label: `${b.nome} (${b.tipo === "investimento" ? "Invest." : b.tipo === "poupanca" ? "Poupança" : "Corrente"})`,
+                      icon: "bank" as const,
+                    })),
+                  ]}
+                  onChange={(val) => setBancoId(val)}
+                  placeholder="De onde o resgate sai..."
+                />
+                <span class="muted" style="font-size:11px;margin-top:4px;display:block;">
+                  {bancoId
+                    ? "Sairá da custódia desta conta/corretora."
+                    : "Sai direto do saldo da reserva patrimonial."}
+                </span>
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="mov-banco-destino-resg">
+                  Conta de Destino (Onde cai o resgate) *
+                </label>
+                <CustomSelect
+                  id="mov-banco-destino-resg"
+                  value={bancoDestinoId}
+                  options={[
+                    ...(bancosAtivos.length === 0 ? [{ value: "", label: "Nenhuma conta bancária cadastrada" }] : []),
+                    ...bancosAtivos.map((b) => ({
+                      value: b.id,
+                      label: `${b.nome} (${b.tipo === "investimento" ? "Invest." : b.tipo === "poupanca" ? "Poupança" : "Corrente"})`,
+                      icon: "bank" as const,
+                    })),
+                  ]}
+                  onChange={(val) => setBancoDestinoId(val)}
+                  placeholder="Selecione onde o resgate cai..."
+                />
+                <span class="muted" style="font-size:11px;margin-top:4px;display:block;">
+                  {bancoDestinoId
+                    ? `Entrada de ${valorCentavos > 0 ? money(valorCentavos) : "R$ 0,00"} creditada nesta conta.`
+                    : "Obrigatório: indique a conta bancária que receberá o resgate."}
+                </span>
+              </div>
             </div>
           </div>
         )}

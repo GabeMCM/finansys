@@ -251,4 +251,62 @@ Deno.test("calcularPosicaoBancos consolida saldo inicial, entradas, saídas e re
   assertEquals(pos.totalSaldoAtual, 18_500_00);
 });
 
+Deno.test("calcularPosicaoBancos processa aportes e resgates com banco de origem e destino simultaneos", () => {
+  const bOrigem: ContaBancaria = { ...base, id: "b_origem", empresaId: "e", nome: "Itaú Corrente", saldoInicialCentavos: 10_000_00, ativa: true };
+  const bDestino: ContaBancaria = { ...base, id: "b_destino", empresaId: "e", nome: "XP Investimentos", saldoInicialCentavos: 2_000_00, ativa: true };
+
+  // Aporte: sai do Itaú e entra na XP
+  const movAporte: ReservaMovimento = {
+    ...base,
+    id: "m_ap",
+    empresaId: "e",
+    anoId: "a",
+    reservaId: "r1",
+    tipo: "aporte",
+    valor: 3_000_00,
+    data: "2026-02-01",
+    mes: 1,
+    bancoId: "b_origem",
+    bancoDestinoId: "b_destino",
+  };
+
+  // Resgate: sai da XP e entra no Itaú
+  const movResgate: ReservaMovimento = {
+    ...base,
+    id: "m_resg",
+    empresaId: "e",
+    anoId: "a",
+    reservaId: "r1",
+    tipo: "resgate",
+    valor: 1_000_00,
+    data: "2026-02-10",
+    mes: 1,
+    bancoId: "b_destino",
+    bancoDestinoId: "b_origem",
+  };
+
+  const pos = calcularPosicaoBancos([bOrigem, bDestino], [], [], [movAporte, movResgate]);
+
+  // Itaú:
+  // Saldo Inicial = 10.000,00
+  // Saída = 3.000,00 (Aporte)
+  // Entrada = 1.000,00 (Resgate)
+  // Saldo Atual = 8.000,00
+  const posOrigem = pos.bancos.find((b) => b.banco.id === "b_origem")!;
+  assertEquals(posOrigem.saldoAtual, 8_000_00);
+  assertEquals(posOrigem.totalSaidas, 3_000_00);
+  assertEquals(posOrigem.totalEntradas, 1_000_00);
+
+  // XP:
+  // Saldo Inicial = 2.000,00
+  // Entrada = 3.000,00 (Aporte)
+  // Saída = 1.000,00 (Resgate)
+  // Saldo Atual = 4.000,00
+  const posDestino = pos.bancos.find((b) => b.banco.id === "b_destino")!;
+  assertEquals(posDestino.saldoAtual, 4_000_00);
+  assertEquals(posDestino.totalEntradas, 3_000_00);
+  assertEquals(posDestino.totalSaidas, 1_000_00);
+});
+
+
 

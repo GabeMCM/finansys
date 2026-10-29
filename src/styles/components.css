@@ -881,6 +881,22 @@
   border-color: var(--primary);
 }
 
+.relatorios-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  overflow-x: auto;
+  max-width: 100%;
+  padding-bottom: 2px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.relatorios-header-actions::-webkit-scrollbar {
+  display: none;
+}
+
 @media (max-width: 640px) {
   .date-filter-row {
     flex-direction: column;
@@ -913,17 +929,17 @@
   }
 
   .relatorios-header-actions {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    gap: 6px !important;
     width: 100%;
+    padding-bottom: 4px;
   }
-  .relatorios-header-actions .btn {
-    width: 100%;
-    min-height: 40px;
-    justify-content: center;
-    font-size: var(--fs-xs);
-    padding: 0 8px;
+  .relatorios-header-actions .btn,
+  .relatorios-header-actions .chip {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
   }
 
   .informe-header {

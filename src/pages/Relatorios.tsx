@@ -374,29 +374,29 @@ export function Relatorios() {
     <>
       <div class="page-head no-print">
         <div>
-          <h1>Visão Geral & Relatório Financeiro</h1>
-          <p>Demonstrativo Projetado × Real por período personalizado de {emp.nome}</p>
+          <h1>Visão Geral</h1>
+          <p>Demonstrativo Projetado × Real de {emp.nome}</p>
         </div>
 
-        <div class="relatorios-header-actions" style="display:flex;gap:var(--sp-2);flex-wrap:wrap;align-items:center;">
-          <label class="chip" style="cursor:pointer;user-select:none;gap:6px;min-height:36px;" title="Inclui livro-razão analítico de todas as transações para servir como backup completo contra perda de dados">
+        <div class="relatorios-header-actions">
+          <label class="chip chip--compact" style="cursor:pointer;user-select:none;gap:5px;min-height:30px;white-space:nowrap;flex-shrink:0;" title="Inclui livro-razão analítico completo no relatório para servir como backup seguro contra perda de dados">
             <input
               type="checkbox"
               checked={incluirRazaoAnalitico}
               onChange={(e) => setIncluirRazaoAnalitico((e.target as HTMLInputElement).checked)}
               style="cursor:pointer;"
             />
-            <span style="font-size:var(--fs-xs);font-weight:600;">Incluir Lançamentos Analíticos (Backup)</span>
+            <span style="font-size:var(--fs-xs);font-weight:600;">Razão Analítico (Backup)</span>
           </label>
 
-          <button type="button" class="btn btn--secondary" onClick={exportarCSV} title="Exportar tabela para CSV/Excel">
-            <Icon name="download" /> Exportar CSV
+          <button type="button" class="btn btn--secondary btn--sm" style="white-space:nowrap;flex-shrink:0;" onClick={exportarCSV} title="Exportar tabela para CSV/Excel">
+            <Icon name="download" /> CSV
           </button>
-          <button type="button" class="btn btn--secondary" onClick={exportarJSON} title="Exportar dados brutos em JSON">
+          <button type="button" class="btn btn--secondary btn--sm" style="white-space:nowrap;flex-shrink:0;" onClick={exportarJSON} title="Exportar dados brutos em JSON">
             JSON
           </button>
-          <button type="button" class="btn btn--primary" onClick={imprimirPDF} title="Gerar relatório impresso / PDF formal seguro">
-            <Icon name="download" /> Imprimir / PDF Seguro
+          <button type="button" class="btn btn--primary btn--sm" style="white-space:nowrap;flex-shrink:0;" onClick={imprimirPDF} title="Gerar relatório impresso / PDF formal seguro">
+            <Icon name="download" /> Imprimir / PDF
           </button>
         </div>
       </div>
