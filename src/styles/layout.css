@@ -281,6 +281,7 @@
 /* ================= Desktop ================= */
 @media (min-width: 1024px) {
   .shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; }
+  .shell.has-pinned-panel { display: grid; grid-template-columns: var(--sidebar-w) 1fr 340px; }
   .bottomnav, .fab, .topbar__brand { display: none; }
 
   .sidebar {

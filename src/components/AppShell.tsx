@@ -7,6 +7,7 @@ import { ModalAuth } from "./ModalAuth.tsx";
 import { ModalBloqueioInatividade } from "./ModalBloqueioInatividade.tsx";
 import { ModalConfirm } from "./ModalConfirm.tsx";
 import { ModalSessionRevoked } from "./ModalSessionRevoked.tsx";
+import { PainelNotificacoes, useDiagnosticoFinanceiro } from "./PainelNotificacoes.tsx";
 import { ToastContainer } from "./Toast.tsx";
 import { useLive } from "../data/useLive.ts";
 import { anos, empresas } from "../data/repo.ts";
@@ -44,6 +45,19 @@ export function AppShell({ route, children }: { route: string; children: Compone
   const listaAnos = useLive(() => (empId ? anos.byEmpresa(empId) : Promise.resolve([])), [empId], []);
 
   const [authModalAberta, setAuthModalAberta] = useState(false);
+  const { resumo } = useDiagnosticoFinanceiro(empId, anoAtivo.value);
+  const [painelNotifAberto, setPainelNotifAberto] = useState(false);
+  const [painelNotifPinned, setPainelNotifPinned] = useState(() => {
+    return localStorage.getItem("finansys_notif_pinned") === "true";
+  });
+
+  const togglePinPainel = () => {
+    setPainelNotifPinned((prev) => {
+      const next = !prev;
+      localStorage.setItem("finansys_notif_pinned", String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     // Solicita login/criação de conta logo ao abrir a página se o usuário ainda não estiver autenticado
@@ -54,7 +68,7 @@ export function AppShell({ route, children }: { route: string; children: Compone
   }, [cloudUser.value]);
 
   return (
-    <div class="shell">
+    <div class={`shell ${painelNotifAberto && painelNotifPinned ? "has-pinned-panel" : ""}`}>
       {/* Desktop */}
       <aside class="sidebar" aria-label="Navegação principal">
         <div class="sidebar__brand">
@@ -111,6 +125,26 @@ export function AppShell({ route, children }: { route: string; children: Compone
           )}
 
           <div class="topbar__spacer" />
+
+          {/* Botão de Notificações e Diagnósticos (Desktop e Mobile) */}
+          <button
+            type="button"
+            class={`btn btn--ghost btn--icon ${painelNotifAberto ? "is-active" : ""}`}
+            style="position:relative;min-height:34px;width:34px;"
+            onClick={() => setPainelNotifAberto(!painelNotifAberto)}
+            title="Diagnóstico Financeiro e Notificações"
+            aria-label="Abrir notificações e diagnósticos"
+          >
+            <Icon name="bell" style="width:18px;height:18px;" />
+            {resumo.total > 0 && (
+              <span
+                class={`notif-badge ${resumo.criticos > 0 ? "" : "notif-badge--warn"}`}
+                style="position:absolute;top:2px;right:2px;"
+              >
+                {resumo.total}
+              </span>
+            )}
+          </button>
 
           {/* Ações de Topo para Desktop (escondidas no Mobile) */}
           <div class="hide-mobile" style="display:inline-flex;align-items:center;gap:var(--sp-2);">
@@ -194,6 +228,17 @@ export function AppShell({ route, children }: { route: string; children: Compone
 
         <main class="main" key={route}>{children}</main>
       </div>
+
+      {/* Terceira Div Vertical: Painel de Notificações & Diagnósticos */}
+      {painelNotifAberto && !painelNotifPinned && (
+        <div class="notif-backdrop" onClick={() => setPainelNotifAberto(false)} />
+      )}
+      <PainelNotificacoes
+        isOpen={painelNotifAberto}
+        isPinned={painelNotifPinned}
+        onClose={() => setPainelNotifAberto(false)}
+        onTogglePin={togglePinPainel}
+      />
 
       {/* Mobile */}
       <a id="fab-new" href="#/realizacoes/novo" class="fab" aria-label="Nova realização">

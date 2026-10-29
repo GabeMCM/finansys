@@ -2650,3 +2650,215 @@
 }
 
 .print-only { display: none; }
+
+/* ---------- Terceira Div Vertical: Painel de Notificações & Diagnósticos ---------- */
+.notif-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: var(--r-full);
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #fff;
+  background: var(--out);
+  box-shadow: 0 0 0 2px var(--chrome-bg);
+  line-height: 1;
+}
+
+.notif-badge--warn {
+  background: var(--warn);
+  color: #111;
+}
+
+.notif-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: hsl(0 0% 0% / 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: fade-in var(--t-fast) var(--ease);
+}
+
+.notif-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--chrome-bg);
+  z-index: 60;
+  box-sizing: border-box;
+}
+
+.notif-panel--floating {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(380px, 100vw);
+  box-shadow: -10px 0 35px hsl(0 0% 0% / 0.3);
+  animation: slide-in-right var(--t) var(--ease);
+}
+
+.notif-panel--pinned {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  width: 340px;
+  border-left: 1px solid var(--border);
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.notif-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--chrome-bg);
+}
+
+.notif-panel__head-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  background: var(--surface-soft);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+}
+
+.notif-panel__title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--text);
+}
+
+.notif-panel__filters {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  background: var(--surface-sunken);
+  scrollbar-width: none;
+}
+.notif-panel__filters::-webkit-scrollbar {
+  display: none;
+}
+
+.notif-panel__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notif-card {
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-solid);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 1px 3px hsl(0 0% 0% / 0.05);
+  transition: transform var(--t-fast);
+}
+
+.notif-card--critica {
+  border-left: 3px solid var(--out);
+  background: color-mix(in srgb, var(--out) 5%, var(--surface-solid));
+}
+
+.notif-card--alta {
+  border-left: 3px solid var(--out);
+}
+
+.notif-card--aviso {
+  border-left: 3px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 5%, var(--surface-solid));
+}
+
+.notif-card--info {
+  border-left: 3px solid var(--primary);
+}
+
+.notif-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notif-card__title {
+  font-size: 0.82rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.notif-card__desc {
+  font-size: 0.77rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+  margin: 0;
+}
+
+.notif-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.notif-card__btn {
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.notif-panel__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 16px;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.notif-panel__empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--in-soft);
+  display: grid;
+  place-items: center;
+  margin-bottom: 4px;
+}
+
+.notif-panel__empty h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-md);
+}
+
+.notif-panel__empty p {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+}
+
