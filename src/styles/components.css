@@ -2637,8 +2637,8 @@
   .topbar, .bottomnav, .sidebar, .fab, .tabs, .btn, .hscroll, input, select {
     display: none !important;
   }
-  .shell { display: block !important; }
-  .main { padding: 0 !important; margin: 0 !important; max-width: 100% !important; animation: none !important; }
+  .shell, .shell__content { display: block !important; height: auto !important; max-height: none !important; overflow: visible !important; }
+  .main { padding: 0 !important; margin: 0 !important; max-width: 100% !important; height: auto !important; max-height: none !important; overflow: visible !important; animation: none !important; }
   .card {
     border: 1px solid #ccc !important; box-shadow: none !important;
     background: #fff !important; break-inside: avoid; margin-bottom: 16pt !important;
@@ -2722,11 +2722,14 @@
 }
 
 .notif-panel--pinned {
-  position: sticky;
-  top: 0;
   height: 100dvh;
+  max-height: 100dvh;
   width: 340px;
   border-left: 1px solid var(--border);
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 
 @keyframes slide-in-right {

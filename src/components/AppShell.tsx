@@ -86,7 +86,7 @@ export function AppShell({ route, children }: { route: string; children: Compone
         </div>
       </aside>
 
-      <div>
+      <div class="shell__content">
         <header class="topbar">
           <div class="topbar__brand">
             <a href="#/" aria-label="Finansys Início" style="display:flex;align-items:center;text-decoration:none;">
