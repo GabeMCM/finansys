@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { cloudUser, desconectarConta } from "../data/cloudSync.ts";
+import { cloudUser, desconectarConta, getDeviceId, getDeviceName } from "../data/cloudSync.ts";
 import { isScreenLocked, unlockScreen } from "../data/inactivityGuard.ts";
 import { Icon } from "./Icon.tsx";
 
@@ -29,6 +29,8 @@ export function ModalBloqueioInatividade() {
         body: JSON.stringify({
           email,
           password: password.trim(),
+          deviceId: getDeviceId(),
+          deviceName: getDeviceName(),
         }),
       });
 

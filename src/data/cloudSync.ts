@@ -121,9 +121,7 @@ export async function carregarDadosDaNuvem(
 
     // Se o backup remoto tem empresas/lançamentos ou se foi forçado:
     if (remoteEmpresas > 0 || remoteLancamentos > 0 || forcar) {
-      // Limpa a base local para garantir restauração fiel sem duplicações
-      await limparBancoLocal();
-
+      // Restauração atômica direta via transação Dexie sem esvaziar o banco no meio do processo
       const { totalImportados } = await restoreDatabase(json.payload, "overwrite");
       await loadState();
 
@@ -278,7 +276,20 @@ export function initCloudSync() {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       void sincronizarInteligente();
-    }, 1500); // 1.5s debounce ágil e responsivo
+    }, 600); // 600ms debounce ágil sem travar interface
+  });
+
+  // Salva imediatamente com keepalive ao fechar a aba ou mudar de página
+  window.addEventListener("pagehide", () => {
+    if (cloudSyncStatus.value === "pendente" && getToken()) {
+      void sincronizarImediatoKeepalive();
+    }
+  });
+
+  window.addEventListener("beforeunload", () => {
+    if (cloudSyncStatus.value === "pendente" && getToken()) {
+      void sincronizarImediatoKeepalive();
+    }
   });
 
   // Ao voltar conexão com internet, sincroniza se estiver pendente
@@ -496,7 +507,13 @@ export async function autenticarConta(
     const res = await fetch("/api/auth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, nome }),
+      body: JSON.stringify({
+        email,
+        password,
+        nome,
+        deviceId: getDeviceId(),
+        deviceName: getDeviceName(),
+      }),
     });
 
     const text = await res.text();
@@ -565,8 +582,41 @@ export async function desconectarConta(showToast = true): Promise<void> {
 
 /**
  * SINCRONIZAÇÃO INTELIGENTE BIDIRECIONAL:
- * 1. Puxa os dados da nuvem primeiro e mescla na base local se houver alterações de outro aparelho.
- * 2. Em seguida, extrai a base local consolidada e envia de volta para a nuvem apenas se houver alterações locais pendentes.
+/**
+ * Envia imediatamente as alterações pendentes usando fetch com keepalive.
+ * Essencial para fechar a aba/sair do navegador sem perder nenhum dado.
+ */
+export async function sincronizarImediatoKeepalive(): Promise<void> {
+  const token = getToken();
+  if (!token) return;
+
+  try {
+    const payload = await dumpDatabase();
+    const empCount = payload.data?.empresas?.length ?? 0;
+    const lancCount = payload.data?.lancamentos?.length ?? 0;
+    if (empCount === 0 && lancCount === 0) return;
+
+    const currentHash = JSON.stringify(payload.data);
+    if (currentHash === lastPushHash) return;
+
+    fetch("/api/sync/push", {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ payload, clientId: CLIENT_SESSION_ID }),
+    }).catch(() => {});
+  } catch (_e) {
+    // ignore
+  }
+}
+
+/**
+ * SINCRONIZAÇÃO INTELIGENTE (PUSH DIRETO):
+ * - Envia o estado local consolidado para o MongoDB Atlas de forma limpa e assíncrona.
+ * - NUNCA faz pull desnecessário durante uma mutação local para evitar recarregar telas ou piscar o estado do usuário.
  */
 export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: string }> {
   const token = getToken();
@@ -584,36 +634,13 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
   cloudSyncStatus.value = "salvando";
 
   try {
-    // 1. Puxa o backup atual da nuvem para mesclar alterações remotas se houver
-    const pullRes = await fetch("/api/sync/pull", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (pullRes.ok) {
-      const pullJson = await pullRes.json();
-      if (pullJson.payload) {
-        lastPushHash = JSON.stringify(pullJson.payload.data || pullJson.payload);
-        const empCount = await db.empresas.count();
-        const strategy = empCount === 0 ? "overwrite" : "merge";
-        await restoreDatabase(pullJson.payload, strategy);
-        await loadState();
-        if (pullJson.savedAt) {
-          setLastSyncTime(pullJson.savedAt);
-          cloudUltimoBackup.value = new Date(pullJson.savedAt);
-        }
-      }
-    } else if (pullRes.status === 401) {
-      await desconectarConta(false);
-      return { ok: false, error: "Sua sessão expirou. Por favor, entre novamente." };
-    }
-
-    // Se NÃO havia alterações pendentes locais, encerra por aqui sem enviar nada
+    // Se NÃO havia alterações pendentes locais, apenas marca como salvo e encerra
     if (!isPendente) {
       cloudSyncStatus.value = "salvo";
       return { ok: true };
     }
 
-    // 2. Extrai a base local consolidada
+    // 1. Extrai a base local consolidada
     const payload = await dumpDatabase();
 
     // PROTEÇÃO ABSOLUTA: NUNCA enviar uma base vazia para a nuvem
@@ -632,7 +659,7 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
       return { ok: true };
     }
 
-    // 3. Envia o estado consolidado para a nuvem
+    // 2. Envia o estado consolidado para a nuvem (MongoDB Atlas)
     const pushRes = await fetch("/api/sync/push", {
       method: "POST",
       headers: {
@@ -643,6 +670,10 @@ export async function sincronizarInteligente(): Promise<{ ok: boolean; error?: s
     });
 
     if (!pushRes.ok) {
+      if (pushRes.status === 401) {
+        await desconectarConta(false);
+        return { ok: false, error: "Sua sessão expirou. Por favor, entre novamente." };
+      }
       const data = await pushRes.json().catch(() => ({}));
       throw new Error(data.error || `Erro do servidor HTTP ${pushRes.status}`);
     }

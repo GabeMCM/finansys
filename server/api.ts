@@ -53,6 +53,20 @@ export async function getDb(): Promise<Db> {
         await database.collection("users").createIndex({ email: 1 }, { unique: true });
         await database.collection("backups").createIndex({ email: 1 }, { unique: true });
         await database.collection("sessions").createIndex({ token: 1 }, { unique: true });
+        await database.collection("sessions").createIndex({ email: 1, deviceId: 1 });
+        // TTL Index para expirar sessões sem uso há mais de 60 dias (evita acúmulo desnecessário de sessions)
+        await database.collection("sessions").createIndex({ lastActiveAt: 1 }, { expireAfterSeconds: 60 * 24 * 3600 });
+
+        // Índices nas collections individuais por feature com vínculo de usuário e IDs
+        const featureCols = [
+          "col_empresas", "col_anos", "col_categorias", "col_contas",
+          "col_contas_bancarias", "col_projecoes", "col_lancamentos",
+          "col_reservas", "col_reserva_movimentos", "col_reserva_projecoes",
+          "col_operacoes_investimento"
+        ];
+        for (const c of featureCols) {
+          await database.collection(c).createIndex({ userEmail: 1 });
+        }
       } catch (_idxErr) {
         // Índices já existentes
       }
@@ -127,6 +141,98 @@ async function hashPassword(password: string, salt: string): Promise<string> {
   return Array.from(new Uint8Array(exported)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+const FEATURE_COLLECTION_MAP: Record<string, string> = {
+  empresas: "col_empresas",
+  anos: "col_anos",
+  categorias: "col_categorias",
+  contas: "col_contas",
+  contasBancarias: "col_contas_bancarias",
+  projecoes: "col_projecoes",
+  lancamentos: "col_lancamentos",
+  reservas: "col_reservas",
+  reservaMovimentos: "col_reserva_movimentos",
+  reservaProjecoes: "col_reserva_projecoes",
+  operacoesInvestimento: "col_operacoes_investimento",
+};
+
+/**
+ * Grava atômica e individualmente cada entidade em sua própria collection no MongoDB Atlas com vínculo por ID.
+ */
+async function syncCollectionsIndividuais(db: Db, email: string, data: Record<string, unknown[]>) {
+  for (const [field, colName] of Object.entries(FEATURE_COLLECTION_MAP)) {
+    const items = data[field];
+    if (!Array.isArray(items)) continue;
+
+    const col = db.collection(colName);
+    if (items.length === 0) {
+      await col.deleteMany({ userEmail: email });
+      continue;
+    }
+
+    const currentIds = new Set<string>();
+    // deno-lint-ignore no-explicit-any
+    const bulkOps: any[] = [];
+
+    for (const rawItem of items) {
+      // deno-lint-ignore no-explicit-any
+      const item = rawItem as any;
+      if (!item || !item.id) continue;
+      currentIds.add(String(item.id));
+
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: String(item.id), userEmail: email },
+          update: {
+            $set: {
+              ...item,
+              _id: String(item.id),
+              userEmail: email,
+              updatedAt: item.updatedAt || Date.now(),
+            },
+          },
+          upsert: true,
+        },
+      });
+    }
+
+    if (currentIds.size > 0) {
+      bulkOps.push({
+        deleteMany: {
+          filter: {
+            userEmail: email,
+            _id: { $nin: Array.from(currentIds) },
+          },
+        },
+      });
+    }
+
+    if (bulkOps.length > 0) {
+      await col.bulkWrite(bulkOps, { ordered: false });
+    }
+  }
+}
+
+/**
+ * Reconstitui o payload estruturado a partir das collections dedicadas do MongoDB.
+ */
+async function assemblePayloadFromCollections(db: Db, email: string): Promise<Record<string, unknown[]> | null> {
+  const data: Record<string, unknown[]> = {};
+  let totalCount = 0;
+
+  for (const [field, colName] of Object.entries(FEATURE_COLLECTION_MAP)) {
+    const docs = await db.collection(colName).find({ userEmail: email }).toArray();
+    data[field] = docs.map((d) => {
+      // deno-lint-ignore no-unused-vars
+      const { _id, userEmail, ...rest } = d;
+      return { id: (rest.id as string) || String(_id), ...rest };
+    });
+    totalCount += docs.length;
+  }
+
+  if (totalCount === 0) return null;
+  return data;
+}
+
 export async function handleApiRequest(req: Request): Promise<Response | null> {
   const url = new URL(req.url);
   if (!url.pathname.startsWith("/api/")) return null;
@@ -155,6 +261,12 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
         return { ok: false, status: 401, error: "Sessão inválida ou expirada." };
       }
 
+      // Atualiza timestamp de última atividade da sessão sem bloquear a resposta
+      void db.collection("sessions").updateOne(
+        { token },
+        { $set: { lastActiveAt: Date.now() } }
+      ).catch(() => {});
+
       return { ok: true, email: (session.email as string).toLowerCase(), token };
     };
 
@@ -171,7 +283,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
       return json({ exists: true, email, nome: (user.nome as string) || "" });
     }
 
-    // 2. POST /api/auth (Login ou Registro com suporte multi-dispositivo)
+    // 2. POST /api/auth (Login ou Registro com 1 sessão por dispositivo e controle de acúmulo)
     if (url.pathname === "/api/auth" && req.method === "POST") {
       try {
         const body = await req.json();
@@ -220,9 +332,36 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           }
         }
 
-        // Registra a nova sessão para este dispositivo
+        // Identificação do dispositivo para garantir 1 sessão única por aparelho
+        const deviceId = String(body.deviceId || "").trim() || "unknown";
+        const deviceName = String(body.deviceName || "").trim() || "Dispositivo";
+
+        // Remove qualquer sessão anterior deste mesmo aparelho/dispositivo
+        if (deviceId && deviceId !== "unknown") {
+          await db.collection("sessions").deleteMany({ email, deviceId });
+        }
+
+        // Limita o número de sessões abertas do mesmo usuário (mantém as 5 mais recentes)
+        const existingSessions = await db.collection("sessions")
+          .find({ email })
+          .sort({ lastActiveAt: -1, createdAt: -1 })
+          .toArray();
+        if (existingSessions.length >= 5) {
+          const idsToDelete = existingSessions.slice(4).map((s) => s._id);
+          await db.collection("sessions").deleteMany({ _id: { $in: idsToDelete } });
+        }
+
+        // Registra a nova sessão única para este dispositivo
         const token = crypto.randomUUID();
-        await db.collection("sessions").insertOne({ token, email, createdAt: Date.now() });
+        const now = Date.now();
+        await db.collection("sessions").insertOne({
+          token,
+          email,
+          deviceId,
+          deviceName,
+          createdAt: now,
+          lastActiveAt: now,
+        });
 
         return json({ ok: true, isNew, token, email, nome });
       } catch (err) {
@@ -314,6 +453,15 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           { upsert: true }
         );
 
+        // Gravação individual e atômica por feature em collections dedicadas no MongoDB com vínculo por ID
+        if (payloadData && typeof payloadData === "object") {
+          try {
+            await syncCollectionsIndividuais(db, auth.email, payloadData);
+          } catch (syncColErr) {
+            console.error("[Sync Collections] Erro ao sincronizar collections de features:", syncColErr);
+          }
+        }
+
         // Notifica nós e navegadores conectados via SSE
         notifySyncUpdate(auth.email, savedAt, body.clientId);
 
@@ -334,6 +482,11 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
       try {
         const doc = await db.collection("backups").findOne({ email: auth.email });
         if (!doc) {
+          // Tenta reconstituir das collections individuais de features se existirem
+          const assembled = await assemblePayloadFromCollections(db, auth.email);
+          if (assembled) {
+            return json({ payload: { version: 4, exportedAt: Date.now(), data: assembled }, savedAt: Date.now() });
+          }
           return json({ payload: null, savedAt: null });
         }
         return json({ payload: doc.payload, savedAt: doc.savedAt });
