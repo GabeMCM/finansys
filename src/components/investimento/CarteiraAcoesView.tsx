@@ -222,7 +222,8 @@ export function CarteiraAcoesView({
               </button>
             </div>
           ) : (
-            <div class="table-wrap table-wrap--mobile-bleed">
+            <>
+              <div class="table-wrap table-wrap--mobile-bleed hide-mobile">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -429,7 +430,123 @@ export function CarteiraAcoesView({
                 </tfoot>
               </table>
             </div>
-          )}
+
+            {/* Visualização Mobile-First em Cards */}
+            <div class="only-mobile invest-mobile-list" style="padding: 12px var(--sp-2);">
+              {posicoes.map((pos) => {
+                const lucroPos = pos.lucroPrejuizoCentavos >= 0;
+                return (
+                  <div key={`mob-${pos.ticker}`} class="invest-card-mobile">
+                    <div class="invest-card-mobile__header">
+                      <div>
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                          <span class="invest-card-mobile__ticker">{pos.ticker}</span>
+                          <span class="badge badge--neutral" style="font-size: 0.65rem;">{pos.market}</span>
+                          {pos.isBestt && (
+                            <span class="badge" style="font-size: 0.62rem; background: rgba(59, 130, 246, 0.12); color: #2563eb;">
+                              BESTT: {pos.besttCategory}
+                            </span>
+                          )}
+                          {pos.isAristocrat && (
+                            <span class="badge" style="font-size: 0.62rem; background: rgba(234, 179, 8, 0.12); color: #ca8a04;">
+                              Aristocrata
+                            </span>
+                          )}
+                        </div>
+                        <div class="muted" style="font-size: 0.75rem; margin-top: 2px;">
+                          {pos.nome}
+                        </div>
+                      </div>
+
+                      <div style="text-align: right;">
+                        <div class="num" style="font-size: 0.95rem; font-weight: 800; color: var(--text);">
+                          {fmtMoeda(pos.cotacaoAtualCentavos, pos.moeda)}
+                        </div>
+                        <span class={`badge ${lucroPos ? "badge--in" : "badge--out"}`} style="font-size: 0.68rem; margin-top: 2px;">
+                          {lucroPos ? "+" : ""}{pos.rentabilidadePct}%
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="invest-card-mobile__grid">
+                      <div>
+                        <div class="invest-card-mobile__item-label">Cotas</div>
+                        <div class="invest-card-mobile__item-val num">{pos.quantidadeTotal.toLocaleString("pt-BR")}</div>
+                      </div>
+                      <div>
+                        <div class="invest-card-mobile__item-label">Preço Médio</div>
+                        <div class="invest-card-mobile__item-val num">{fmtMoeda(pos.precoMedioCentavos, pos.moeda)}</div>
+                      </div>
+                      <div>
+                        <div class="invest-card-mobile__item-label">Total Investido</div>
+                        <div class="invest-card-mobile__item-val num">{fmtMoeda(pos.totalInvestidoCentavos, pos.moeda)}</div>
+                      </div>
+                      <div>
+                        <div class="invest-card-mobile__item-label">Valor em Custódia</div>
+                        <div class="invest-card-mobile__item-val num" style="color: var(--primary);">
+                          {fmtMoeda(pos.valorMercadoAtualCentavos, pos.moeda)}
+                        </div>
+                      </div>
+                      <div>
+                        <div class="invest-card-mobile__item-label">Retorno Líquido</div>
+                        <div class="invest-card-mobile__item-val num" style={{ color: lucroPos ? "var(--in)" : "var(--out)" }}>
+                          {lucroPos ? "+" : ""}{fmtMoeda(pos.lucroPrejuizoCentavos, pos.moeda)}
+                        </div>
+                      </div>
+                      <div>
+                        <div class="invest-card-mobile__item-label">Yield on Cost</div>
+                        <div class="invest-card-mobile__item-val num" style="color: #9333ea;">
+                          {pos.yieldOnCostPct}% a.a.
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Indicadores de Teto Bazin e Graham */}
+                    {(pos.precoTetoBazinCentavos > 0 || (pos.precoGrahamCentavos && pos.precoGrahamCentavos > 0)) && (
+                      <div style="display:flex; justify-content:space-between; align-items:center; background:var(--surface-soft); padding:6px 10px; border-radius:var(--r-sm); font-size:0.75rem;">
+                        {pos.precoTetoBazinCentavos > 0 && (
+                          <div>
+                            <span class="muted">Teto Bazin: </span>
+                            <strong>{fmtMoeda(pos.precoTetoBazinCentavos, pos.moeda)}</strong>
+                            <span style={{ color: pos.margemBazinPM >= 0 ? "var(--in)" : "var(--out)", fontWeight: "700", marginLeft: "4px" }}>
+                              ({pos.margemBazinPM >= 0 ? "+" : ""}{pos.margemBazinPM.toFixed(0)}%)
+                            </span>
+                          </div>
+                        )}
+                        {pos.precoGrahamCentavos && pos.precoGrahamCentavos > 0 && (
+                          <div>
+                            <span class="muted">Graham: </span>
+                            <strong>{fmtMoeda(pos.precoGrahamCentavos, pos.moeda)}</strong>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div class="invest-card-mobile__footer">
+                      <button
+                        type="button"
+                        class="btn btn--secondary btn--xs"
+                        style="flex: 1; justify-content: center; min-height: 32px;"
+                        onClick={() => abrirRaioX(pos.ticker)}
+                        disabled={carregandoRaioX}
+                      >
+                        <Icon name="chart" /> Raio-X
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn--primary btn--xs"
+                        style="flex: 1; justify-content: center; min-height: 32px;"
+                        onClick={() => abrirNovaOperacao(pos.ticker)}
+                      >
+                        <Icon name="plus" /> Operar Ativo
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
         </section>
       )}
 

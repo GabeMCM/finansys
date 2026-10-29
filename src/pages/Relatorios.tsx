@@ -4,6 +4,7 @@ import { calcularPosicaoBancos } from "../data/calc.ts";
 import { db } from "../data/db.ts";
 import { anos, categorias, contas, contasBancarias, empresas, reservas } from "../data/repo.ts";
 import { type Ano, type Conta, type ContaBancaria, SINAL, type TipoContaBancaria } from "../data/types.ts";
+import { cloudUser } from "../data/cloudSync.ts";
 import { useLive } from "../data/useLive.ts";
 import { labelCpfCnpj, money, signed } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
@@ -36,6 +37,7 @@ export function Relatorios() {
   });
   const [filtroTipoBanco, setFiltroTipoBanco] = useState<"todos" | TipoContaBancaria>("todos");
   const [agruparPorTipo, setAgruparPorTipo] = useState<boolean>(true);
+  const [incluirRazaoAnalitico, setIncluirRazaoAnalitico] = useState<boolean>(true);
 
   // Sincroniza as datas quando o ano ativo mudar
   useEffect(() => {
@@ -376,15 +378,25 @@ export function Relatorios() {
           <p>Demonstrativo Projetado × Real por período personalizado de {emp.nome}</p>
         </div>
 
-        <div class="relatorios-header-actions" style="display:flex;gap:var(--sp-2);flex-wrap:wrap;">
+        <div class="relatorios-header-actions" style="display:flex;gap:var(--sp-2);flex-wrap:wrap;align-items:center;">
+          <label class="chip" style="cursor:pointer;user-select:none;gap:6px;min-height:36px;" title="Inclui livro-razão analítico de todas as transações para servir como backup completo contra perda de dados">
+            <input
+              type="checkbox"
+              checked={incluirRazaoAnalitico}
+              onChange={(e) => setIncluirRazaoAnalitico((e.target as HTMLInputElement).checked)}
+              style="cursor:pointer;"
+            />
+            <span style="font-size:var(--fs-xs);font-weight:600;">Incluir Lançamentos Analíticos (Backup)</span>
+          </label>
+
           <button type="button" class="btn btn--secondary" onClick={exportarCSV} title="Exportar tabela para CSV/Excel">
             <Icon name="download" /> Exportar CSV
           </button>
           <button type="button" class="btn btn--secondary" onClick={exportarJSON} title="Exportar dados brutos em JSON">
             JSON
           </button>
-          <button type="button" class="btn btn--primary" onClick={imprimirPDF} title="Gerar relatório impresso / PDF formal">
-            <Icon name="download" /> Imprimir / PDF
+          <button type="button" class="btn btn--primary" onClick={imprimirPDF} title="Gerar relatório impresso / PDF formal seguro">
+            <Icon name="download" /> Imprimir / PDF Seguro
           </button>
         </div>
       </div>
@@ -509,15 +521,37 @@ export function Relatorios() {
 
             <div style="text-align:right;">
               <div style="font-size:var(--fs-xs);font-weight:700;text-transform:uppercase;color:var(--primary);letter-spacing:0.04em;">
-                Informe de Gestão Financeira
+                Informe Financeiro & Backup Auditável
               </div>
               <div style="font-size:var(--fs-sm);font-weight:600;margin-top:2px;">
                 Período: {labelPeriodoExibicao}
               </div>
               <div class="muted" style="font-size:0.68rem;margin-top:2px;">
-                Emitido em: {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                Emitido em: {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR")}
+              </div>
+              <div class="muted" style="font-size:0.65rem;margin-top:2px;font-family:monospace;">
+                Protocolo: BKP-{emp.id.slice(0, 8).toUpperCase()}-{dataFim.replace(/-/g, "")}
+              </div>
+              <div class="muted" style="font-size:0.65rem;">
+                Operador: {cloudUser.value?.nome || cloudUser.value?.email || "Administrador Local"}
               </div>
             </div>
+          </div>
+
+          {/* Faixa de Integridade e Detalhes de Auditoria */}
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:var(--sp-2); padding:6px 12px; background:var(--surface-sunken); border:1px solid var(--border); border-radius:var(--r-sm); font-size:var(--fs-xs);">
+            <div style="display:flex; gap:12px; flex-wrap:wrap; color:var(--text-muted);">
+              <span><strong>{lsNoPeriodo.length}</strong> lançamentos auditados</span>
+              <span>·</span>
+              <span><strong>{cs.length}</strong> contas</span>
+              <span>·</span>
+              <span><strong>{bancoList.length}</strong> contas bancárias</span>
+              <span>·</span>
+              <span><strong>{resList.length}</strong> caixinhas patrimoniais</span>
+            </div>
+            <span class="badge badge--in" style="font-size:0.65rem; font-weight:700;">
+              Documento Seguro de Backup Anti-Perda de Dados
+            </span>
           </div>
 
           {/* Quadro de Saldo e Conciliação */}
@@ -1038,6 +1072,86 @@ export function Relatorios() {
               </table>
             </div>
           )}
+
+          {/* Seção Razão Analítico de Lançamentos (Backup Seguro Anti-Perda de Dados) */}
+          {incluirRazaoAnalitico && lsNoPeriodo.length > 0 && (() => {
+            const lsOrdenados = [...lsNoPeriodo].sort((a, b) => b.data.localeCompare(a.data));
+            const bancoMap = new Map<string, string>(bancoList.map((b) => [b.id, b.nome]));
+
+            return (
+              <div style="margin-top:var(--sp-5);break-inside:avoid;page-break-inside:avoid;">
+                <div class="card__head" style="margin-bottom:var(--sp-2);display:flex;justify-content:space-between;align-items:center;">
+                  <div>
+                    <h3 class="card__title" style="display:flex;align-items:center;gap:6px;font-size:var(--fs-md);">
+                      <Icon name="list" /> Razão Analítico de Lançamentos ({lsOrdenados.length} lançamentos no período)
+                    </h3>
+                    <span class="muted" style="font-size:var(--fs-xs);">
+                      Trilha detalhada e completa de transações para conferência contábil e documento auditável permanente
+                    </span>
+                  </div>
+                  <span class="badge badge--neutral hide-mobile" style="font-size:0.68rem;">
+                    Livro Razão / Extrato Integral
+                  </span>
+                </div>
+
+                <div class="table-wrap table-wrap--mobile-bleed">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th style="width:90px;text-align:left;">Data</th>
+                        <th style="text-align:left;">Conta</th>
+                        <th style="text-align:left;">Categoria</th>
+                        <th style="text-align:left;">Conta Bancária</th>
+                        <th style="text-align:left;">Descrição / Histórico</th>
+                        <th style="text-align:right;">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lsOrdenados.map((l) => {
+                        const conta = contaMap.get(l.contaId);
+                        const sinal = conta ? (SINAL[conta.natureza] || -1) : -1;
+                        const nomeBanco = l.bancoId ? bancoMap.get(l.bancoId) || "—" : "—";
+                        const categoriaNome = conta ? catMap.get(conta.categoriaId) || "—" : "—";
+
+                        return (
+                          <tr key={l.id}>
+                            <td class="muted" style="font-size:var(--fs-xs);white-space:nowrap;">
+                              {formatarDataBR(l.data)}
+                            </td>
+                            <td style="font-weight:600;font-size:var(--fs-xs);">
+                              {conta?.nome || "Conta Removida"}
+                            </td>
+                            <td class="muted" style="font-size:var(--fs-xs);">
+                              {categoriaNome}
+                            </td>
+                            <td class="muted" style="font-size:var(--fs-xs);">
+                              {nomeBanco}
+                            </td>
+                            <td class="muted" style="font-size:var(--fs-xs);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                              {l.descricao || "—"}
+                            </td>
+                            <td class={`num ${sinal === 1 ? "tone-in" : "tone-out"}`} style="text-align:right;font-weight:700;font-size:var(--fs-xs);">
+                              {sinal === 1 ? "+" : "−"} {money(l.valor)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={5} style="font-weight:700;">
+                          Total Movimentado no Período ({lsOrdenados.length} lançamentos)
+                        </td>
+                        <td class="num" style="text-align:right;font-weight:800;color:var(--text);">
+                          {money(lsOrdenados.reduce((s, l) => s + l.valor, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Campo de Assinatura para o PDF / Impressão */}
           <div class="informe-footer print-only" style="margin-top:40px;display:flex;justify-content:space-around;">

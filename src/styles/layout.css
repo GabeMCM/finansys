@@ -13,9 +13,11 @@
 /* ---------- Top bar ---------- */
 .topbar {
   position: sticky; top: 0; z-index: 30;
-  height: var(--topbar-h);
+  height: calc(var(--topbar-h) + var(--safe-t));
+  padding-top: var(--safe-t);
+  padding-left: calc(var(--page-pad) + var(--safe-l));
+  padding-right: calc(var(--page-pad) + var(--safe-r));
   display: flex; align-items: center; gap: var(--sp-2);
-  padding: 0 var(--page-pad);
   background: var(--chrome-bg);
   backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
   border-bottom: 1px solid var(--border);
@@ -137,7 +139,9 @@
   .hide-mobile { display: none !important; }
   .only-mobile { display: inline-flex !important; }
   .topbar {
-    padding: 0 10px;
+    padding-top: var(--safe-t);
+    padding-left: calc(10px + var(--safe-l));
+    padding-right: calc(10px + var(--safe-r));
     gap: 8px;
     overflow: visible;
   }
@@ -212,7 +216,7 @@
 
 /* ---------- Conteúdo ---------- */
 .main {
-  padding: var(--sp-4) var(--page-pad) calc(var(--bottomnav-h) + var(--safe-b) + 84px);
+  padding: var(--sp-4) calc(var(--page-pad) + var(--safe-r)) calc(var(--bottomnav-h) + var(--safe-b) + 84px) calc(var(--page-pad) + var(--safe-l));
   max-width: 1280px; margin: 0 auto;
   animation: fade-up var(--t) var(--ease);
 }
@@ -257,7 +261,7 @@
 /* ---------- FAB ---------- */
 .fab {
   position: fixed; z-index: 45;
-  right: var(--page-pad); bottom: calc(var(--bottomnav-h) + var(--safe-b) + 14px);
+  right: calc(var(--page-pad) + var(--safe-r)); bottom: calc(var(--bottomnav-h) + var(--safe-b) + 14px);
   width: 56px; height: 56px; border: 0; border-radius: 18px;
   display: grid; place-items: center; color: var(--on-primary);
   background: var(--gradient-brand);

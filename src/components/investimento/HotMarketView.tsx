@@ -274,7 +274,8 @@ export function HotMarketView() {
             Nenhum ativo encontrado com os filtros selecionados.
           </div>
         ) : (
-          <div class="table-wrap table-wrap--mobile-bleed">
+          <>
+            <div class="table-wrap table-wrap--mobile-bleed hide-mobile">
             <table class="data-table">
               <thead>
                 <tr>
@@ -433,7 +434,129 @@ export function HotMarketView() {
               </tbody>
             </table>
           </div>
-        )}
+
+          {/* Cards Mobile First do Radar */}
+          <div class="only-mobile invest-mobile-list" style="padding: 12px var(--sp-2);">
+            {ordenados.map((item, index) => {
+              const scoreCor =
+                item.score >= 75
+                  ? "var(--in)"
+                  : item.score >= 50
+                  ? "var(--alerta, #f59e0b)"
+                  : "var(--out)";
+
+              return (
+                <div
+                  key={`mob-hot-${item.symbol}`}
+                  class="invest-card-mobile"
+                  onClick={() => setAtivoSelecionado(item)}
+                  style="cursor: pointer;"
+                >
+                  <div class="invest-card-mobile__header">
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-muted);">
+                          #{index + 1}
+                        </span>
+                        <span class="invest-card-mobile__ticker">{item.symbol}</span>
+                        <span class="badge badge--neutral" style="font-size: 0.65rem;">{item.market}</span>
+                        {item.isBestt && (
+                          <span class="badge" style="font-size: 0.62rem; background: rgba(37, 99, 235, 0.12); color: #2563eb;">
+                            {item.besttCategory}
+                          </span>
+                        )}
+                        {item.isAristocrat && (
+                          <span class="badge" style="font-size: 0.62rem; background: rgba(234, 179, 8, 0.12); color: #ca8a04;">
+                            Aristocrata
+                          </span>
+                        )}
+                      </div>
+                      <div class="muted" style="font-size: 0.75rem; margin-top: 2px;">
+                        {item.name}
+                      </div>
+                    </div>
+
+                    <div style="text-align: right;">
+                      <span
+                        class="badge"
+                        style={{
+                          fontSize: "0.68rem",
+                          background: `color-mix(in srgb, ${scoreCor} 16%, transparent)`,
+                          color: scoreCor,
+                          fontWeight: "800",
+                        }}
+                      >
+                        Score {item.score}
+                      </span>
+                      <div class="num" style="font-size: 0.95rem; font-weight: 800; color: var(--text); margin-top: 2px;">
+                        {fmtPreco(item.price, item.currency)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="invest-card-mobile__grid">
+                    <div>
+                      <div class="invest-card-mobile__item-label">Preço Teto Bazin</div>
+                      <div class="invest-card-mobile__item-val num">
+                        {item.precoTetoBazin > 0 ? fmtPreco(item.precoTetoBazin, item.currency) : "—"}
+                      </div>
+                    </div>
+                    <div>
+                      <div class="invest-card-mobile__item-label">Margem de Segurança</div>
+                      <div class="invest-card-mobile__item-val num" style={{ color: item.margemSegurancaBazin >= 0 ? "var(--in)" : "var(--out)" }}>
+                        {item.margemSegurancaBazin >= 0 ? "+" : ""}{item.margemSegurancaBazin.toFixed(0)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div class="invest-card-mobile__item-label">Dividend Yield</div>
+                      <div class="invest-card-mobile__item-val num" style="color: #9333ea;">
+                        {item.dividendYield.toFixed(1)}% a.a.
+                      </div>
+                    </div>
+                    <div>
+                      <div class="invest-card-mobile__item-label">Múltiplos (P/L e P/VP)</div>
+                      <div class="invest-card-mobile__item-val num">
+                        {item.pl ? `${item.pl.toFixed(1)}x` : "—"} · {item.pvp ? `${item.pvp.toFixed(2)}x` : "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="invest-card-mobile__footer">
+                    <span
+                      class={`badge ${
+                        item.status === "oportunidade"
+                          ? "badge--in"
+                          : item.status === "neutro"
+                          ? "badge--neutral"
+                          : "badge--out"
+                      }`}
+                      style="font-size: 0.72rem; padding: 2px 8px;"
+                    >
+                      {item.status === "oportunidade"
+                        ? "Comprar (Abaixo do Teto)"
+                        : item.status === "neutro"
+                        ? "Observar"
+                        : "Alerta Fundamentalista"}
+                    </span>
+
+                    <button
+                      type="button"
+                      class="btn btn--secondary btn--xs"
+                      style="padding: 3px 12px; font-size: 0.75rem;"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAtivoSelecionado(item);
+                      }}
+                    >
+                      <Icon name="chart" /> Raio-X
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
       </section>
 
       {/* Modal de Raio-X Detalhado */}
