@@ -43,6 +43,7 @@ export function ModalMovimentoReserva({
   const [data, setData] = useState<string>("");
   const [contaId, setContaId] = useState<string>("");
   const [bancoId, setBancoId] = useState<string>("");
+  const [bancoDestinoId, setBancoDestinoId] = useState<string>("");
   const [obs, setObs] = useState<string>("");
   const [salvando, setSalvando] = useState<boolean>(false);
 
@@ -56,15 +57,32 @@ export function ModalMovimentoReserva({
       setData(movimento.data);
       setContaId(movimento.contaId || "");
       setBancoId(movimento.bancoId || "");
+      setBancoDestinoId(movimento.bancoDestinoId || "");
       setObs(movimento.obs || "");
     } else {
-      const defaultReserva = initialReservaId || (reservas.length > 0 ? reservas[0].id : "");
-      setReservaId(defaultReserva);
+      const defaultReservaId = initialReservaId || (reservas.length > 0 ? reservas[0].id : "");
+      setReservaId(defaultReservaId);
       setTipo(initialTipo);
       setValorCentavos(0);
       setContaId("");
-      setBancoId("");
       setObs("");
+
+      // Se a reserva tem conta bancária vinculada, busca ela
+      const resObj = reservas.find((r) => r.id === defaultReservaId);
+      const bancoVinculado = contasBancarias.find(
+        (b) => (resObj?.contaBancariaId && b.id === resObj.contaBancariaId) || (b.reservaVinculadaId === defaultReservaId)
+      );
+
+      if (initialTipo === "aporte") {
+        setBancoId("");
+        setBancoDestinoId(bancoVinculado ? bancoVinculado.id : "");
+      } else if (initialTipo === "resgate") {
+        setBancoId(bancoVinculado ? bancoVinculado.id : "");
+        setBancoDestinoId("");
+      } else {
+        setBancoId(bancoVinculado ? bancoVinculado.id : "");
+        setBancoDestinoId("");
+      }
 
       // Data de hoje ou padrão do ano
       const hoje = new Date();
@@ -73,7 +91,7 @@ export function ModalMovimentoReserva({
       const dataSugerida = `${anoNum}-${mesStr}-${diaStr}`;
       setData(dataSugerida);
     }
-  }, [isOpen, movimento, initialReservaId, initialTipo, reservas, anoNum]);
+  }, [isOpen, movimento, initialReservaId, initialTipo, reservas, contasBancarias, anoNum]);
 
   const handleSubmit = async (e?: Event) => {
     if (e) e.preventDefault();
@@ -98,6 +116,7 @@ export function ModalMovimentoReserva({
           mes,
           contaId: contaId || undefined,
           bancoId: bancoId || undefined,
+          bancoDestinoId: bancoDestinoId || undefined,
           obs: obs.trim() || undefined,
         });
 
@@ -112,6 +131,7 @@ export function ModalMovimentoReserva({
               obs: tipo === "aporte" ? `Aplicação na Reserva: ${nomeReserva}` : `Resgate da Reserva: ${nomeReserva}`,
               tipoReserva: tipo,
               bancoId: bancoId || undefined,
+              bancoDestinoId: bancoDestinoId || undefined,
             });
           } else {
             // Conta operacional foi desmarcada -> remove lançamento vinculado
@@ -130,6 +150,7 @@ export function ModalMovimentoReserva({
             reservaId,
             tipoReserva: tipo,
             bancoId: bancoId || undefined,
+            bancoDestinoId: bancoDestinoId || undefined,
           });
           await reservaMovimentos.update(movimento.id, { lancamentoId: novoLanc.id });
         }
@@ -150,6 +171,7 @@ export function ModalMovimentoReserva({
             reservaId,
             tipoReserva: tipo,
             bancoId: bancoId || undefined,
+            bancoDestinoId: bancoDestinoId || undefined,
           });
           lancId = novoLanc.id;
         }
@@ -164,6 +186,7 @@ export function ModalMovimentoReserva({
           mes,
           contaId: contaId || undefined,
           bancoId: bancoId || undefined,
+          bancoDestinoId: bancoDestinoId || undefined,
           obs: obs.trim() || undefined,
           lancamentoId: lancId,
         });
@@ -321,36 +344,66 @@ export function ModalMovimentoReserva({
           </div>
         </div>
 
-        {/* Conta Bancária Vinculada (Opcional) */}
+        {/* Contas Bancárias (Origem e Destino para Troca de Instituição) */}
         {contasBancarias.length > 0 && tipo !== "rendimento" && (
-          <div class="form-group">
-            <label class="form-label" for="mov-banco">
-              <span style="display:flex; align-items:center; justify-content:space-between;">
-                <span style="display:inline-flex; align-items:center; gap:6px;">
-                  <Icon name="bank" style="width:14px; height:14px; color:var(--primary);" />
-                  {tipo === "aporte" ? "Saiu de qual Conta Bancária?" : "Entrou em qual Conta Bancária?"}
-                </span>
-                <span style="font-size: var(--fs-xs); color: var(--text-faint); font-weight: normal; text-transform: none;">
-                  (Opcional)
-                </span>
-              </span>
-            </label>
-            <CustomSelect
-              id="mov-banco"
-              value={bancoId}
-              options={[
-                { value: "", label: "Nenhum banco selecionado" },
-                ...contasBancarias
-                  .filter((b) => b.ativa !== false)
-                  .map((b) => ({
-                    value: b.id,
-                    label: b.nome,
-                    icon: "bank" as const,
-                  })),
-              ]}
-              onChange={(val) => setBancoId(val)}
-              placeholder="Selecione a conta bancária..."
-            />
+          <div class="stack" style="gap:var(--sp-2);background:var(--surface-soft);padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--border);">
+            <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;display:flex;align-items:center;gap:6px;">
+              <Icon name="bank" style="width:13px;height:13px;color:var(--primary);" />
+              <span>Instituições Bancárias & Troca de Conta</span>
+            </div>
+
+            <div class="form-row form-row--2">
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="mov-banco-origem">
+                  {tipo === "aporte" ? "Conta de Saída (Origem)" : "Conta de Onde Resgata"}
+                </label>
+                <CustomSelect
+                  id="mov-banco-origem"
+                  value={bancoId}
+                  options={[
+                    { value: "", label: "Nenhum (Livre)" },
+                    ...contasBancarias
+                      .filter((b) => b.ativa !== false)
+                      .map((b) => ({
+                        value: b.id,
+                        label: `${b.nome} (${b.tipo === "investimento" ? "Invest." : b.tipo === "poupanca" ? "Poupança" : "Corrente"})`,
+                        icon: "bank" as const,
+                      })),
+                  ]}
+                  onChange={(val) => setBancoId(val)}
+                  placeholder="Selecione a conta..."
+                />
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label class="form-label" for="mov-banco-destino">
+                  {tipo === "aporte" ? "Conta de Entrada (Destino)" : "Conta Onde Cai o Resgate"}
+                </label>
+                <CustomSelect
+                  id="mov-banco-destino"
+                  value={bancoDestinoId}
+                  options={[
+                    { value: "", label: "Nenhum (Mesma instituição)" },
+                    ...contasBancarias
+                      .filter((b) => b.ativa !== false && b.id !== bancoId)
+                      .map((b) => ({
+                        value: b.id,
+                        label: `${b.nome} (${b.tipo === "investimento" ? "Invest." : b.tipo === "poupanca" ? "Poupança" : "Corrente"})`,
+                        icon: "bank" as const,
+                      })),
+                  ]}
+                  onChange={(val) => setBancoDestinoId(val)}
+                  placeholder="Troca de instituição..."
+                />
+              </div>
+            </div>
+
+            {bancoId && bancoDestinoId && bancoId !== bancoDestinoId && (
+              <div class="muted" style="font-size:11px;display:flex;align-items:center;gap:4px;">
+                <Icon name="refresh" style="width:11px;height:11px;color:var(--primary);" />
+                <span>Troca de instituição ativa: o valor sairá de uma conta e entrará na outra automaticamente.</span>
+              </div>
+            )}
           </div>
         )}
 

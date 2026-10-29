@@ -10,6 +10,7 @@ import {
   type ReservaMovimento,
   type ReservaProjecao,
   SINAL,
+  type TipoContaBancaria,
 } from "./types.ts";
 
 /** Matriz [natureza][mes] em centavos. */
@@ -419,11 +420,20 @@ export function calcularCarteiraReservas(
 
 export interface PosicaoBancoIndividual {
   banco: ContaBancaria;
+  tipo: TipoContaBancaria;
+  reservaVinculadaId?: string;
   saldoInicial: number;
   totalEntradas: number;
   totalSaidas: number;
   saldoAtual: number;
   qtdLancamentos: number;
+}
+
+export interface TotaisTipoBanco {
+  totalSaldoInicial: number;
+  totalEntradas: number;
+  totalSaidas: number;
+  totalSaldoAtual: number;
 }
 
 export interface PosicaoBancosConsolidada {
@@ -432,13 +442,15 @@ export interface PosicaoBancosConsolidada {
   totalSaidas: number;
   totalSaldoAtual: number;
   bancos: PosicaoBancoIndividual[];
+  porTipo: Record<TipoContaBancaria, PosicaoBancoIndividual[]>;
+  totaisPorTipo: Record<TipoContaBancaria, TotaisTipoBanco>;
 }
 
 /**
  * Calcula a posição e saldo das contas bancárias de uma empresa.
  * - Saldo Inicial: saldo definido na abertura da conta
- * - Entradas: lançamentos operacionais de entrada (receber, aporte) + resgates de reserva diretos
- * - Saídas: lançamentos operacionais de saída (pagar, saída) + aportes em reserva diretos
+ * - Entradas: lançamentos operacionais de entrada (receber, aporte), transferências recebidas e resgates de reservas
+ * - Saídas: lançamentos operacionais de saída (pagar, saída), transferências enviadas e aplicações em reservas
  * - Saldo Atual: Saldo Inicial + Entradas − Saídas
  */
 export function calcularPosicaoBancos(
@@ -450,13 +462,27 @@ export function calcularPosicaoBancos(
   const contaMap = new Map<string, Conta>(contas.map((c) => [c.id, c]));
 
   const resumos: PosicaoBancoIndividual[] = bancos.map((banco) => {
+    const tipo = banco.tipo || "corrente";
     const saldoInicial = banco.saldoInicialCentavos || 0;
     let totalEntradas = 0;
     let totalSaidas = 0;
     let qtdLancamentos = 0;
 
-    // Lançamentos operacionais vinculados ao banco
+    // 1. Lançamentos operacionais e transferências entre contas
     for (const lanc of lancamentos) {
+      // Transferência direta entre contas / troca de instituição
+      if (lanc.bancoDestinoId) {
+        if (lanc.bancoId === banco.id) {
+          totalSaidas += lanc.valor;
+          qtdLancamentos++;
+        }
+        if (lanc.bancoDestinoId === banco.id) {
+          totalEntradas += lanc.valor;
+          qtdLancamentos++;
+        }
+        continue;
+      }
+
       if (lanc.bancoId !== banco.id) continue;
       qtdLancamentos++;
 
@@ -469,8 +495,21 @@ export function calcularPosicaoBancos(
       }
     }
 
-    // Movimentações de reserva com vínculo a este banco (apenas se não geraram lançamento operacional duplicado)
+    // 2. Movimentações de reserva com vínculo a este banco (ou troca de instituição)
     for (const mov of reservaMovimentos) {
+      // Troca de instituição entre contas (origem -> destino)
+      if (mov.bancoDestinoId) {
+        if (mov.bancoId === banco.id) {
+          totalSaidas += mov.valor;
+          qtdLancamentos++;
+        }
+        if (mov.bancoDestinoId === banco.id) {
+          totalEntradas += mov.valor;
+          qtdLancamentos++;
+        }
+        continue;
+      }
+
       if (mov.bancoId !== banco.id) continue;
       if (mov.lancamentoId) continue; // Já contabilizado pelo lançamento operacional
 
@@ -487,6 +526,8 @@ export function calcularPosicaoBancos(
 
     return {
       banco,
+      tipo,
+      reservaVinculadaId: banco.reservaVinculadaId,
       saldoInicial,
       totalEntradas,
       totalSaidas,
@@ -495,12 +536,33 @@ export function calcularPosicaoBancos(
     };
   });
 
+  const porTipo: Record<TipoContaBancaria, PosicaoBancoIndividual[]> = {
+    corrente: resumos.filter((r) => r.tipo === "corrente"),
+    investimento: resumos.filter((r) => r.tipo === "investimento"),
+    poupanca: resumos.filter((r) => r.tipo === "poupanca"),
+  };
+
+  const calcularTotais = (lista: PosicaoBancoIndividual[]): TotaisTipoBanco => ({
+    totalSaldoInicial: lista.reduce((sum, r) => sum + r.saldoInicial, 0),
+    totalEntradas: lista.reduce((sum, r) => sum + r.totalEntradas, 0),
+    totalSaidas: lista.reduce((sum, r) => sum + r.totalSaidas, 0),
+    totalSaldoAtual: lista.reduce((sum, r) => sum + r.saldoAtual, 0),
+  });
+
+  const totaisPorTipo: Record<TipoContaBancaria, TotaisTipoBanco> = {
+    corrente: calcularTotais(porTipo.corrente),
+    investimento: calcularTotais(porTipo.investimento),
+    poupanca: calcularTotais(porTipo.poupanca),
+  };
+
   return {
     totalSaldoInicial: resumos.reduce((sum, r) => sum + r.saldoInicial, 0),
     totalEntradas: resumos.reduce((sum, r) => sum + r.totalEntradas, 0),
     totalSaidas: resumos.reduce((sum, r) => sum + r.totalSaidas, 0),
     totalSaldoAtual: resumos.reduce((sum, r) => sum + r.saldoAtual, 0),
     bancos: resumos,
+    porTipo,
+    totaisPorTipo,
   };
 }
 

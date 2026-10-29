@@ -3,7 +3,7 @@ import { Icon } from "../components/Icon.tsx";
 import { calcularPosicaoBancos } from "../data/calc.ts";
 import { db } from "../data/db.ts";
 import { anos, categorias, contas, contasBancarias, empresas, reservas } from "../data/repo.ts";
-import { type Ano, type Conta, type ContaBancaria, SINAL } from "../data/types.ts";
+import { type Ano, type Conta, type ContaBancaria, SINAL, type TipoContaBancaria } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { labelCpfCnpj, money, signed } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
@@ -34,6 +34,8 @@ export function Relatorios() {
   const [presetAtivo, setPresetAtivo] = useState<string>(() => {
     return anoNum === anoHoje ? "ano_ate_hoje" : "ano";
   });
+  const [filtroTipoBanco, setFiltroTipoBanco] = useState<"todos" | TipoContaBancaria>("todos");
+  const [agruparPorTipo, setAgruparPorTipo] = useState<boolean>(true);
 
   // Sincroniza as datas quando o ano ativo mudar
   useEffect(() => {
@@ -653,139 +655,281 @@ export function Relatorios() {
         )}
 
         {/* Bloco de Posição das Contas Bancárias */}
-        {bancoList.length > 0 && (
-          <section class="card card--table">
-            <div class="card__head" style="margin-bottom: var(--sp-2);">
-              <h2 class="card__title" style="display:flex; align-items:center; gap:8px;">
-                <Icon name="bank" /> Posição das Contas Bancárias
-              </h2>
-              <span class="muted" style="font-size: var(--fs-xs);">
-                {bancoList.length} conta{bancoList.length > 1 ? "s" : ""} cadastrada{bancoList.length > 1 ? "s" : ""} · Posição acumulada em {formatarDataBR(dataFim)}
-              </span>
-            </div>
+        {bancoList.length > 0 && (() => {
+          const reservaMap = new Map<string, string>(resList.map((r) => [r.id, r.nome]));
 
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--sp-3); padding: var(--sp-2) 0;">
-              <div class="stat" style="background:var(--surface-solid);">
-                <div class="stat__label" style="color:var(--text-muted);">
-                  Saldo Inicial Consolidado
+          const tiposContasConfig: { id: TipoContaBancaria; label: string }[] = [
+            { id: "corrente", label: "Conta Corrente" },
+            { id: "investimento", label: "Investimento" },
+            { id: "poupanca", label: "Poupança" },
+          ];
+
+          const totalPorTipoConta = (tipo: TipoContaBancaria) =>
+            bancoList.filter((b) => (b.tipo || "corrente") === tipo).length;
+
+          const bancosExibicao = bancoList.filter((b) => {
+            const tipo = b.tipo || "corrente";
+            if (filtroTipoBanco === "todos") return true;
+            return tipo === filtroTipoBanco;
+          });
+
+          const saldoInicialExibicao = filtroTipoBanco === "todos"
+            ? posicaoBancosAteFim.totalSaldoInicial
+            : (posicaoBancosAteFim.totaisPorTipo[filtroTipoBanco]?.totalSaldoInicial || 0);
+
+          const entradasExibicao = filtroTipoBanco === "todos"
+            ? posicaoBancosPeriodo.totalEntradas
+            : (posicaoBancosPeriodo.totaisPorTipo[filtroTipoBanco]?.totalEntradas || 0);
+
+          const saidasExibicao = filtroTipoBanco === "todos"
+            ? posicaoBancosPeriodo.totalSaidas
+            : (posicaoBancosPeriodo.totaisPorTipo[filtroTipoBanco]?.totalSaidas || 0);
+
+          const saldoAtualExibicao = filtroTipoBanco === "todos"
+            ? posicaoBancosAteFim.totalSaldoAtual
+            : (posicaoBancosAteFim.totaisPorTipo[filtroTipoBanco]?.totalSaldoAtual || 0);
+
+          const renderLinhaBanco = (b: ContaBancaria) => {
+            const bAteFim = posicaoBancosAteFim.bancos.find((x) => x.banco.id === b.id);
+            const bPeriodo = posicaoBancosPeriodo.bancos.find((x) => x.banco.id === b.id);
+            const saldoAtual = bAteFim ? bAteFim.saldoAtual : (b.saldoInicialCentavos || 0);
+            const entradas = bPeriodo ? bPeriodo.totalEntradas : 0;
+            const saidas = bPeriodo ? bPeriodo.totalSaidas : 0;
+            const qtd = bAteFim?.qtdLancamentos || 0;
+            const tipoConta = b.tipo || "corrente";
+            const nomeReserva = b.reservaVinculadaId ? reservaMap.get(b.reservaVinculadaId) : null;
+
+            return (
+              <tr key={b.id}>
+                <td class="col-banco" style="font-weight:600;">
+                  <div style="display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;">
+                    <div class="list__icon hide-mobile" style="width:24px;height:24px;background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--r-sm);flex-shrink:0;">
+                      <Icon name="bank" style="width:12px;height:12px;color:var(--primary);" />
+                    </div>
+                    <span class="banco-nome" title={b.nome} style="font-weight:600;">{b.nome}</span>
+                    <span
+                      class="badge"
+                      style={tipoConta === "investimento"
+                        ? "font-size:0.65rem; background:var(--primary-soft); color:var(--primary); border:1px solid color-mix(in srgb, var(--primary) 30%, transparent);"
+                        : tipoConta === "poupanca"
+                        ? "font-size:0.65rem; background:var(--in-soft); color:var(--in);"
+                        : "font-size:0.65rem; background:var(--surface-soft); color:var(--text-muted); border:1px solid var(--border);"}
+                    >
+                      {tipoConta === "investimento" ? "Investimento" : tipoConta === "poupanca" ? "Poupança" : "Corrente"}
+                    </span>
+                    {nomeReserva && (
+                      <span
+                        class="badge"
+                        style="font-size:0.65rem; background:var(--rendimento-soft); color:var(--rendimento); border:1px solid color-mix(in srgb, var(--rendimento) 25%, transparent);"
+                        title={`Conta vinculada à caixinha "${nomeReserva}"`}
+                      >
+                        Caixinha: {nomeReserva}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td class="num muted" style="text-align:right;">
+                  {money(b.saldoInicialCentavos || 0)}
+                </td>
+                <td class="num tone-in" style="text-align:right;font-weight:600;">
+                  {money(entradas)}
+                </td>
+                <td class="num tone-out" style="text-align:right;font-weight:600;">
+                  {money(saidas)}
+                </td>
+                <td class={`num ${saldoAtual >= 0 ? "tone-in" : "tone-out"}`} style="text-align:right;font-weight:800;font-size:var(--fs-sm);">
+                  {money(saldoAtual)}
+                </td>
+                <td style="text-align:center;">
+                  <span class="badge badge--neutral" style="font-size:0.7rem;">
+                    {qtd} {qtd === 1 ? "mov." : "movs."}
+                  </span>
+                </td>
+              </tr>
+            );
+          };
+
+          return (
+            <section class="card card--table">
+              <div class="card__head" style="margin-bottom: var(--sp-2); display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:var(--sp-2);">
+                <div>
+                  <h2 class="card__title" style="display:flex; align-items:center; gap:8px;">
+                    <Icon name="bank" /> Posição das Contas Bancárias
+                  </h2>
+                  <span class="muted" style="font-size: var(--fs-xs);">
+                    {bancosExibicao.length} de {bancoList.length} conta{bancoList.length > 1 ? "s" : ""} · Posição acumulada em {formatarDataBR(dataFim)}
+                  </span>
                 </div>
-                <div class="stat__value num">
-                  {money(posicaoBancosAteFim.totalSaldoInicial)}
+
+                {/* Filtros de Tipo e Toggle de Agrupamento */}
+                <div style="display:flex; align-items:center; gap:var(--sp-2); flex-wrap:wrap;">
+                  <div class="filter-group" style="display:inline-flex; border:1px solid var(--border); border-radius:var(--r-md); padding:2px; background:var(--surface-sunken);">
+                    <button
+                      type="button"
+                      class={`btn btn--xs ${filtroTipoBanco === "todos" ? "btn--primary" : "btn--subtle"}`}
+                      onClick={() => setFiltroTipoBanco("todos")}
+                      style="border:none; padding:3px 8px; font-size:var(--fs-xs);"
+                    >
+                      Todas ({bancoList.length})
+                    </button>
+                    {tiposContasConfig.map((tc) => {
+                      const count = totalPorTipoConta(tc.id);
+                      if (count === 0) return null;
+                      return (
+                        <button
+                          key={tc.id}
+                          type="button"
+                          class={`btn btn--xs ${filtroTipoBanco === tc.id ? "btn--primary" : "btn--subtle"}`}
+                          onClick={() => setFiltroTipoBanco(tc.id)}
+                          style="border:none; padding:3px 8px; font-size:var(--fs-xs);"
+                        >
+                          {tc.label} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {filtroTipoBanco === "todos" && (
+                    <button
+                      type="button"
+                      class={`btn btn--xs ${agruparPorTipo ? "btn--secondary" : "btn--subtle"}`}
+                      onClick={() => setAgruparPorTipo(!agruparPorTipo)}
+                      title="Alternar entre visualização agrupada por tipo ou lista contínua"
+                      style="font-size:var(--fs-xs); padding:3px 8px;"
+                    >
+                      {agruparPorTipo ? "Agrupado por Tipo" : "Lista Contínua"}
+                    </button>
+                  )}
                 </div>
-                <div class="stat__sub">Soma das aberturas das contas</div>
               </div>
 
-              <div class="stat" style="background:var(--surface-solid);">
-                <div class="stat__label" style="color:var(--in);">
-                  (+) Entradas no Período
+              {/* Cards de Métricas do Filtro */}
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--sp-3); padding: var(--sp-2) 0;">
+                <div class="stat" style="background:var(--surface-solid);">
+                  <div class="stat__label" style="color:var(--text-muted);">
+                    Saldo Inicial {filtroTipoBanco !== "todos" ? `(${filtroTipoBanco})` : "Consolidado"}
+                  </div>
+                  <div class="stat__value num">
+                    {money(saldoInicialExibicao)}
+                  </div>
+                  <div class="stat__sub">Abertura das contas selecionadas</div>
                 </div>
-                <div class="stat__value num tone-in">
-                  {money(posicaoBancosPeriodo.totalEntradas)}
+
+                <div class="stat" style="background:var(--surface-solid);">
+                  <div class="stat__label" style="color:var(--in);">
+                    (+) Entradas no Período
+                  </div>
+                  <div class="stat__value num tone-in">
+                    {money(entradasExibicao)}
+                  </div>
+                  <div class="stat__sub">Recebimentos e resgates</div>
                 </div>
-                <div class="stat__sub">Recebimentos e resgates</div>
+
+                <div class="stat" style="background:var(--surface-solid);">
+                  <div class="stat__label" style="color:var(--out);">
+                    (−) Saídas no Período
+                  </div>
+                  <div class="stat__value num tone-out">
+                    {money(saidasExibicao)}
+                  </div>
+                  <div class="stat__sub">Pagamentos e aportes</div>
+                </div>
+
+                <div class="stat" style="background:var(--surface-solid);">
+                  <div class="stat__label" style="color:var(--primary);">
+                    Saldo Total {filtroTipoBanco !== "todos" ? `(${filtroTipoBanco})` : "Acumulado"}
+                  </div>
+                  <div class="stat__value num" style="color:var(--primary);font-weight:800;">
+                    {money(saldoAtualExibicao)}
+                  </div>
+                  <div class="stat__sub">Posição em {formatarDataBR(dataFim)}</div>
+                </div>
               </div>
 
-              <div class="stat" style="background:var(--surface-solid);">
-                <div class="stat__label" style="color:var(--out);">
-                  (−) Saídas no Período
-                </div>
-                <div class="stat__value num tone-out">
-                  {money(posicaoBancosPeriodo.totalSaidas)}
-                </div>
-                <div class="stat__sub">Pagamentos e aportes</div>
+              <div class="matriz-scroll-hint only-mobile" style="margin-top:var(--sp-2);">
+                <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
+                <span>Deslize horizontalmente para ver entradas, saídas e saldos</span>
               </div>
 
-              <div class="stat" style="background:var(--surface-solid);">
-                <div class="stat__label" style="color:var(--primary);">
-                  Saldo Total Acumulado em Bancos
-                </div>
-                <div class="stat__value num" style="color:var(--primary);font-weight:800;">
-                  {money(posicaoBancosAteFim.totalSaldoAtual)}
-                </div>
-                <div class="stat__sub">Posição acumulada em {formatarDataBR(dataFim)}</div>
+              {/* Detalhamento Individual por Conta Bancária */}
+              <div class="table-wrap table-wrap--mobile-bleed" style="margin-top: var(--sp-2);">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th class="col-banco" style="text-align:left;">Conta Bancária / Tipo</th>
+                      <th style="text-align:right;">Saldo Inicial</th>
+                      <th style="text-align:right;" title="Entradas no período selecionado">Entradas (+)</th>
+                      <th style="text-align:right;" title="Saídas no período selecionado">Saídas (−)</th>
+                      <th style="text-align:right;" title="Saldo acumulado até o final do período">Saldo Atual</th>
+                      <th style="text-align:center;">Movimentações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtroTipoBanco === "todos" && agruparPorTipo ? (
+                      tiposContasConfig.map((tc) => {
+                        const bancosDoTipo = bancoList.filter((b) => (b.tipo || "corrente") === tc.id);
+                        if (bancosDoTipo.length === 0) return null;
+                        const subtotalAteFim = posicaoBancosAteFim.totaisPorTipo[tc.id];
+                        const subtotalPeriodo = posicaoBancosPeriodo.totaisPorTipo[tc.id];
+
+                        return (
+                          <>
+                            <tr key={`header-${tc.id}`} style="background:var(--surface-soft);">
+                              <td colspan={6} style="padding:6px 12px; font-weight:700; font-size:var(--fs-xs); letter-spacing:0.03em; color:var(--text);">
+                                {tc.label.toUpperCase()} ({bancosDoTipo.length})
+                              </td>
+                            </tr>
+                            {bancosDoTipo.map(renderLinhaBanco)}
+                            <tr key={`subtotal-${tc.id}`} style="background:var(--surface-sunken); font-size:var(--fs-xs); font-weight:700;">
+                              <td style="padding-left:24px; color:var(--text-muted);">
+                                Subtotal {tc.label}
+                              </td>
+                              <td class="num muted" style="text-align:right;">
+                                {money(subtotalAteFim?.totalSaldoInicial || 0)}
+                              </td>
+                              <td class="num tone-in" style="text-align:right;">
+                                {money(subtotalPeriodo?.totalEntradas || 0)}
+                              </td>
+                              <td class="num tone-out" style="text-align:right;">
+                                {money(subtotalPeriodo?.totalSaidas || 0)}
+                              </td>
+                              <td class={`num ${(subtotalAteFim?.totalSaldoAtual || 0) >= 0 ? "tone-in" : "tone-out"}`} style="text-align:right; font-weight:800;">
+                                {money(subtotalAteFim?.totalSaldoAtual || 0)}
+                              </td>
+                              <td></td>
+                            </tr>
+                          </>
+                        );
+                      })
+                    ) : (
+                      bancosExibicao.map(renderLinhaBanco)
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td style="font-weight:700;">
+                        {filtroTipoBanco === "todos" ? "Total Consolidado de Todas as Contas" : `Total Acumulado (${filtroTipoBanco})`}
+                      </td>
+                      <td class="num muted" style="text-align:right;">
+                        {money(saldoInicialExibicao)}
+                      </td>
+                      <td class="num tone-in" style="text-align:right;font-weight:700;">
+                        {money(entradasExibicao)}
+                      </td>
+                      <td class="num tone-out" style="text-align:right;font-weight:700;">
+                        {money(saidasExibicao)}
+                      </td>
+                      <td class={`num ${saldoAtualExibicao >= 0 ? "tone-in" : "tone-out"}`} style="text-align:right;font-weight:800;font-size:var(--fs-md);">
+                        {money(saldoAtualExibicao)}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
-            </div>
-
-            <div class="matriz-scroll-hint only-mobile" style="margin-top:var(--sp-2);">
-              <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
-              <span>Deslize horizontalmente para ver entradas, saídas e saldos</span>
-            </div>
-
-            {/* Detalhamento Individual por Conta Bancária */}
-            <div class="table-wrap table-wrap--mobile-bleed" style="margin-top: var(--sp-2);">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th class="col-banco" style="text-align:left;">Conta Bancária</th>
-                    <th style="text-align:right;">Saldo Inicial</th>
-                    <th style="text-align:right;" title="Entradas no período selecionado">Entradas (+)</th>
-                    <th style="text-align:right;" title="Saídas no período selecionado">Saídas (−)</th>
-                    <th style="text-align:right;" title="Saldo acumulado até o final do período">Saldo Atual</th>
-                    <th style="text-align:center;">Movimentações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bancoList.map((b) => {
-                    const bAteFim = posicaoBancosAteFim.bancos.find((x) => x.banco.id === b.id);
-                    const bPeriodo = posicaoBancosPeriodo.bancos.find((x) => x.banco.id === b.id);
-                    const saldoAtual = bAteFim ? bAteFim.saldoAtual : (b.saldoInicialCentavos || 0);
-                    const entradas = bPeriodo ? bPeriodo.totalEntradas : 0;
-                    const saidas = bPeriodo ? bPeriodo.totalSaidas : 0;
-                    const qtd = bAteFim?.qtdLancamentos || 0;
-
-                    return (
-                      <tr key={b.id}>
-                        <td class="col-banco" style="font-weight:600;">
-                          <div style="display:flex;align-items:center;gap:6px;min-width:0;">
-                            <div class="list__icon hide-mobile" style="width:24px;height:24px;background:var(--surface-soft);border:1px solid var(--border);border-radius:var(--r-sm);flex-shrink:0;">
-                              <Icon name="bank" style="width:12px;height:12px;color:var(--primary);" />
-                            </div>
-                            <span class="banco-nome" title={b.nome}>{b.nome}</span>
-                          </div>
-                        </td>
-                        <td class="num muted" style="text-align:right;">
-                          {money(b.saldoInicialCentavos || 0)}
-                        </td>
-                        <td class="num tone-in" style="text-align:right;font-weight:600;">
-                          {money(entradas)}
-                        </td>
-                        <td class="num tone-out" style="text-align:right;font-weight:600;">
-                          {money(saidas)}
-                        </td>
-                        <td class={`num ${saldoAtual >= 0 ? "tone-in" : "tone-out"}`} style="text-align:right;font-weight:800;font-size:var(--fs-sm);">
-                          {money(saldoAtual)}
-                        </td>
-                        <td style="text-align:center;">
-                          <span class="badge badge--neutral" style="font-size:0.7rem;">
-                            {qtd} {qtd === 1 ? "mov." : "movs."}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td style="font-weight:700;">Total Acumulado em Bancos</td>
-                    <td class="num muted" style="text-align:right;">
-                      {money(posicaoBancosAteFim.totalSaldoInicial)}
-                    </td>
-                    <td class="num tone-in" style="text-align:right;font-weight:700;">
-                      {money(posicaoBancosPeriodo.totalEntradas)}
-                    </td>
-                    <td class="num tone-out" style="text-align:right;font-weight:700;">
-                      {money(posicaoBancosPeriodo.totalSaidas)}
-                    </td>
-                    <td class={`num ${posicaoBancosAteFim.totalSaldoAtual >= 0 ? "tone-in" : "tone-out"}`} style="text-align:right;font-weight:800;font-size:var(--fs-md);">
-                      {money(posicaoBancosAteFim.totalSaldoAtual)}
-                    </td>
-                    <td></td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </section>
-        )}
+            </section>
+          );
+        })()}
 
         {/* Resumo de Entradas vs Saídas */}
         <div class="grid grid--2">

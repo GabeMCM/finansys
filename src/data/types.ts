@@ -92,12 +92,15 @@ export interface Lancamento extends Base {
   reservaId?: string;
   tipoReserva?: "aporte" | "resgate";
   bancoId?: string; // Vínculo com ContaBancaria (opcional)
+  bancoDestinoId?: string; // Para transferências entre instituições (banco de destino)
   formaPagamento?: string; // Ex: "PIX", "Boleto", "Cartão de Crédito" (opcional)
 }
 
 /* ==========================================================
    Contas Bancárias (Bancos) & Formas de Pagamento
    ========================================================== */
+
+export type TipoContaBancaria = "corrente" | "investimento" | "poupanca";
 
 export const FORMAS_PAGAMENTO_PADRAO = [
   "PIX",
@@ -111,7 +114,9 @@ export const FORMAS_PAGAMENTO_PADRAO = [
 
 export interface ContaBancaria extends Base {
   empresaId: string;
-  nome: string;                  // Ex: "Nubank PJ", "Itaú Corrente", "Inter"
+  nome: string;                  // Ex: "Nubank PJ", "Itaú Corrente", "XP Investimentos", "Inter"
+  tipo?: TipoContaBancaria;       // "corrente" (padrão), "investimento" (recebe aportes/resgates), "poupanca"
+  reservaVinculadaId?: string;   // Vínculo com Reserva / Caixinha opcional
   saldoInicialCentavos: number;  // Saldo de abertura em centavos
   cor?: string;                  // Cor visual opcional (ex: "emerald", "blue", "violet", "amber", "rose", "cyan")
   agencia?: string;              // Agência bancária (opcional)
@@ -132,6 +137,7 @@ export interface Reserva extends Base {
   cor?: string;                   // "emerald", "blue", "violet", "amber", "rose"
   metaCentavos?: number;          // Meta financeira opcional em centavos
   saldoInicialCentavos?: number;  // Saldo inicial preexistente (banca inicial da reserva)
+  contaBancariaId?: string;      // Vínculo opcional com a Conta Bancária / Instituição onde está guardada
   ativa: boolean;
 }
 
@@ -148,7 +154,8 @@ export interface ReservaMovimento extends Base {
   obs?: string;
   lancamentoId?: string;          // Vínculo com lançamento no caixa operacional (se houver)
   contaId?: string;               // Conta operacional de onde saiu ou para onde foi o dinheiro
-  bancoId?: string;               // Conta bancária de onde saiu ou para onde foi o dinheiro (opcional)
+  bancoId?: string;               // Conta bancária de origem / saída
+  bancoDestinoId?: string;        // Conta bancária de destino / entrada (para troca de instituição)
 }
 
 export interface ReservaProjecao extends Base {

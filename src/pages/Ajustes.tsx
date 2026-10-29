@@ -10,10 +10,10 @@ import { MoneyInput } from "../components/lancamento/MoneyInput.tsx";
 import { dumpDatabase, restoreDatabase } from "../data/backup.ts";
 import { atualizarNomePerfil, cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem, puxarBackupNuvem } from "../data/cloudSync.ts";
 import { getInactivityTimeout, inactivityTimeoutSignal, lockScreenNow, setInactivityTimeout } from "../data/inactivityGuard.ts";
-import { anos, categorias, contas, contasBancarias, empresas, projecoes } from "../data/repo.ts";
+import { anos, categorias, contas, contasBancarias, empresas, projecoes, reservas } from "../data/repo.ts";
 import { calcularBaseProjecoes, calcularValorVinculado } from "../data/calc.ts";
 import { seedExemplo } from "../data/seed.ts";
-import { type Ano, type Categoria, type Conta, type ContaBancaria, type Empresa, type Natureza, NATUREZAS, type RegraVinculo, type ModoVinculo, FORMAS_PAGAMENTO_PADRAO } from "../data/types.ts";
+import { type Ano, type Categoria, type Conta, type ContaBancaria, type Empresa, type Natureza, NATUREZAS, type RegraVinculo, type ModoVinculo, FORMAS_PAGAMENTO_PADRAO, type Reserva } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { formatCpfCnpj, labelCpfCnpj, money } from "../lib/format.ts";
 import { avaliarFormula, calcularFormulaProjecoes, extrairVariaveis } from "../lib/formula.ts";
@@ -59,6 +59,7 @@ export function Ajustes() {
   const listaCats = useLive(() => (empId ? categorias.byEmpresa(empId, natTab) : Promise.resolve([])), [empId, natTab], []);
   const listaContas = useLive(() => (empId ? contas.byEmpresa(empId, natTab) : Promise.resolve([])), [empId, natTab], []);
   const listaBancos = useLive(() => (empId ? contasBancarias.byEmpresa(empId) : Promise.resolve([])), [empId], []);
+  const listaReservas = useLive(() => (empId ? reservas.byEmpresa(empId) : Promise.resolve([])), [empId], []);
   const todasContasEmpresa = useLive(() => (empId ? contas.byEmpresa(empId) : Promise.resolve([])), [empId], []);
   const todasCategoriasEmpresa = useLive(() => (empId ? categorias.byEmpresa(empId) : Promise.resolve([])), [empId], []);
 
@@ -257,6 +258,8 @@ export function Ajustes() {
     if (modalBanco.id) {
       await contasBancarias.update(modalBanco.id, {
         nome: modalBanco.nome.trim(),
+        tipo: modalBanco.tipo || "corrente",
+        reservaVinculadaId: modalBanco.reservaVinculadaId || undefined,
         saldoInicialCentavos: modalBanco.saldoInicialCentavos || 0,
         cor: modalBanco.cor || "emerald",
         agencia: modalBanco.agencia?.trim() || undefined,
@@ -269,6 +272,8 @@ export function Ajustes() {
       await contasBancarias.create({
         empresaId: empId,
         nome: modalBanco.nome.trim(),
+        tipo: modalBanco.tipo || "corrente",
+        reservaVinculadaId: modalBanco.reservaVinculadaId || undefined,
         saldoInicialCentavos: modalBanco.saldoInicialCentavos || 0,
         cor: modalBanco.cor || "emerald",
         agencia: modalBanco.agencia?.trim() || undefined,
@@ -840,8 +845,16 @@ export function Ajustes() {
                     <Icon name="bank" />
                   </div>
                   <div class="list__body">
-                    <div class="list__title" style="display:flex;align-items:center;gap:8px;">
+                    <div class="list__title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                       <span>{b.nome}</span>
+                      <span class={`badge ${b.tipo === "investimento" ? "badge--aporte" : b.tipo === "poupanca" ? "badge--rendimento" : "badge--neutral"}`}>
+                        {b.tipo === "investimento" ? "Investimento" : b.tipo === "poupanca" ? "Poupança" : "Corrente"}
+                      </span>
+                      {b.reservaVinculadaId && (
+                        <span class="badge badge--neutral" title="Vinculada a Caixinha">
+                          Caixinha: {listaReservas.find((r) => r.id === b.reservaVinculadaId)?.nome || "Vinculada"}
+                        </span>
+                      )}
                       {b.ativa ? (
                         <span class="badge badge--in">Ativa</span>
                       ) : (
@@ -1895,6 +1908,60 @@ export function Ajustes() {
                 autoFocus
               />
             </div>
+
+            <div class="form-group">
+              <label class="form-label">Tipo de Conta / Finalidade *</label>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button
+                  type="button"
+                  class={`btn ${(!modalBanco.tipo || modalBanco.tipo === "corrente") ? "btn--primary" : "btn--secondary"}`}
+                  style="flex:1;min-width:110px;"
+                  onClick={() => setModalBanco({ ...modalBanco, tipo: "corrente" })}
+                >
+                  Conta Corrente
+                </button>
+                <button
+                  type="button"
+                  class={`btn ${modalBanco.tipo === "investimento" ? "btn--primary" : "btn--secondary"}`}
+                  style="flex:1;min-width:110px;"
+                  onClick={() => setModalBanco({ ...modalBanco, tipo: "investimento" })}
+                >
+                  Investimento / Corretora
+                </button>
+                <button
+                  type="button"
+                  class={`btn ${modalBanco.tipo === "poupanca" ? "btn--primary" : "btn--secondary"}`}
+                  style="flex:1;min-width:110px;"
+                  onClick={() => setModalBanco({ ...modalBanco, tipo: "poupanca" })}
+                >
+                  Poupança
+                </button>
+              </div>
+            </div>
+
+            {listaReservas.length > 0 && (
+              <div class="form-group">
+                <label class="form-label" for="banco-reserva">
+                  Vincular a uma Caixinha / Reserva Patrimonial
+                  <span style="font-size: var(--fs-xs); color: var(--text-faint); margin-left: 4px; text-transform: none;">
+                    (Opcional)
+                  </span>
+                </label>
+                <CustomSelect
+                  id="banco-reserva"
+                  value={modalBanco.reservaVinculadaId || ""}
+                  options={[
+                    { value: "", label: "Nenhuma (Conta Bancária Livre)" },
+                    ...listaReservas.map((r) => ({ value: r.id, label: r.nome })),
+                  ]}
+                  onChange={(val) => setModalBanco({ ...modalBanco, reservaVinculadaId: val || undefined })}
+                  placeholder="Selecione uma caixinha vinculada..."
+                />
+                <span class="muted" style="font-size:11px;margin-top:2px;display:block;">
+                  Permite somar ou isolar os recursos desta conta bancária junto com o saldo da caixinha nos relatórios.
+                </span>
+              </div>
+            )}
 
             <div class="form-group">
               <label class="form-label">
