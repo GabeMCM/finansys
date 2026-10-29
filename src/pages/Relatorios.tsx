@@ -1,6 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
 import { Icon } from "../components/Icon.tsx";
-import { ModalReplicacao } from "../components/ModalReplicacao.tsx";
 import { calcularPosicaoBancos } from "../data/calc.ts";
 import { db } from "../data/db.ts";
 import { anos, categorias, contas, contasBancarias, empresas, reservas } from "../data/repo.ts";
@@ -35,7 +34,6 @@ export function Relatorios() {
   const [presetAtivo, setPresetAtivo] = useState<string>(() => {
     return anoNum === anoHoje ? "ano_ate_hoje" : "ano";
   });
-  const [modalRepAberto, setModalRepAberto] = useState<boolean>(false);
 
   // Sincroniza as datas quando o ano ativo mudar
   useEffect(() => {
@@ -385,15 +383,6 @@ export function Relatorios() {
           </button>
           <button type="button" class="btn btn--primary" onClick={imprimirPDF} title="Gerar relatório impresso / PDF formal">
             <Icon name="download" /> Imprimir / PDF
-          </button>
-          <button
-            type="button"
-            class="btn btn--secondary"
-            style="border-color:var(--primary);color:var(--text);"
-            onClick={() => setModalRepAberto(true)}
-            title="Replicar contas para o próximo ano com reajuste seguro"
-          >
-            <Icon name="sparkle" /> Projetar {anoNum + 1}
           </button>
         </div>
       </div>
@@ -917,15 +906,6 @@ export function Relatorios() {
           </div>
         </section>
       </div>
-
-      {/* Modal de Replicação */}
-      <ModalReplicacao
-        empresaId={emp.id}
-        anoAtual={anoNum}
-        saldoFinalRealAtual={saldoFinalReal}
-        isOpen={modalRepAberto}
-        onClose={() => setModalRepAberto(false)}
-      />
     </>
   );
 }

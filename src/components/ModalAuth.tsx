@@ -16,6 +16,7 @@ export function ModalAuth({ isOpen, onClose }: ModalAuthProps) {
   const [buscandoPerfil, setBuscandoPerfil] = useState(false);
   const [contaExiste, setContaExiste] = useState<boolean | null>(null);
   const [editandoNome, setEditandoNome] = useState(false);
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const timerBuscaRef = useRef<number | null>(null);
 
@@ -204,15 +205,28 @@ export function ModalAuth({ isOpen, onClose }: ModalAuthProps) {
         {/* Senha */}
         <div class="form-group" style="margin:0;">
           <label class="form-label" for="auth-senha">Senha de Acesso *</label>
-          <input
-            id="auth-senha"
-            type="password"
-            class="input"
-            required
-            placeholder="••••••••"
-            value={password}
-            onInput={(e) => setPassword(e.currentTarget.value)}
-          />
+          <div style="position:relative;">
+            <input
+              id="auth-senha"
+              type={mostrarSenha ? "text" : "password"}
+              class="input"
+              style="padding-right: 40px;"
+              required
+              placeholder={mostrarSenha ? "Sua senha" : "••••••••"}
+              value={password}
+              onInput={(e) => setPassword(e.currentTarget.value)}
+            />
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon"
+              style="position:absolute; right:4px; top:50%; transform:translateY(-50%); width:32px; height:32px; min-height:32px; color:var(--text-muted);"
+              onClick={() => setMostrarSenha(!mostrarSenha)}
+              title={mostrarSenha ? "Ocultar senha" : "Exibir senha"}
+              tabIndex={-1}
+            >
+              <Icon name={mostrarSenha ? "eyeOff" : "eye"} style="width:16px; height:16px;" />
+            </button>
+          </div>
           <span class="muted" style="font-size:0.68rem;margin-top:2px;">
             {contaExiste === true
               ? "Digite sua senha para autenticar."

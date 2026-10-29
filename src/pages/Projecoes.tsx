@@ -3,6 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import { CustomSelect } from "../components/CustomSelect.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
+import { ModalReplicacao } from "../components/ModalReplicacao.tsx";
 import { confirmarAcao } from "../components/ModalConfirm.tsx";
 import { toast } from "../components/Toast.tsx";
 import { ContaPicker } from "../components/lancamento/ContaPicker.tsx";
@@ -60,6 +61,7 @@ export function Projecoes() {
   const [modalObs, setModalObs] = useState<{ contaId: string; mes: number; obs: string; nome: string; data?: string } | null>(null);
   const [modalEditarConta, setModalEditarConta] = useState<{ id: string; nome: string; categoriaId: string } | null>(null);
   const [modalNovaProjecao, setModalNovaProjecao] = useState<ModalNovaProjecaoState | null>(null);
+  const [modalRepAberto, setModalRepAberto] = useState<boolean>(false);
 
   const dados = useLive(async () => {
     if (!empId) return null;
@@ -186,24 +188,6 @@ export function Projecoes() {
     const atual = getProj(contaId, mes);
     await projecoes.set(ano.id, contaId, mes, centavos, atual.obs);
     await recalcularDependentes([mes]);
-  };
-
-  const replicarParaAno = async (contaId: string, mesOrigem: number) => {
-    const origem = getProj(contaId, mesOrigem);
-    const conta = cs.find((c) => c.id === contaId);
-    const ok = await confirmarAcao({
-      titulo: "Replicar Projeção Mensal",
-      mensagem: `Deseja replicar o valor de ${money(origem.valor)} (${conta?.nome || "esta conta"}) para todos os 12 meses de ${anoNum}?`,
-      rotuloConfirmar: "Replicar para 12 meses",
-      tipo: "primary",
-    });
-    if (ok) {
-      for (let m = 0; m < 12; m++) {
-        await projecoes.set(ano.id, contaId, m, origem.valor, origem.obs);
-      }
-      await recalcularDependentes([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
-      toast.success(`Valor de ${money(origem.valor)} replicado para os 12 meses.`);
-    }
   };
 
   const zerarContaAno = async (contaId: string) => {
@@ -685,6 +669,17 @@ export function Projecoes() {
             </button>
           )}
 
+          {/* Botão de Projetar Próximo Ano */}
+          <button
+            type="button"
+            class="btn btn--secondary"
+            onClick={() => setModalRepAberto(true)}
+            title={`Replicar e projetar dados para ${anoNum + 1} com base no realizado`}
+            style="display:inline-flex;align-items:center;gap:6px;"
+          >
+            <Icon name="copy" /> Projetar {anoNum + 1}
+          </button>
+
           {/* Botão de Incluir Projeção / Nova Conta diretamente */}
           <button
             type="button"
@@ -1061,15 +1056,6 @@ export function Projecoes() {
                                       type="button"
                                       class="btn btn--ghost btn--icon"
                                       style="min-height:24px;width:24px;"
-                                      onClick={() => replicarParaAno(c.id, new Date().getMonth())}
-                                      title="Replicar valor para todos os 12 meses"
-                                    >
-                                      <Icon name="copy" style="width:12px;height:12px;" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      class="btn btn--ghost btn--icon"
-                                      style="min-height:24px;width:24px;"
                                       onClick={() =>
                                         setModalObs({
                                           contaId: c.id,
@@ -1320,16 +1306,6 @@ export function Projecoes() {
                                   title="Lançar projeção de parcelamento nesta conta"
                                 >
                                   <Icon name="calendar" />
-                                </button>
-
-                                <button
-                                  type="button"
-                                  class="btn btn--ghost btn--icon"
-                                  style="min-height:36px;width:36px;"
-                                  onClick={() => replicarParaAno(c.id, mesAtivo)}
-                                  title="Replicar este valor para todos os 12 meses"
-                                >
-                                  <Icon name="copy" />
                                 </button>
 
                                 <button
@@ -1769,6 +1745,16 @@ export function Projecoes() {
             </div>
           </form>
         </Modal>
+      )}
+
+      {modalRepAberto && (
+        <ModalReplicacao
+          empresaId={empId}
+          anoAtual={anoNum}
+          saldoFinalRealAtual={ano.bancaInicial || 0}
+          isOpen={modalRepAberto}
+          onClose={() => setModalRepAberto(false)}
+        />
       )}
     </>
   );

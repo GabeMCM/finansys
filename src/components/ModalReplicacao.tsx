@@ -4,9 +4,10 @@ import { type PlanoReplicacao, type RegraFaltante, aplicarReplicacao, simularRep
 import { Modal } from "./Modal.tsx";
 import { Icon } from "./Icon.tsx";
 import { toast } from "./Toast.tsx";
-import { money, signed } from "../lib/format.ts";
+import { money, signed, MONTHS } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
-import { NATUREZAS } from "../data/types.ts";
+import { type Natureza, NATUREZAS } from "../data/types.ts";
+import { MoneyInput } from "./lancamento/MoneyInput.tsx";
 import { setAno } from "../state.ts";
 
 export interface ModalReplicacaoProps {
@@ -31,6 +32,15 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
   const [plano, setPlano] = useState<PlanoReplicacao | null>(null);
   const [salvando, setSalvando] = useState<boolean>(false);
 
+  // Edição manual pontual de uma conta na prévia
+  const [contaEmEdicao, setContaEmEdicao] = useState<{
+    contaId: string;
+    contaNome: string;
+    natureza: Natureza;
+    valores: number[];
+  } | null>(null);
+  const [contasEditadas, setContasEditadas] = useState<Set<string>>(new Set());
+
   const obterIpca = async () => {
     setCarregandoIpca(true);
     const res = await consultarIndices();
@@ -53,10 +63,63 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
         bancaInicialDestino: Math.round(Number(bancaDestino || 0) * 100),
       });
       setPlano(p);
+      setContasEditadas(new Set());
+      setContaEmEdicao(null);
       setEtapa("previa");
     } catch (err) {
       toast.error(String(err));
     }
+  };
+
+  const salvarEdicaoConta = () => {
+    if (!plano || !contaEmEdicao) return;
+    const novoTotalConta = contaEmEdicao.valores.reduce((s, v) => s + v, 0);
+
+    const novosItens = plano.itens.map((it) => {
+      if (it.contaId !== contaEmEdicao.contaId) return it;
+      return {
+        ...it,
+        valoresReajustados: [...contaEmEdicao.valores],
+        totalReajustado: novoTotalConta,
+      };
+    });
+
+    const novoTotalReajustadoGeral = { ...plano.totalReajustadoGeral };
+    novoTotalReajustadoGeral[contaEmEdicao.natureza] = novosItens
+      .filter((it) => it.natureza === contaEmEdicao.natureza)
+      .reduce((s, it) => s + it.totalReajustado, 0);
+
+    setPlano({
+      ...plano,
+      itens: novosItens,
+      totalReajustadoGeral: novoTotalReajustadoGeral,
+    });
+
+    setContasEditadas((prev) => {
+      const proximo = new Set(prev);
+      proximo.add(contaEmEdicao.contaId);
+      return proximo;
+    });
+
+    setContaEmEdicao(null);
+    toast.success(`Valores de "${contaEmEdicao.contaNome}" ajustados manualmente com sucesso!`);
+  };
+
+  const replicarPrimeiroMesContaEdicao = () => {
+    if (!contaEmEdicao) return;
+    const val0 = contaEmEdicao.valores[0] || 0;
+    setContaEmEdicao({
+      ...contaEmEdicao,
+      valores: Array(12).fill(val0),
+    });
+  };
+
+  const zerarMesesContaEdicao = () => {
+    if (!contaEmEdicao) return;
+    setContaEmEdicao({
+      ...contaEmEdicao,
+      valores: Array(12).fill(0),
+    });
   };
 
   const confirmarReplicacao = async () => {
@@ -69,6 +132,8 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
       onClose();
       setEtapa("config");
       setPlano(null);
+      setContaEmEdicao(null);
+      setContasEditadas(new Set());
     } catch (err) {
       toast.error("Erro ao aplicar replicação: " + String(err));
     } finally {
@@ -76,9 +141,16 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
     }
   };
 
+  let modalTitle = `Replicar Contas: ${anoAtual} → ${anoDestino}`;
+  if (etapa === "previa") {
+    modalTitle = contaEmEdicao
+      ? `Ajuste Manual: ${contaEmEdicao.contaNome}`
+      : `Prévia da Projeção Reajustada (${anoDestino})`;
+  }
+
   return (
     <Modal
-      title={etapa === "config" ? `Replicar Contas: ${anoAtual} → ${anoDestino}` : "Prévia da Projeção Reajustada"}
+      title={modalTitle}
       isOpen={isOpen}
       onClose={onClose}
       subtela={true}
@@ -88,6 +160,15 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
             <button type="button" class="btn btn--ghost" onClick={onClose}>Cancelar</button>
             <button type="submit" form="form-replicacao" class="btn btn--primary">
               Ver Prévia <Icon name="chevron" />
+            </button>
+          </>
+        ) : contaEmEdicao ? (
+          <>
+            <button type="button" class="btn btn--ghost" onClick={() => setContaEmEdicao(null)}>
+              Cancelar Ajuste
+            </button>
+            <button type="button" class="btn btn--primary" onClick={salvarEdicaoConta}>
+              Salvar Correção Pontual
             </button>
           </>
         ) : (
@@ -221,6 +302,69 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
             </span>
           </div>
         </form>
+      ) : contaEmEdicao ? (
+        /* ================= ETAPA DE AJUSTE PONTUAL DA CONTA ================= */
+        <div class="stack" style="gap:var(--sp-3);">
+          <div class="card" style="padding:var(--sp-3);background:var(--surface);">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div>
+                <span class="muted" style="font-size:var(--fs-xs);text-transform:uppercase;font-weight:700;">Conta em Ajuste Manual</span>
+                <h3 style="margin:2px 0 0 0;font-size:var(--fs-md);">{contaEmEdicao.contaNome}</h3>
+              </div>
+              <div style="text-align:right;">
+                <span class="muted" style="font-size:var(--fs-xs);text-transform:uppercase;font-weight:700;">Novo Total Previsto</span>
+                <div class="num" style="font-size:var(--fs-lg);font-weight:800;color:var(--primary);">
+                  {money(contaEmEdicao.valores.reduce((s, v) => s + v, 0))}
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:var(--sp-3);flex-wrap:wrap;">
+              <button
+                type="button"
+                class="btn btn--secondary btn--sm"
+                onClick={replicarPrimeiroMesContaEdicao}
+                title="Replicar o valor de Janeiro para todos os outros 11 meses"
+              >
+                <Icon name="copy" /> Replicar Jan para todos os meses
+              </button>
+              <button
+                type="button"
+                class="btn btn--secondary btn--sm"
+                onClick={zerarMesesContaEdicao}
+                title="Zerar todos os 12 meses desta conta"
+              >
+                Zerar Meses
+              </button>
+            </div>
+          </div>
+
+          <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;">
+            Valores Mês a Mês ({anoDestino})
+          </div>
+
+          <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: var(--sp-2); max-height: 280px; overflow-y: auto; padding-right: 4px;">
+            {MONTHS.map((mNome, mIdx) => (
+              <div key={mIdx} class="form-group" style="margin-bottom:0;">
+                <label class="form-label" style="font-size:11px;font-weight:600;margin-bottom:2px;">
+                  {mNome}
+                </label>
+                <MoneyInput
+                  variant="compact"
+                  valueCentavos={contaEmEdicao.valores[mIdx] || 0}
+                  onChangeCentavos={(cents) => {
+                    const novoArr = [...contaEmEdicao.valores];
+                    novoArr[mIdx] = cents;
+                    setContaEmEdicao({
+                      ...contaEmEdicao,
+                      valores: novoArr,
+                    });
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       ) : (
         /* ================= ETAPA DE PRÉVIA ================= */
         <div class="stack" style="gap:var(--sp-3);">
@@ -245,8 +389,13 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
             </div>
           </div>
 
-          <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;">
-            Detalhamento por Conta ({plano?.itens.length} contas)
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <div style="font-size:var(--fs-xs);font-weight:700;color:var(--text-muted);text-transform:uppercase;">
+              Detalhamento por Conta ({plano?.itens.length} contas)
+            </div>
+            <span class="muted" style="font-size:var(--fs-xs);">
+              Deseja ajustar uma conta? Clique em <b>Ajustar</b> na linha correspondente.
+            </span>
           </div>
 
           <div class="table-wrap" style="max-height:280px;overflow-y:auto;">
@@ -258,19 +407,46 @@ export function ModalReplicacao({ empresaId, anoAtual, saldoFinalRealAtual, isOp
                   <th>Total Base</th>
                   <th>Novo Total</th>
                   <th>Diferença</th>
+                  <th style="text-align:center;min-width:90px;">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {plano?.itens.map((it) => {
                   const meta = NATURE_META[it.natureza];
                   const diff = it.totalReajustado - it.totalOriginal;
+                  const foiEditada = contasEditadas.has(it.contaId);
                   return (
                     <tr key={it.contaId}>
-                      <td style="font-weight:600;">{it.contaNome}</td>
+                      <td style="font-weight:600;">
+                        {it.contaNome}
+                        {foiEditada && (
+                          <span class="badge badge--primary" style="margin-left:6px;font-size:10px;">
+                            Manual
+                          </span>
+                        )}
+                      </td>
                       <td><span class={`badge badge--${meta.tone}`}>{meta.label}</span></td>
                       <td class="num">{money(it.totalOriginal)}</td>
                       <td class="num" style="font-weight:700;">{money(it.totalReajustado)}</td>
                       <td class={`num ${diff >= 0 ? "tone-in" : "tone-out"}`}>{signed(diff)}</td>
+                      <td style="text-align:center;">
+                        <button
+                          type="button"
+                          class="btn btn--secondary btn--sm"
+                          style="padding:2px 8px;font-size:11px;min-height:26px;"
+                          onClick={() =>
+                            setContaEmEdicao({
+                              contaId: it.contaId,
+                              contaNome: it.contaNome,
+                              natureza: it.natureza,
+                              valores: [...it.valoresReajustados],
+                            })
+                          }
+                          title="Fazer alterações manuais pontuais mês a mês nesta conta"
+                        >
+                          <Icon name="pencil" style="width:11px;height:11px;" /> Ajustar
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}

@@ -5,6 +5,7 @@ import { Icon } from "./Icon.tsx";
 
 export function ModalBloqueioInatividade() {
   const [password, setPassword] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -94,16 +95,29 @@ export function ModalBloqueioInatividade() {
         <form onSubmit={handleUnlock} class="stack" style="gap:var(--sp-3);">
           <div class="form-group" style="margin:0;">
             <label class="form-label" for="lock-password">Sua Senha de Acesso</label>
-            <input
-              id="lock-password"
-              type="password"
-              class="input"
-              required
-              autoFocus
-              placeholder="Digite sua senha para desbloquear"
-              value={password}
-              onInput={(e) => setPassword(e.currentTarget.value)}
-            />
+            <div style="position:relative;">
+              <input
+                id="lock-password"
+                type={mostrarSenha ? "text" : "password"}
+                class="input"
+                style="padding-right: 40px;"
+                required
+                autoFocus
+                placeholder={mostrarSenha ? "Sua senha" : "Digite sua senha para desbloquear"}
+                value={password}
+                onInput={(e) => setPassword(e.currentTarget.value)}
+              />
+              <button
+                type="button"
+                class="btn btn--ghost btn--icon"
+                style="position:absolute; right:4px; top:50%; transform:translateY(-50%); width:32px; height:32px; min-height:32px; color:var(--text-muted);"
+                onClick={() => setMostrarSenha(!mostrarSenha)}
+                title={mostrarSenha ? "Ocultar senha" : "Exibir senha"}
+                tabIndex={-1}
+              >
+                <Icon name={mostrarSenha ? "eyeOff" : "eye"} style="width:16px; height:16px;" />
+              </button>
+            </div>
           </div>
 
           <button

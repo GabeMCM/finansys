@@ -369,8 +369,9 @@ export function Reservas() {
                       <th style="text-align:right;">Resgates (−)</th>
                       <th style="text-align:right;">Rendimentos (+)</th>
                       <th style="text-align:right; min-width:110px;">Saldo Atual</th>
+                      <th style="text-align:right; min-width:120px;">Projetado (Ano)</th>
                       <th style="text-align:left; min-width:110px;">Meta / Progresso</th>
-                      <th style="text-align:center; min-width:130px;">Ações Rápidas</th>
+                      <th style="text-align:center; min-width:160px;">Ações Rápidas</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -407,6 +408,10 @@ export function Reservas() {
                           </td>
                           <td class="num" style="text-align:right; font-weight:800; font-size:var(--fs-md); color:var(--text);">
                             {money(resumo.saldoAtualReal)}
+                          </td>
+                          <td class="num" style="text-align:right;">
+                            <div style="font-weight:700; color:var(--text);">{money(resumo.saldoFinalProj)}</div>
+                            <div class="muted" style="font-size:10px;">Aportes: {money(resumo.totalAportesProj)}</div>
                           </td>
                           <td>
                             {meta > 0 ? (
@@ -447,6 +452,15 @@ export function Reservas() {
                               </button>
                               <button
                                 type="button"
+                                class="btn btn--secondary btn--sm"
+                                style="padding:2px 8px; font-size:11px; min-height:26px;"
+                                onClick={() => setModalProjecaoReserva(r)}
+                                title="Projetar aportes e rendimentos desta reserva"
+                              >
+                                <Icon name="calendar" style="width:11px; height:11px;" /> Projetar
+                              </button>
+                              <button
+                                type="button"
                                 class="btn btn--ghost btn--icon"
                                 style="width:26px; height:26px; min-height:26px;"
                                 title="Editar Reserva"
@@ -477,6 +491,10 @@ export function Reservas() {
                       </td>
                       <td class="num" style="text-align:right; font-weight:800; font-size:var(--fs-md); color:var(--primary);">
                         {money(carteira.totalPatrimonioReal)}
+                      </td>
+                      <td class="num" style="text-align:right; font-weight:700; color:var(--text);">
+                        <div>{money(carteira.totalPatrimonioProj)}</div>
+                        <div class="muted" style="font-size:10px;">Aportes: {money(carteira.totalAportadoAnoProj)}</div>
                       </td>
                       <td colSpan={2}></td>
                     </tr>
@@ -621,85 +639,118 @@ export function Reservas() {
               </div>
             )}
 
-            {abaInferior === "evolucao" && (
-              <div class="table-wrap table-wrap--mobile-bleed">
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th class="col-mes-card" style="text-align:left;">Mês</th>
-                      <th style="color: var(--in); text-align:right;">Aportes (Real / Proj)</th>
-                      <th style="color: var(--aporte); text-align:right;">Resgates (Real / Proj)</th>
-                      <th style="color: var(--rendimento); text-align:right;">Rendimento (Real / Proj)</th>
-                      <th style="color: var(--primary); text-align:right;">Saldo Acumulado (Real / Proj)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {MONTHS.map((mNome, mIdx) => {
-                      const isAtual = mIdx === mesAtual;
-                      const reservasAlvo =
-                        filtroReservaId === "todas"
-                          ? carteira.reservas
-                          : carteira.reservas.filter((r) => r.reserva.id === filtroReservaId);
+            {abaInferior === "evolucao" && (() => {
+              const reservasAlvo =
+                filtroReservaId === "todas"
+                  ? carteira.reservas
+                  : carteira.reservas.filter((r) => r.reserva.id === filtroReservaId);
 
-                      let apReal = 0;
-                      let apProj = 0;
-                      let resgReal = 0;
-                      let resgProj = 0;
-                      let rendReal = 0;
-                      let rendProj = 0;
-                      let saldoReal = 0;
-                      let saldoProj = 0;
+              const totAportesReal = reservasAlvo.reduce((s, r) => s + r.totalAportesReal, 0);
+              const totAportesProj = reservasAlvo.reduce((s, r) => s + r.totalAportesProj, 0);
+              const totResgReal = reservasAlvo.reduce((s, r) => s + r.totalResgatesReal, 0);
+              const totResgProj = reservasAlvo.reduce((s, r) => s + r.totalResgatesProj, 0);
+              const totRendReal = reservasAlvo.reduce((s, r) => s + r.totalRendimentosReal, 0);
+              const totRendProj = reservasAlvo.reduce((s, r) => s + r.totalRendimentosProj, 0);
+              const saldoFinalReal = reservasAlvo.reduce((s, r) => s + (r.evolucaoMensalReal[11] || 0), 0);
+              const saldoFinalProj = reservasAlvo.reduce((s, r) => s + (r.saldoFinalProj || 0), 0);
 
-                      for (const r of reservasAlvo) {
-                        saldoReal += r.evolucaoMensalReal[mIdx];
-                        saldoProj += r.evolucaoMensalProj[mIdx];
+              return (
+                <div class="table-wrap table-wrap--mobile-bleed">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th class="col-mes-card" style="text-align:left;">Mês</th>
+                        <th style="color: var(--in); text-align:right;">Aportes (Real / Proj)</th>
+                        <th style="color: var(--aporte); text-align:right;">Resgates (Real / Proj)</th>
+                        <th style="color: var(--rendimento); text-align:right;">Rendimento (Real / Proj)</th>
+                        <th style="color: var(--primary); text-align:right;">Saldo Acumulado (Real / Proj)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {MONTHS.map((mNome, mIdx) => {
+                        const isAtual = mIdx === mesAtual;
 
-                        const movs = movList.filter((m) => m.reservaId === r.reserva.id && m.mes === mIdx);
-                        for (const m of movs) {
-                          if (m.tipo === "aporte") apReal += m.valor;
-                          else if (m.tipo === "resgate") resgReal += m.valor;
-                          else if (m.tipo === "rendimento") rendReal += m.valor;
+                        let apReal = 0;
+                        let apProj = 0;
+                        let resgReal = 0;
+                        let resgProj = 0;
+                        let rendReal = 0;
+                        let rendProj = 0;
+                        let saldoReal = 0;
+                        let saldoProj = 0;
+
+                        for (const r of reservasAlvo) {
+                          saldoReal += r.evolucaoMensalReal[mIdx];
+                          saldoProj += r.evolucaoMensalProj[mIdx];
+
+                          const movs = movList.filter((m) => m.reservaId === r.reserva.id && m.mes === mIdx);
+                          for (const m of movs) {
+                            if (m.tipo === "aporte") apReal += m.valor;
+                            else if (m.tipo === "resgate") resgReal += m.valor;
+                            else if (m.tipo === "rendimento") rendReal += m.valor;
+                          }
+
+                          const p = projList.find((item) => item.reservaId === r.reserva.id && item.mes === mIdx);
+                          if (p) {
+                            apProj += p.valorAporte;
+                            resgProj += p.valorResgate;
+                            rendProj += p.valorRendimento;
+                          }
                         }
 
-                        const p = projList.find((item) => item.reservaId === r.reserva.id && item.mes === mIdx);
-                        if (p) {
-                          apProj += p.valorAporte;
-                          resgProj += p.valorResgate;
-                          rendProj += p.valorRendimento;
-                        }
-                      }
-
-                      return (
-                        <tr key={mIdx}>
-                          <td class={`col-mes-card ${isAtual ? "is-current-month" : ""}`}>
-                            <div style="display:flex; align-items:center; gap:4px;">
-                              <span>{mNome}</span>
-                              {isAtual && <span class="badge badge--in hide-mobile" style="font-size: 0.65rem;">Atual</span>}
-                            </div>
-                          </td>
-                          <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
-                            <span style="color: var(--in); font-weight: 600;">{money(apReal)}</span>
-                            <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(apProj)}</span>
-                          </td>
-                          <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
-                            <span style="color: var(--aporte); font-weight: 600;">{money(resgReal)}</span>
-                            <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(resgProj)}</span>
-                          </td>
-                          <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
-                            <span style="color: var(--rendimento); font-weight: 600;">{money(rendReal)}</span>
-                            <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(rendProj)}</span>
-                          </td>
-                          <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
-                            <span style="color: var(--primary); font-weight: 700;">{money(saldoReal)}</span>
-                            <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(saldoProj)}</span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                        return (
+                          <tr key={mIdx}>
+                            <td class={`col-mes-card ${isAtual ? "is-current-month" : ""}`}>
+                              <div style="display:flex; align-items:center; gap:4px;">
+                                <span>{mNome}</span>
+                                {isAtual && <span class="badge badge--in hide-mobile" style="font-size: 0.65rem;">Atual</span>}
+                              </div>
+                            </td>
+                            <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
+                              <span style="color: var(--in); font-weight: 600;">{money(apReal)}</span>
+                              <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(apProj)}</span>
+                            </td>
+                            <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
+                              <span style="color: var(--aporte); font-weight: 600;">{money(resgReal)}</span>
+                              <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(resgProj)}</span>
+                            </td>
+                            <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
+                              <span style="color: var(--rendimento); font-weight: 600;">{money(rendReal)}</span>
+                              <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(rendProj)}</span>
+                            </td>
+                            <td class={isAtual ? "is-current-month" : ""} style="text-align:right;">
+                              <span style="color: var(--primary); font-weight: 700;">{money(saldoReal)}</span>
+                              <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(saldoProj)}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td class="col-mes-card" style="font-weight:700;">Totais do Ano</td>
+                        <td style="text-align:right; font-weight:700;">
+                          <span style="color: var(--in);">{money(totAportesReal)}</span>
+                          <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(totAportesProj)}</span>
+                        </td>
+                        <td style="text-align:right; font-weight:700;">
+                          <span style="color: var(--aporte);">{money(totResgReal)}</span>
+                          <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(totResgProj)}</span>
+                        </td>
+                        <td style="text-align:right; font-weight:700;">
+                          <span style="color: var(--rendimento);">{money(totRendReal)}</span>
+                          <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(totRendProj)}</span>
+                        </td>
+                        <td style="text-align:right; font-weight:800;">
+                          <span style="color: var(--primary);">{money(saldoFinalReal)}</span>
+                          <span class="muted" style="margin-left: 4px; font-size:0.75rem;">/ {money(saldoFinalProj)}</span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              );
+            })()}
           </section>
         )}
       </div>
