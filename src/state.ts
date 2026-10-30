@@ -7,14 +7,30 @@ export type Theme = "dark" | "light";
 export const empresaAtiva = signal<string | null>(null);
 export const anoAtivo = signal<number>(new Date().getFullYear());
 export const theme = signal<Theme>(
-  (localStorage.getItem("theme") as Theme) ??
-    (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"),
+  (typeof localStorage !== "undefined" ? (localStorage.getItem("theme") as Theme) : null) ??
+    (typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"),
 );
+
+/** Controle global de privacidade para ocultar/exibir saldos (••••••) estilo banco digital */
+export const ocultarValores = signal<boolean>(
+  typeof localStorage !== "undefined" && localStorage.getItem("finansys_ocultar_valores") === "true",
+);
+
+export function toggleOcultarValores() {
+  ocultarValores.value = !ocultarValores.value;
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("finansys_ocultar_valores", String(ocultarValores.value));
+  }
+}
 
 export function applyTheme(t: Theme) {
   theme.value = t;
-  document.documentElement.dataset.theme = t;
-  localStorage.setItem("theme", t); // síncrono para evitar "flash" de tema ao abrir
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.theme = t;
+  }
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem("theme", t); // síncrono para evitar "flash" de tema ao abrir
+  }
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", t === "light" ? "#ffffff" : "#13161c");
 }
 

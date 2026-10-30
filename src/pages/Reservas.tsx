@@ -9,7 +9,7 @@ import { calcularCarteiraReservas } from "../data/calc.ts";
 import { anos, contas, contasBancarias, empresas, reservaMovimentos, reservaProjecoes, reservas } from "../data/repo.ts";
 import type { Reserva, ReservaMovimento, TipoMovimentoReserva } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
-import { money, MONTHS } from "../lib/format.ts";
+import { money, moneyPrivacidade, MONTHS } from "../lib/format.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
 
 const CORES_PALETA_MAP: Record<string, string> = {
@@ -141,10 +141,10 @@ export function Reservas() {
               Patrimônio em Reservas
             </span>
             <div class="stat__value" style="color: var(--primary);">
-              {money(carteira.totalPatrimonioReal)}
+              {moneyPrivacidade(carteira.totalPatrimonioReal)}
             </div>
             <div class="stat__sub">
-              Projetado fim do ano: {money(carteira.totalPatrimonioProj)}
+              Projetado fim do ano: {moneyPrivacidade(carteira.totalPatrimonioProj)}
             </div>
           </div>
 
@@ -154,10 +154,10 @@ export function Reservas() {
               Guardado / Aplicado no Ano
             </span>
             <div class="stat__value" style="color: var(--in);">
-              {money(carteira.totalAportadoAnoReal)}
+              {moneyPrivacidade(carteira.totalAportadoAnoReal)}
             </div>
             <div class="stat__sub">
-              Meta anual prevista: {money(carteira.totalAportadoAnoProj)}
+              Meta anual prevista: {moneyPrivacidade(carteira.totalAportadoAnoProj)}
             </div>
           </div>
 
@@ -167,10 +167,10 @@ export function Reservas() {
               Resgatado no Ano
             </span>
             <div class="stat__value" style="color: var(--aporte);">
-              {money(carteira.totalResgatadoAnoReal)}
+              {moneyPrivacidade(carteira.totalResgatadoAnoReal)}
             </div>
             <div class="stat__sub">
-              Previsto resgatar: {money(carteira.totalResgatadoAnoProj)}
+              Previsto resgatar: {moneyPrivacidade(carteira.totalResgatadoAnoProj)}
             </div>
           </div>
 
@@ -180,10 +180,10 @@ export function Reservas() {
               Rendimento Acumulado
             </span>
             <div class="stat__value" style="color: var(--rendimento);">
-              {money(carteira.totalRendimentoAnoReal)}
+              {moneyPrivacidade(carteira.totalRendimentoAnoReal)}
             </div>
             <div class="stat__sub">
-              Rendimento estimado: {money(carteira.totalRendimentoAnoProj)}
+              Rendimento estimado: {moneyPrivacidade(carteira.totalRendimentoAnoProj)}
             </div>
           </div>
         </section>
@@ -286,7 +286,7 @@ export function Reservas() {
                             Saldo Acumulado Atual
                           </span>
                           <div style="font-size: var(--fs-xl); font-weight: 800; color: var(--text); margin-top: 2px;">
-                            {money(resumo.saldoAtualReal)}
+                            {moneyPrivacidade(resumo.saldoAtualReal)}
                           </div>
                         </div>
 
@@ -294,7 +294,7 @@ export function Reservas() {
                           <div style="background: var(--surface-soft); padding: 8px 12px; border-radius: var(--r-md); margin-bottom: var(--sp-3);">
                             <div style="display: flex; justify-content: space-between; font-size: var(--fs-xs); font-weight: 600; margin-bottom: 4px;">
                               <span style="color: var(--text-muted);">
-                                Meta: {money(meta)}
+                                Meta: {moneyPrivacidade(meta)}
                               </span>
                               <span style={`color: ${progresso! >= 100 ? "var(--in)" : "var(--primary)"};`}>
                                 {progresso}%
@@ -612,7 +612,7 @@ export function Reservas() {
 
                           <div style="display:flex; align-items:center; gap:12px;">
                             <div class="list__value" style={`color: ${corValor}; font-size: var(--fs-md);`}>
-                              {sinal} {money(mov.valor)}
+                              {sinal} {moneyPrivacidade(mov.valor)}
                             </div>
 
                             <button

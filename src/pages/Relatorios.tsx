@@ -9,6 +9,7 @@ import { useLive } from "../data/useLive.ts";
 import { labelCpfCnpj, money, signed } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
+import { MobileHomeView, type MobileLancamentoItem } from "../components/mobile/MobileHomeView.tsx";
 
 function formatarDataBR(isoDate: string): string {
   if (!isoDate) return "";
@@ -38,6 +39,7 @@ export function Relatorios() {
   const [filtroTipoBanco, setFiltroTipoBanco] = useState<"todos" | TipoContaBancaria>("todos");
   const [agruparPorTipo, setAgruparPorTipo] = useState<boolean>(true);
   const [incluirRazaoAnalitico, setIncluirRazaoAnalitico] = useState<boolean>(true);
+  const [mostrarRelatorioDetalhadoMobile, setMostrarRelatorioDetalhadoMobile] = useState<boolean>(false);
 
   // Sincroniza as datas quando o ano ativo mudar
   useEffect(() => {
@@ -370,9 +372,67 @@ export function Relatorios() {
     window.print();
   };
 
+  // Prepara saldos de reservas e últimos lançamentos para o Dashboard Mobile
+  const reservasSaldosMap = new Map<string, number>();
+  for (const r of resList) {
+    const inicial = r.saldoInicialCentavos || 0;
+    const movsAteFim = movList.filter((m) => m.reservaId === r.id && m.data <= dFim);
+    let saldo = inicial;
+    for (const m of movsAteFim) {
+      if (m.tipo === "aporte" || m.tipo === "rendimento") saldo += m.valor;
+      else if (m.tipo === "resgate") saldo -= m.valor;
+    }
+    reservasSaldosMap.set(r.id, saldo);
+  }
+
+  const ultimosLancamentosMobile: MobileLancamentoItem[] = [...lsNoPeriodo]
+    .sort((a, b) => b.data.localeCompare(a.data))
+    .slice(0, 5)
+    .map((l) => {
+      const c = contaMap.get(l.contaId);
+      return {
+        id: l.id,
+        data: l.data,
+        valor: l.valor,
+        descricao: l.descricao,
+        contaNome: c?.nome || "Lançamento",
+        catNome: c ? (catMap.get(c.categoriaId) || "Geral") : "Geral",
+        natureza: c?.natureza || "saida",
+      };
+    });
+
   return (
     <>
-      <div class="page-head no-print">
+      {/* Visual Mobile-First Dedicado (Estilo Banco Digital) */}
+      {!mostrarRelatorioDetalhadoMobile ? (
+        <MobileHomeView
+          saldoFinalReal={saldoFinalReal}
+          saldoFinalProj={saldoFinalProj}
+          totEntradasReal={totEntradasReal}
+          totSaidasReal={totSaidasReal}
+          patrimonioConsolidado={patrimonioConsolidadoReal}
+          reservasTotal={totalReservasAteFim}
+          reservas={resList}
+          reservasSaldos={reservasSaldosMap}
+          ultimosLancamentos={ultimosLancamentosMobile}
+          onVerRelatorioCompleto={() => setMostrarRelatorioDetalhadoMobile(true)}
+        />
+      ) : (
+        <div class="only-mobile" style="margin-bottom:12px;">
+          <button
+            type="button"
+            class="btn btn--secondary btn--sm"
+            style="width:100%;min-height:42px;border-radius:12px;font-weight:700;"
+            onClick={() => setMostrarRelatorioDetalhadoMobile(false)}
+          >
+            ← Voltar para o Início
+          </button>
+        </div>
+      )}
+
+      {/* Relatório Analítico Contábil (Sempre visível no Desktop, ou sob demanda no Mobile) */}
+      <div class={!mostrarRelatorioDetalhadoMobile ? "hide-mobile" : ""}>
+        <div class="page-head no-print">
         <div>
           <h1>Visão Geral</h1>
           <p>Demonstrativo Projetado × Real de {emp.nome}</p>
@@ -1163,6 +1223,7 @@ export function Relatorios() {
             </div>
           </div>
         </section>
+      </div>
       </div>
     </>
   );

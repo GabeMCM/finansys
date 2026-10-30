@@ -2,7 +2,8 @@ import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { CustomSelect } from "./CustomSelect.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
-import { MobileUserMenu } from "./MobileUserMenu.tsx";
+import { MobileTopBar } from "./mobile/MobileTopBar.tsx";
+import { MobileNavBar } from "./mobile/MobileNavBar.tsx";
 import { ModalAuth } from "./ModalAuth.tsx";
 import { ModalBloqueioInatividade } from "./ModalBloqueioInatividade.tsx";
 import { ModalConfirm } from "./ModalConfirm.tsx";
@@ -87,7 +88,16 @@ export function AppShell({ route, children }: { route: string; children: Compone
       </aside>
 
       <div class="shell__content">
-        <header class="topbar">
+        <MobileTopBar
+          empresas={listaEmpresas}
+          anos={listaAnos}
+          notifCount={resumo.total}
+          hasCriticos={resumo.criticos > 0}
+          onOpenNotif={() => setPainelNotifAberto(!painelNotifAberto)}
+          onOpenAuth={() => setAuthModalAberta(true)}
+        />
+
+        <header class="topbar hide-mobile">
           <div class="topbar__brand">
             <a href="#/" aria-label="Finansys Início" style="display:flex;align-items:center;text-decoration:none;">
               <img src="/favicon.svg" alt="Finansys" />
@@ -219,11 +229,6 @@ export function AppShell({ route, children }: { route: string; children: Compone
 
             <ThemeToggle id="theme-toggle" />
           </div>
-
-          {/* Menu de Perfil e Ações Rápidas Unificado (visível apenas no Mobile) */}
-          <div class="only-mobile">
-            <MobileUserMenu onOpenAuth={() => setAuthModalAberta(true)} />
-          </div>
         </header>
 
         <main class="main" key={route}>{children}</main>
@@ -244,14 +249,7 @@ export function AppShell({ route, children }: { route: string; children: Compone
       <a id="fab-new" href="#/realizacoes/novo" class="fab" aria-label="Nova realização">
         <Icon name="plus" />
       </a>
-      <nav class="bottomnav" aria-label="Navegação">
-        {NAV.map((n) => (
-          <a id={`nav-${n.icon}`} href={`#${n.href}`} class={isActive(route, n.href) ? "is-active" : ""}>
-            <Icon name={n.icon} />
-            {n.label}
-          </a>
-        ))}
-      </nav>
+      <MobileNavBar route={route} />
 
       {/* Modal de Autenticação / Boas-vindas Inicial */}
       <ModalAuth isOpen={authModalAberta} onClose={() => setAuthModalAberta(false)} />

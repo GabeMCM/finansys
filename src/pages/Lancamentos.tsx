@@ -18,7 +18,7 @@ import { calcularBaseLancamentos, calcularPendencias, calcularValorVinculado, ty
 import { anos, categorias, contas, contasBancarias, lancamentos, projecoes, reservaMovimentos, reservas } from "../data/repo.ts";
 import { type Conta, type ContaBancaria, type Lancamento, type Natureza, NATUREZAS, type RegraVinculo, type Reserva, SINAL, FORMAS_PAGAMENTO_PADRAO } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
-import { money, MONTHS, signed } from "../lib/format.ts";
+import { money, moneyPrivacidade, MONTHS, signed, signedPrivacidade } from "../lib/format.ts";
 import { calcularFormulaLancamentos, extrairVariaveis } from "../lib/formula.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
@@ -47,6 +47,9 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
   const [modalLanc, setModalLanc] = useState<
     (Partial<Lancamento> & { natureza?: Natureza; valorCentavos?: number }) | null
   >(null);
+
+  // Transação selecionada para o Bottom Sheet de detalhes no Mobile
+  const [txSelecionadaMobile, setTxSelecionadaMobile] = useState<Lancamento | null>(null);
 
   // Estados de repetição e parcelamento
   const [tipoRepeticao, setTipoRepeticao] = useState<TipoRepeticaoReal>("unico");
@@ -813,8 +816,8 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         </div>
 
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          {/* Seletor de visualização Matriz 12 Meses / Extrato / Tabela - Padrão consistente com Projeções */}
-          <div class="tabs tabs--sm" style="margin-bottom:0;">
+          {/* Seletor de visualização Matriz 12 Meses / Extrato / Tabela (Exclusivo Desktop) */}
+          <div class="tabs tabs--sm hide-mobile" style="margin-bottom:0;">
             <button
               type="button"
               class={`tab ${modoVisao === "matriz" ? "is-active" : ""}`}
@@ -1350,7 +1353,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                   <div class="extrato-grupo__header">
                     <span>{formatarDataExtrato(dataStr)}</span>
                     <span class={`num ${saldoDoDia >= 0 ? "tone-in" : "tone-out"}`}>
-                      {signed(saldoDoDia)}
+                      {signedPrivacidade(saldoDoDia)}
                     </span>
                   </div>
 
@@ -1361,7 +1364,13 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                     const sinal = SINAL[c.natureza];
 
                     return (
-                      <div class="extrato-item" key={l.id}>
+                      <div
+                        class="extrato-item"
+                        key={l.id}
+                        onClick={() => setTxSelecionadaMobile(l)}
+                        role="button"
+                        tabIndex={0}
+                      >
                         <div class="extrato-item__icon">
                           <div class={`list__icon bg-${meta.tone}`} style="flex-shrink:0;">
                             <Icon name={meta.icon} />
@@ -1428,7 +1437,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
 
                         <div class="extrato-item__val">
                           <div class={`num tone-${meta.tone}`} style="font-weight:800;font-size:var(--fs-md);white-space:nowrap;">
-                            {signed(sinal * l.valor)}
+                            {signedPrivacidade(sinal * l.valor)}
                           </div>
                         </div>
 
@@ -1443,12 +1452,13 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                           </div>
                         </div>
 
-                        <div class="extrato-item__actions">
+                        <div class="extrato-item__actions hide-mobile" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             class="btn btn--ghost btn--icon"
                             style="min-height:28px;width:28px;"
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setCatSelecionadaModal(c.categoriaId);
                               setOrigemValorReal("manual");
                               setModalLanc({
@@ -1465,7 +1475,10 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                             type="button"
                             class="btn btn--ghost btn--icon"
                             style="min-height:28px;width:28px;color:var(--out);"
-                            onClick={() => excluirLancamento(l)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              excluirLancamento(l);
+                            }}
                             title="Excluir lançamento"
                           >
                             <Icon name="trash" />
@@ -2022,6 +2035,133 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         </FormBlock>
       </form>
     </Modal>
+
+      {/* Bottom Sheet de Detalhes da Transação no Mobile */}
+      {txSelecionadaMobile && (() => {
+        const c = contaMap.get(txSelecionadaMobile.contaId);
+        const meta = c ? NATURE_META[c.natureza] : NATURE_META.saida;
+        const sinal = c ? SINAL[c.natureza] : -1;
+        const bancoNome = txSelecionadaMobile.bancoId ? bancoMap.get(txSelecionadaMobile.bancoId) : null;
+        const catNome = c ? (catMap.get(c.categoriaId) || "Geral") : "Geral";
+
+        return (
+          <div class="modal-backdrop only-mobile" onClick={() => setTxSelecionadaMobile(null)}>
+            <div class="modal" onClick={(e) => e.stopPropagation()}>
+              <div class="modal__head">
+                <h3 class="modal__title">Detalhes da Transação</h3>
+                <button
+                  type="button"
+                  class="btn btn--ghost btn--icon"
+                  onClick={() => setTxSelecionadaMobile(null)}
+                  aria-label="Fechar"
+                >
+                  <Icon name="x" />
+                </button>
+              </div>
+
+              <div class="modal__body" style="display:flex;flex-direction:column;gap:16px;">
+                <div style="text-align:center;padding:12px 0;">
+                  <div
+                    style={{
+                      fontSize: "2rem",
+                      fontWeight: "800",
+                      color: sinal > 0 ? "var(--in)" : "var(--out)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {signedPrivacidade(sinal * txSelecionadaMobile.valor)}
+                  </div>
+                  <div style="font-size:0.95rem;font-weight:700;color:var(--text);margin-top:4px;">
+                    {txSelecionadaMobile.descricao || c?.nome}
+                  </div>
+                  {txSelecionadaMobile.descricao && c?.nome && (
+                    <div style="font-size:0.80rem;color:var(--text-muted);">{c.nome}</div>
+                  )}
+                </div>
+
+                <div
+                  class="card"
+                  style="display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:16px;background:var(--surface);"
+                >
+                  <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
+                    <span style="color:var(--text-muted);">Data:</span>
+                    <strong style="color:var(--text);">{txSelecionadaMobile.data.split("-").reverse().join("/")}</strong>
+                  </div>
+
+                  <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
+                    <span style="color:var(--text-muted);">Categoria:</span>
+                    <strong style="color:var(--text);">{catNome}</strong>
+                  </div>
+
+                  <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
+                    <span style="color:var(--text-muted);">Tipo:</span>
+                    <span class={`badge badge--${meta.tone}`}>{meta.label}</span>
+                  </div>
+
+                  {bancoNome && (
+                    <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
+                      <span style="color:var(--text-muted);">Instituição / Banco:</span>
+                      <strong style="color:var(--text);display:flex;align-items:center;gap:4px;">
+                        <Icon name="bank" style="width:14px;height:14px;" />
+                        {bancoNome}
+                      </strong>
+                    </div>
+                  )}
+
+                  {txSelecionadaMobile.formaPagamento && (
+                    <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
+                      <span style="color:var(--text-muted);">Forma de Pagamento:</span>
+                      <strong style="color:var(--text);">{txSelecionadaMobile.formaPagamento}</strong>
+                    </div>
+                  )}
+
+                  {txSelecionadaMobile.obs && (
+                    <div style="padding-top:8px;border-top:1px solid var(--border-soft);font-size:0.82rem;color:var(--text-muted);">
+                      <b>Observações:</b> {txSelecionadaMobile.obs}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div class="modal__foot" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <button
+                  type="button"
+                  class="btn btn--secondary"
+                  style="min-height:48px;border-radius:14px;font-weight:700;color:var(--out);"
+                  onClick={() => {
+                    const l = txSelecionadaMobile;
+                    setTxSelecionadaMobile(null);
+                    excluirLancamento(l);
+                  }}
+                >
+                  <Icon name="trash" /> Excluir
+                </button>
+
+                <button
+                  type="button"
+                  class="btn btn--primary"
+                  style="min-height:48px;border-radius:14px;font-weight:700;"
+                  onClick={() => {
+                    const l = txSelecionadaMobile;
+                    setTxSelecionadaMobile(null);
+                    if (c) {
+                      setCatSelecionadaModal(c.categoriaId);
+                      setOrigemValorReal("manual");
+                      setModalLanc({
+                        ...l,
+                        valorCentavos: l.valor,
+                        natureza: c.natureza,
+                      });
+                    }
+                  }}
+                >
+                  <Icon name="pencil" /> Editar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

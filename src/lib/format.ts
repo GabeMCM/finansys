@@ -1,3 +1,5 @@
+import { ocultarValores } from "../state.ts";
+
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const brlCompact = new Intl.NumberFormat("pt-BR", {
   style: "currency",
@@ -10,6 +12,10 @@ const brlCompact = new Intl.NumberFormat("pt-BR", {
 export const money = (cents: number) => brl.format(cents / 100);
 export const moneyCompact = (cents: number) => brlCompact.format(cents / 100);
 export const signed = (cents: number) => (cents > 0 ? "+" : "") + money(cents);
+
+/** Formata valor ocultando com máscara se o modo de privacidade estiver ativo */
+export const moneyPrivacidade = (cents: number) => (ocultarValores.value ? "••••••" : money(cents));
+export const signedPrivacidade = (cents: number) => (ocultarValores.value ? "••••••" : signed(cents));
 
 export const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 

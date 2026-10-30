@@ -1,0 +1,771 @@
+/* ==========================================================================
+   FINANSYS MOBILE-FIRST DESIGN SYSTEM (Padrão Banco Digital / Fintech)
+   Otimizado exclusivamente para dispositivos móveis (< 768px)
+   Compatível com telas estreitas (iPhone SE 320px/375px e Android 360px)
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  :root {
+    --page-pad: 14px;
+    --mobile-header-h: 56px;
+    --mobile-nav-h: 62px;
+  }
+
+  /* Previne zoom forçado em inputs no Safari do iOS (exige font-size >= 16px) */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Scroll suave com rolagem natural de iOS */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ==========================================================================
+     1. SHELL & ESTRUTURA GLOBAL MOBILE
+     ========================================================================== */
+  .shell {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 100dvh !important;
+    max-width: 100vw !important;
+    background: var(--bg);
+    overflow-x: clip !important;
+  }
+
+  .shell__content {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 0 auto !important;
+    min-height: 100dvh !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+  }
+
+  /* Área principal de conteúdo com espaçamento seguro para a barra inferior */
+  .main {
+    padding: 12px var(--page-pad) calc(var(--mobile-nav-h) + var(--safe-b) + 24px) !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
+  }
+
+  /* ==========================================================================
+     2. APP BAR / HEADER NATIVO DE BANCO
+     ========================================================================== */
+  .mobile-appbar {
+    position: sticky;
+    top: 0;
+    z-index: 45;
+    background: color-mix(in srgb, var(--chrome-bg) 88%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding-top: var(--safe-t);
+    padding-left: calc(var(--page-pad) + var(--safe-l));
+    padding-right: calc(var(--page-pad) + var(--safe-r));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+
+  .mobile-appbar__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 48px;
+  }
+
+  .mobile-appbar__user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: inherit;
+    min-width: 0;
+  }
+
+  .mobile-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--gradient-brand);
+    color: var(--on-primary);
+    font-weight: 800;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px -2px hsl(214 60% 40% / 0.4);
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .mobile-avatar__badge {
+    position: absolute;
+    bottom: -1px;
+    right: -1px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid var(--chrome-bg);
+    background: var(--in);
+  }
+
+  .mobile-appbar__greeting {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .mobile-appbar__greeting-sub {
+    font-size: 0.70rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    line-height: 1.1;
+  }
+
+  .mobile-appbar__greeting-name {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+  }
+
+  .mobile-appbar__actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .mobile-action-btn {
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+    border-radius: var(--r-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    position: relative;
+    cursor: pointer;
+    transition: background var(--t-fast);
+  }
+
+  .mobile-action-btn:active {
+    background: var(--surface-hover);
+    transform: scale(0.95);
+  }
+
+  .mobile-action-btn__badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--out);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--chrome-bg);
+  }
+
+  .mobile-action-btn__badge--warn {
+    background: var(--warn);
+  }
+
+  /* Pílulas de Contexto (Empresa e Ano) - Estilo Cápsula Moderna */
+  .mobile-context-pills {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+
+  .mobile-context-pills::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: var(--r-full);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: all var(--t-fast);
+  }
+
+  .mobile-pill:active {
+    background: var(--surface-hover);
+    border-color: var(--border-strong);
+    transform: scale(0.97);
+  }
+
+  .mobile-pill svg {
+    color: var(--primary);
+  }
+
+  .mobile-pill .chevron-icon {
+    width: 12px;
+    height: 12px;
+    color: var(--text-muted);
+  }
+
+  .mobile-pill--primary {
+    background: var(--primary-soft);
+    color: var(--primary);
+    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+
+  /* ==========================================================================
+     3. BOTTOM NAVIGATION MOBILE DE 5 GUIAS
+     ========================================================================== */
+  .mobile-nav {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 50;
+    height: calc(var(--mobile-nav-h) + var(--safe-b));
+    padding-bottom: var(--safe-b);
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    background: color-mix(in srgb, var(--chrome-bg) 92%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    box-sizing: border-box;
+  }
+
+  .mobile-nav__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: var(--text-faint);
+    text-decoration: none;
+    font-size: 0.68rem;
+    font-weight: 600;
+    transition: color var(--t-fast);
+    padding: 4px 0;
+    position: relative;
+  }
+
+  .mobile-nav__item svg {
+    width: 22px;
+    height: 22px;
+    transition: transform var(--t-fast), color var(--t-fast);
+  }
+
+  .mobile-nav__item.is-active {
+    color: var(--primary);
+    font-weight: 700;
+  }
+
+  .mobile-nav__item.is-active svg {
+    transform: translateY(-2px);
+    color: var(--primary);
+  }
+
+  .mobile-nav__indicator {
+    position: absolute;
+    top: 4px;
+    width: 20px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--primary);
+  }
+
+  /* ==========================================================================
+     4. HERO CARD DE SALDO MOBILE (Estilo Nubank/Fintech)
+     ========================================================================== */
+  .bank-hero-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 18px 16px;
+    box-shadow: 0 8px 24px -10px hsl(0 0% 0% / 0.15);
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .bank-hero-card::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 120px;
+    height: 120px;
+    background: radial-gradient(circle, var(--primary-soft) 0%, transparent 70%);
+    pointer-events: none;
+    opacity: 0.6;
+  }
+
+  .bank-hero-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .bank-hero-card__title {
+    font-size: 0.76rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .bank-hero-card__value {
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .bank-hero-card__meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 0.74rem;
+  }
+
+  .bank-hero-card__meta-item {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bank-hero-card__meta-label {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+  }
+
+  .bank-hero-card__meta-val {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ==========================================================================
+     5. FILEIRA DE AÇÕES RÁPIDAS (Quick Action Pills / Circular Buttons)
+     ========================================================================== */
+  .bank-quick-actions {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 2px 0 16px;
+    margin: 0 calc(var(--page-pad) * -1);
+    padding-left: var(--page-pad);
+    padding-right: var(--page-pad);
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .bank-quick-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .bank-quick-action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    color: var(--text);
+    flex-shrink: 0;
+    width: 68px;
+    cursor: pointer;
+  }
+
+  .bank-quick-action__btn {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text);
+    transition: all var(--t-fast);
+    box-shadow: 0 4px 12px -4px hsl(0 0% 0% / 0.1);
+  }
+
+  .bank-quick-action:active .bank-quick-action__btn {
+    transform: scale(0.92);
+    background: var(--surface-hover);
+  }
+
+  .bank-quick-action--primary .bank-quick-action__btn {
+    background: var(--gradient-brand);
+    color: #fff;
+    border: none;
+    box-shadow: 0 6px 16px -4px hsl(214 60% 40% / 0.5);
+  }
+
+  .bank-quick-action__label {
+    font-size: 0.70rem;
+    font-weight: 600;
+    text-align: center;
+    color: var(--text-muted);
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  /* ==========================================================================
+     6. ITENS DE EXTRATO MOBILE (Estilo Lista de Transações Bancárias)
+     ========================================================================== */
+  .mobile-tx-group {
+    margin-bottom: 16px;
+  }
+
+  .mobile-tx-group__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 4px 8px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .mobile-tx-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    transition: all var(--t-fast);
+  }
+
+  .mobile-tx-card:active {
+    background: var(--surface-hover);
+    transform: scale(0.985);
+  }
+
+  .mobile-tx-card__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .mobile-tx-card__icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .mobile-tx-card__main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-tx-card__title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+  }
+
+  .mobile-tx-card__sub {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .mobile-tx-card__val {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .mobile-tx-card__amount {
+    font-size: 0.95rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ==========================================================================
+     7. BOTTOM SHEET SYSTEM (Para Modais e Ações no Mobile)
+     ========================================================================== */
+  .modal-backdrop {
+    padding: 0 !important;
+    align-items: flex-end !important;
+    background: rgba(0, 0, 0, 0.65) !important;
+  }
+
+  .modal {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: 92dvh !important;
+    border-radius: 24px 24px 0 0 !important;
+    margin: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.4) !important;
+    animation: sheet-slide-up 0.24s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* Drag handle indicador de gaveta */
+  .modal__head::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-strong);
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .modal__head {
+    position: relative;
+    padding-top: 20px !important;
+    padding-bottom: 12px !important;
+  }
+
+  .modal__body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px !important;
+  }
+
+  .modal__foot {
+    padding: 12px 16px calc(12px + var(--safe-b)) !important;
+    border-top: 1px solid var(--border);
+    background: var(--surface-solid);
+  }
+
+  .modal__foot .btn,
+  .modal-footer-actions__right > button,
+  .modal-footer-actions__right > a {
+    min-height: 48px !important;
+    font-size: 0.92rem !important;
+    font-weight: 700 !important;
+    border-radius: 14px !important;
+  }
+
+  @keyframes sheet-slide-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  /* ==========================================================================
+     8. CAIXINHAS / RESERVAS MOBILE (Estilo Cards Verticais)
+     ========================================================================== */
+  .caixinha-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: relative;
+    box-shadow: 0 4px 14px -4px hsl(0 0% 0% / 0.1);
+  }
+
+  .caixinha-card__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .caixinha-card__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+
+  .caixinha-card__badge {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--r-full);
+  }
+
+  .caixinha-card__val {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .caixinha-card__progress-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .caixinha-card__progress-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--surface-soft);
+    overflow: hidden;
+  }
+
+  .caixinha-card__progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--in);
+    transition: width 0.3s ease;
+  }
+
+  .caixinha-card__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .caixinha-card__btn {
+    min-height: 42px;
+    border-radius: 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .caixinha-card__btn--primary {
+    background: var(--primary);
+    color: #fff;
+    border: none;
+  }
+
+  /* ==========================================================================
+     9. REFINAMENTOS DE EXTRATO & COCKPIT RESPONSIVO
+     ========================================================================== */
+  .extrato-item {
+    display: grid !important;
+    grid-template-columns: 40px 1fr auto !important;
+    grid-template-areas:
+      "icon info val"
+      "icon meta val" !important;
+    gap: 2px 12px !important;
+    padding: 14px 14px !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 16px !important;
+    margin-bottom: 8px !important;
+    cursor: pointer !important;
+    transition: transform var(--t-fast), background var(--t-fast) !important;
+    align-items: center !important;
+  }
+
+  .extrato-item:active {
+    background: var(--surface-hover) !important;
+    transform: scale(0.985) !important;
+  }
+
+  .extrato-item__icon {
+    grid-area: icon !important;
+    align-self: center !important;
+    margin: 0 !important;
+  }
+
+  .extrato-item__info {
+    grid-area: info !important;
+    min-width: 0 !important;
+  }
+
+  .extrato-item__val {
+    grid-area: val !important;
+    text-align: right !important;
+    align-self: center !important;
+  }
+
+  .extrato-item__meta {
+    grid-area: meta !important;
+    min-width: 0 !important;
+  }
+
+  /* Cockpit Cards no Mobile */
+  .cockpit-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    margin-bottom: 14px !important;
+  }
+
+  @media (max-width: 350px) {
+    .cockpit-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  .cockpit-card {
+    padding: 12px !important;
+    border-radius: 14px !important;
+  }
+
+  .cockpit-card__val {
+    font-size: 1.05rem !important;
+  }
+}

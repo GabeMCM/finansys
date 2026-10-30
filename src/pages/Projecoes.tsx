@@ -17,7 +17,7 @@ import { calcularBaseProjecoes, calcularValorVinculado } from "../data/calc.ts";
 import { anos, categorias, contas, projecoes } from "../data/repo.ts";
 import { type Categoria, type Conta, type Natureza, NATUREZAS, type RegraVinculo } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
-import { money, MONTHS } from "../lib/format.ts";
+import { money, moneyPrivacidade, MONTHS } from "../lib/format.ts";
 import { avaliarFormula, calcularFormulaProjecoes, extrairVariaveis } from "../lib/formula.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
@@ -723,7 +723,7 @@ export function Projecoes() {
             <i class="dot" style={`background:var(--${NATURE_META[nat].tone})`} />
             Total Anual Projetado
           </div>
-          <div class={`stat__value num tone-${NATURE_META[nat].tone}`}>{money(totalGeralAno())}</div>
+          <div class={`stat__value num tone-${NATURE_META[nat].tone}`}>{moneyPrivacidade(totalGeralAno())}</div>
           <div class="stat__sub">Previsto para todo o ano de {anoNum}</div>
         </div>
 
@@ -732,7 +732,7 @@ export function Projecoes() {
             <Icon name="chart" style="width:14px;height:14px;color:var(--text-muted);" />
             Média Mensal
           </div>
-          <div class="stat__value num">{money(mediaMensal)}</div>
+          <div class="stat__value num">{moneyPrivacidade(mediaMensal)}</div>
           <div class="stat__sub">Valor médio por mês</div>
         </div>
 
@@ -745,7 +745,7 @@ export function Projecoes() {
             {valorPico > 0 ? `${MONTHS[mesPicoIdx]}` : "—"}
           </div>
           <div class="stat__sub">
-            {valorPico > 0 ? `Maior volume previsto: ${money(valorPico)}` : "Sem valores projetados"}
+            {valorPico > 0 ? `Maior volume previsto: ${moneyPrivacidade(valorPico)}` : "Sem valores projetados"}
           </div>
         </div>
 
@@ -1130,7 +1130,7 @@ export function Projecoes() {
                 {MONTHS[mesAtivo]} de {anoNum}
               </h2>
               <span class="muted" style="font-size:var(--fs-xs);">
-                Total projetado: <b class="num" style="color:var(--text);">{money(totalMes(mesAtivo))}</b>
+                Total projetado: <b class="num" style="color:var(--text);">{moneyPrivacidade(totalMes(mesAtivo))}</b>
               </span>
             </div>
 
@@ -1186,7 +1186,7 @@ export function Projecoes() {
                       </div>
                       <div style="display:flex;align-items:center;gap:8px;">
                         <span class="muted" style="font-size:var(--fs-xs);">
-                          Total: <b class="num" style="color:var(--text);">{money(subMes)}</b>
+                          Total: <b class="num" style="color:var(--text);">{moneyPrivacidade(subMes)}</b>
                         </span>
                         <button
                           type="button"
