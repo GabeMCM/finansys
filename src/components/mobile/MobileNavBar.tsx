@@ -22,7 +22,7 @@ export function MobileNavBar({ route }: { route: string }) {
   };
 
   return (
-    <nav class="mobile-nav only-mobile" aria-label="Navegação inferior mobile">
+    <nav class="mobile-nav" aria-label="Navegação inferior mobile">
       {MOBILE_NAV_ITEMS.map((item) => {
         const active = isItemActive(item.href);
         return (

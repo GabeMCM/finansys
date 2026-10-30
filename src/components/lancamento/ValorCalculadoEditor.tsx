@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import type { Categoria, Conta, RegraVinculo } from "../../data/types.ts";
 import { money, MONTHS } from "../../lib/format.ts";
 import { NATURE_META } from "../../lib/natureza.ts";

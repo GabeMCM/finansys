@@ -1,4 +1,4 @@
-import { signal } from "@preact/signals";
+import { signal } from "../lib/signal.ts";
 import { toast } from "../components/Toast.tsx";
 import { dumpDatabase, isRestoring, limparBancoLocal, restoreDatabase } from "./backup.ts";
 import { db, changes } from "./db.ts";

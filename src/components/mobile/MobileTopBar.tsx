@@ -1,8 +1,9 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "../Icon.tsx";
 import { anoAtivo, applyTheme, empresaAtiva, ocultarValores, setAno, setEmpresa, theme, toggleOcultarValores } from "../../state.ts";
 import { cloudUser } from "../../data/cloudSync.ts";
 import type { Empresa, Ano } from "../../data/types.ts";
+import { useSignal } from "../../lib/signal.ts";
 
 interface MobileTopBarProps {
   empresas: Empresa[];
@@ -24,16 +25,20 @@ export function MobileTopBar({
   const [modalEmpresa, setModalEmpresa] = useState(false);
   const [modalAno, setModalAno] = useState(false);
 
-  const empAtual = empresas.find((e) => e.id === empresaAtiva.value);
-  const anoAtual = anoAtivo.value;
-  const user = cloudUser.value;
+  const empId = useSignal(empresaAtiva);
+  const anoAtual = useSignal(anoAtivo);
+  const user = useSignal(cloudUser);
+  const currentTheme = useSignal(theme);
+  const oculto = useSignal(ocultarValores);
+
+  const empAtual = empresas.find((e) => e.id === empId);
   const userName = user?.nome || (user?.email ? user.email.split("@")[0] : "Visitante");
   const userInitial = userName.charAt(0).toUpperCase();
-  const isDark = theme.value === "dark";
+  const isDark = currentTheme === "dark";
 
   return (
     <>
-      <header class="mobile-appbar only-mobile" aria-label="Cabeçalho mobile">
+      <header class="mobile-appbar" aria-label="Cabeçalho mobile">
         {/* Top Row: Perfil, Olho de Privacidade, Sino de Notificações, Tema */}
         <div class="mobile-appbar__top">
           <div
@@ -59,10 +64,10 @@ export function MobileTopBar({
               type="button"
               class="mobile-action-btn"
               onClick={toggleOcultarValores}
-              aria-label={ocultarValores.value ? "Mostrar valores" : "Ocultar valores"}
-              title={ocultarValores.value ? "Mostrar valores" : "Ocultar valores"}
+              aria-label={oculto ? "Mostrar valores" : "Ocultar valores"}
+              title={oculto ? "Mostrar valores" : "Ocultar valores"}
             >
-              <Icon name={ocultarValores.value ? "eyeOff" : "eye"} />
+              <Icon name={oculto ? "eyeOff" : "eye"} />
             </button>
 
             {/* Diagnóstico / Notificações */}
@@ -143,7 +148,7 @@ export function MobileTopBar({
             </div>
             <div class="modal__body" style="display:flex;flex-direction:column;gap:8px;">
               {empresas.map((e) => {
-                const isSelected = e.id === empresaAtiva.value;
+                const isSelected = e.id === empId;
                 return (
                   <button
                     key={e.id}
@@ -211,7 +216,7 @@ export function MobileTopBar({
             </div>
             <div class="modal__body" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
               {anos.map((a) => {
-                const isSelected = a.ano === anoAtivo.value;
+                const isSelected = a.ano === anoAtual;
                 return (
                   <button
                     key={a.ano}

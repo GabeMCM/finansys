@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { MobileTopBar } from "../components/mobile/MobileTopBar.tsx";
 import { MobileNavBar } from "../components/mobile/MobileNavBar.tsx";
 import { ModalAuth } from "../components/ModalAuth.tsx";
@@ -17,10 +17,11 @@ import { MobileNovoLancamento } from "./views/MobileNovoLancamento.tsx";
 import { MobileMetas } from "./views/MobileMetas.tsx";
 import { MobileCaixinhas } from "./views/MobileCaixinhas.tsx";
 import { MobileAjustes } from "./views/MobileAjustes.tsx";
+import { useSignal } from "../lib/signal.ts";
 
 export function MobileShell({ route }: { route: string }) {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   const listaEmpresas = useLive(() => empresas.list(), [], []);
   const listaAnos = useLive(() => (empId ? anos.byEmpresa(empId) : Promise.resolve([])), [empId], []);

@@ -1,5 +1,5 @@
-import { signal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect } from "react";
+import { signal, useSignal } from "../lib/signal.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
 export interface ConfirmOptions {
@@ -37,7 +37,7 @@ const tipoIconeMap: Record<string, { icon: IconName; cls: string }> = {
 };
 
 export function ModalConfirm() {
-  const dialog = dialogConfirmState.value;
+  const dialog = useSignal(dialogConfirmState);
   if (!dialog) return null;
 
   const fechar = (confirmado: boolean) => {

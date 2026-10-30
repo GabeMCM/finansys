@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
 import { toast } from "../../components/Toast.tsx";
 import { calcularCarteiraReservas } from "../../data/calc.ts";
@@ -7,10 +7,11 @@ import type { Reserva, TipoMovimentoReserva } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
 import { moneyPrivacidade } from "../../lib/format.ts";
 import { anoAtivo, empresaAtiva } from "../../state.ts";
+import { useSignal } from "../../lib/signal.ts";
 
 export function MobileCaixinhas() {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   // Estado da movimentação (Guardar ou Resgatar)
   const [movimentoModal, setMovimentoModal] = useState<{

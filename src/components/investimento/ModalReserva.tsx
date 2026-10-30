@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "react";
 import { Icon } from "../Icon.tsx";
 import { Modal } from "../Modal.tsx";
 import { MoneyInput } from "../lancamento/MoneyInput.tsx";

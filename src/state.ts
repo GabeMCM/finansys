@@ -1,4 +1,4 @@
-import { signal } from "@preact/signals";
+import { signal } from "./lib/signal.ts";
 import { anos, empresas, settings } from "./data/repo.ts";
 
 export type Theme = "dark" | "light";

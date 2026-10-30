@@ -1,5 +1,5 @@
-import { Fragment } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { Fragment } from "react";
+import { useEffect, useState } from "react";
 import { CustomSelect } from "../components/CustomSelect.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
@@ -22,12 +22,13 @@ import { money, moneyPrivacidade, MONTHS, signed, signedPrivacidade } from "../l
 import { calcularFormulaLancamentos, extrairVariaveis } from "../lib/formula.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
+import { useSignal } from "../lib/signal.ts";
 
 export type ModoVisaoRealizacoes = "extrato" | "tabela" | "matriz";
 
 export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boolean }) {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   const [mesFiltro, setMesFiltro] = useState<number | "todos">(new Date().getMonth());
   const [natFiltro, setNatFiltro] = useState<Natureza | "todas">("todas");

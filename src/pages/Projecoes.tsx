@@ -1,5 +1,5 @@
-import { Fragment } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { Fragment } from "react";
+import { useEffect, useState } from "react";
 import { CustomSelect } from "../components/CustomSelect.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
@@ -43,9 +43,12 @@ interface ModalNovaProjecaoState {
   salvarVinculoNaConta: boolean;
 }
 
+import { anoAtivo, empresaAtiva } from "../state.ts";
+import { useSignal } from "../lib/signal.ts";
+
 export function Projecoes() {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   const [nat, setNat] = useState<Natureza>("pagar");
   const [mesAtivo, setMesAtivo] = useState<number>(new Date().getMonth());

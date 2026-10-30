@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "preact/hooks";
+import { useState, useRef, useEffect } from "react";
 import type { Categoria, Conta, Natureza } from "../../data/types.ts";
 import { Icon } from "../Icon.tsx";
 

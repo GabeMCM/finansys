@@ -47,7 +47,7 @@ export function MobileHomeView({
   const superavit = totEntradasReal - totSaidasReal;
 
   return (
-    <div class="mobile-home-container only-mobile" style="display:flex;flex-direction:column;gap:16px;">
+    <div class="mobile-home-container" style="display:flex;flex-direction:column;gap:16px;">
       {/* 1. Hero Card de Saldo em Conta */}
       <section class="bank-hero-card" aria-label="Saldo e resumo financeiro">
         <div class="bank-hero-card__header">

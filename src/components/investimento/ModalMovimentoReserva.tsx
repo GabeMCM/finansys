@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "react";
 import { CustomSelect } from "../CustomSelect.tsx";
 import { Icon } from "../Icon.tsx";
 import { Modal } from "../Modal.tsx";

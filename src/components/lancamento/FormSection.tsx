@@ -1,11 +1,11 @@
-import type { ComponentChildren } from "preact";
+import type { ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
 
 export interface FormSectionProps {
   num?: number | string;
   title: string;
-  action?: ComponentChildren;
-  children: ComponentChildren;
+  action?: ReactNode;
+  children: ReactNode;
   class?: string;
 }
 
@@ -25,7 +25,7 @@ export function FormSection({ num, title, action, children, class: extraClass }:
 }
 
 export interface FormBlockProps {
-  children: ComponentChildren;
+  children: ReactNode;
   class?: string;
 }
 
@@ -38,8 +38,8 @@ export interface DisclosureProps {
   open?: boolean;
   defaultOpen?: boolean;
   onToggle?: (isOpen: boolean) => void;
-  badge?: ComponentChildren;
-  children: ComponentChildren;
+  badge?: ReactNode;
+  children: ReactNode;
 }
 
 export function Disclosure({

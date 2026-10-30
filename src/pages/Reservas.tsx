@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "../components/Icon.tsx";
 import { CustomSelect } from "../components/CustomSelect.tsx";
 import { ModalReserva } from "../components/investimento/ModalReserva.tsx";
@@ -11,6 +11,7 @@ import type { Reserva, ReservaMovimento, TipoMovimentoReserva } from "../data/ty
 import { useLive } from "../data/useLive.ts";
 import { money, moneyPrivacidade, MONTHS } from "../lib/format.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
+import { useSignal } from "../lib/signal.ts";
 
 const CORES_PALETA_MAP: Record<string, string> = {
   emerald: "#10b981",
@@ -22,8 +23,8 @@ const CORES_PALETA_MAP: Record<string, string> = {
 };
 
 export function Reservas() {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   // Modais
   const [modalReservaAberta, setModalReservaAberta] = useState<Reserva | "nova" | null>(null);

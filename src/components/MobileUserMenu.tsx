@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon.tsx";
 import { confirmarAcao } from "./ModalConfirm.tsx";
 import { toast } from "./Toast.tsx";

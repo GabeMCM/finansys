@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
 import { toast } from "../../components/Toast.tsx";
 import { cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem } from "../../data/cloudSync.ts";
@@ -8,12 +8,15 @@ import { anos, contasBancarias, empresas } from "../../data/repo.ts";
 import type { Ano, ContaBancaria, Empresa } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../../state.ts";
+import { useSignal } from "../../lib/signal.ts";
 
 export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
-  const isDark = theme.value === "dark";
-  const user = cloudUser.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
+  const currentTheme = useSignal(theme);
+  const isDark = currentTheme === "dark";
+  const user = useSignal(cloudUser);
+  const syncStatus = useSignal(cloudSyncStatus);
 
   const [modalEmpresas, setModalEmpresas] = useState(false);
   const [modalNovaEmpresa, setModalNovaEmpresa] = useState(false);
@@ -238,7 +241,7 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
               <div>
                 <div class="mobile-settings-row__title">Backup em Nuvem</div>
                 <div class="mobile-settings-row__sub">
-                  {cloudSyncStatus.value === "salvo" ? "Sincronizado" : "Sincronizar agora"}
+                  {syncStatus === "salvo" ? "Sincronizado" : "Sincronizar agora"}
                 </div>
               </div>
             </div>

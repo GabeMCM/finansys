@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "react";
 import { Icon } from "../components/Icon.tsx";
 import { calcularPosicaoBancos } from "../data/calc.ts";
 import { db } from "../data/db.ts";
@@ -7,8 +7,8 @@ import { type Ano, type Conta, type ContaBancaria, SINAL, type TipoContaBancaria
 import { cloudUser } from "../data/cloudSync.ts";
 import { useLive } from "../data/useLive.ts";
 import { labelCpfCnpj, money, signed } from "../lib/format.ts";
-import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
+import { useSignal } from "../lib/signal.ts";
 import { MobileHomeView, type MobileLancamentoItem } from "../components/mobile/MobileHomeView.tsx";
 
 function formatarDataBR(isoDate: string): string {
@@ -18,8 +18,9 @@ function formatarDataBR(isoDate: string): string {
 }
 
 export function Relatorios() {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
+  const user = useSignal(cloudUser);
 
   // Data atual
   const hoje = new Date();
@@ -593,7 +594,7 @@ export function Relatorios() {
                 Protocolo: BKP-{emp.id.slice(0, 8).toUpperCase()}-{dataFim.replace(/-/g, "")}
               </div>
               <div class="muted" style="font-size:0.65rem;">
-                Operador: {cloudUser.value?.nome || cloudUser.value?.email || "Administrador Local"}
+                Operador: {user?.nome || user?.email || "Administrador Local"}
               </div>
             </div>
           </div>

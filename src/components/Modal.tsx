@@ -1,17 +1,17 @@
-import type { ComponentChildren } from "preact";
-import { useEffect } from "preact/hooks";
+import type { ReactNode } from "react";
+import { useEffect } from "react";
 import { Icon } from "./Icon.tsx";
 
 export interface ModalProps {
   title: string;
   isOpen: boolean;
   onClose: () => void;
-  children: ComponentChildren;
-  footer?: ComponentChildren;
+  children: ReactNode;
+  footer?: ReactNode;
   subtela?: boolean;
   zIndex?: number;
   size?: "md" | "lg" | "xl";
-  aside?: ComponentChildren;
+  aside?: ReactNode;
   onSubmitShortcut?: () => void;
 }
 

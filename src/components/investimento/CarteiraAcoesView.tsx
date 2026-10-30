@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "../Icon.tsx";
 import { ModalOperacaoInvestimento } from "./ModalOperacaoInvestimento.tsx";
 import { ModalRaioXAtivo } from "./ModalRaioXAtivo.tsx";

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect } from "react";
 import { Icon } from "../components/Icon.tsx";
 import { CarteiraAcoesView } from "../components/investimento/CarteiraAcoesView.tsx";
 import { HotMarketView } from "../components/investimento/HotMarketView.tsx";
@@ -9,10 +9,11 @@ import type { LongTermAnalysis } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { fetchHotlist, searchTicker } from "../lib/marketApi.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
+import { useSignal } from "../lib/signal.ts";
 
 export function Investimentos() {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   const [abaAtiva, setAbaAtiva] = useState<"carteira" | "hotmarket">(() => {
     return (localStorage.getItem("finansys_investimentos_aba") as "carteira" | "hotmarket") || "carteira";

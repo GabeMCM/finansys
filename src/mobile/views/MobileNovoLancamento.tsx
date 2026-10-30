@@ -1,9 +1,11 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
 import { toast } from "../../components/Toast.tsx";
 import { anos, categorias, contas, contasBancarias, lancamentos } from "../../data/repo.ts";
 import type { Conta, ContaBancaria, Natureza } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
+import { digitsToCentavos, formatCentavosValor } from "../../lib/format.ts";
+import { useSignal } from "../../lib/signal.ts";
 import { anoAtivo, empresaAtiva } from "../../state.ts";
 
 interface MobileNovoLancamentoProps {
@@ -12,11 +14,11 @@ interface MobileNovoLancamentoProps {
 }
 
 export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamentoProps) {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   const [natureza, setNatureza] = useState<Natureza>("saida");
-  const [valorStr, setValorStr] = useState<string>("");
+  const [centavos, setCentavos] = useState<number>(0);
   const [descricao, setDescricao] = useState<string>("");
   const [categoriaId, setCategoriaId] = useState<string>("");
   const [contaId, setContaId] = useState<string>("");
@@ -70,16 +72,7 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
     return dataCustom;
   })();
 
-  // Formatação de valor em centavos
-  const centavos = (() => {
-    const limpo = valorStr.replace(/\D/g, "");
-    return limpo ? parseInt(limpo, 10) : 0;
-  })();
-
-  const valorFormatado = (centavos / 100).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const displayValor = centavos > 0 ? formatCentavosValor(centavos) : "";
 
   const handleSalvar = async () => {
     if (!empId || !ano) {
@@ -101,7 +94,8 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
       return;
     }
 
-    const mes = parseInt(dataFinal.split("-")[1], 10) - 1;
+    const partesData = (dataFinal || "").split("-");
+    const mes = partesData.length >= 2 ? Math.max(0, Math.min(11, parseInt(partesData[1], 10) - 1)) : new Date().getMonth();
 
     try {
       setSalvando(true);
@@ -181,10 +175,10 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
             inputMode="numeric"
             class="mobile-amount-box__input"
             placeholder="0,00"
-            value={valorFormatado}
-            onInput={(e) => {
+            value={displayValor}
+            onChange={(e) => {
               const val = (e.currentTarget as HTMLInputElement).value;
-              setValorStr(val);
+              setCentavos(digitsToCentavos(val));
             }}
             autoFocus
           />

@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { cloudUser, desconectarConta, getDeviceId, getDeviceName } from "../data/cloudSync.ts";
 import { isScreenLocked, unlockScreen } from "../data/inactivityGuard.ts";
 import { Icon } from "./Icon.tsx";

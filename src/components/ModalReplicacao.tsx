@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { consultarIndices } from "../lib/bcb.ts";
 import { type PlanoReplicacao, type RegraFaltante, aplicarReplicacao, simularReplicacao } from "../data/replicacao.ts";
 import { Modal } from "./Modal.tsx";

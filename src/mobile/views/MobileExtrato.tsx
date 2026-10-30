@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
 import { anos, categorias, contas, contasBancarias, lancamentos } from "../../data/repo.ts";
 import type { Conta, Lancamento, Natureza } from "../../data/types.ts";
@@ -6,6 +6,7 @@ import { useLive } from "../../data/useLive.ts";
 import { MONTHS, signedPrivacidade } from "../../lib/format.ts";
 import { NATURE_META } from "../../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../../state.ts";
+import { useSignal } from "../../lib/signal.ts";
 
 function formatarDataCabecalho(isoDate: string): string {
   if (!isoDate) return "";
@@ -22,8 +23,8 @@ function formatarDataCabecalho(isoDate: string): string {
 }
 
 export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   const [busca, setBusca] = useState<string>("");
   const [filtroNat, setFiltroNat] = useState<"todas" | Natureza>("todas");

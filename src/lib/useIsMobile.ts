@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "react";
 
 /**
  * Detecta se a viewport atual corresponde a dispositivo móvel (< 768px).

@@ -1,9 +1,8 @@
-import type { ComponentChildren } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { useSignal } from "../lib/signal.ts";
 import { CustomSelect } from "./CustomSelect.tsx";
 import { Icon, type IconName } from "./Icon.tsx";
-import { MobileTopBar } from "./mobile/MobileTopBar.tsx";
-import { MobileNavBar } from "./mobile/MobileNavBar.tsx";
 import { ModalAuth } from "./ModalAuth.tsx";
 import { ModalBloqueioInatividade } from "./ModalBloqueioInatividade.tsx";
 import { ModalConfirm } from "./ModalConfirm.tsx";
@@ -31,7 +30,8 @@ const isActive = (route: string, href: string) => {
 };
 
 function ThemeToggle({ id }: { id: string }) {
-  const dark = theme.value === "dark";
+  const currentTheme = useSignal(theme);
+  const dark = currentTheme === "dark";
   return (
     <button id={id} type="button" class="btn btn--ghost btn--icon" aria-label={dark ? "Usar tema claro" : "Usar tema escuro"}
       onClick={() => applyTheme(dark ? "light" : "dark")}>
@@ -40,13 +40,18 @@ function ThemeToggle({ id }: { id: string }) {
   );
 }
 
-export function AppShell({ route, children }: { route: string; children: ComponentChildren }) {
+export function AppShell({ route, children }: { route: string; children: ReactNode }) {
+  const empId = useSignal(empresaAtiva);
+  const currentAno = useSignal(anoAtivo);
+  const user = useSignal(cloudUser);
+  const syncStatus = useSignal(cloudSyncStatus);
+  const ultimoBackup = useSignal(cloudUltimoBackup);
+
   const listaEmpresas = useLive(() => empresas.list(), [], []);
-  const empId = empresaAtiva.value;
   const listaAnos = useLive(() => (empId ? anos.byEmpresa(empId) : Promise.resolve([])), [empId], []);
 
   const [authModalAberta, setAuthModalAberta] = useState(false);
-  const { resumo } = useDiagnosticoFinanceiro(empId, anoAtivo.value);
+  const { resumo } = useDiagnosticoFinanceiro(empId, currentAno);
   const [painelNotifAberto, setPainelNotifAberto] = useState(false);
   const [painelNotifPinned, setPainelNotifPinned] = useState(() => {
     return localStorage.getItem("finansys_notif_pinned") === "true";
@@ -62,11 +67,11 @@ export function AppShell({ route, children }: { route: string; children: Compone
 
   useEffect(() => {
     // Solicita login/criação de conta logo ao abrir a página se o usuário ainda não estiver autenticado
-    if (!cloudUser.value && !sessionStorage.getItem("finansys_auth_prompted")) {
+    if (!user && !sessionStorage.getItem("finansys_auth_prompted")) {
       setAuthModalAberta(true);
       sessionStorage.setItem("finansys_auth_prompted", "true");
     }
-  }, [cloudUser.value]);
+  }, [user]);
 
   return (
     <div class={`shell ${painelNotifAberto && painelNotifPinned ? "has-pinned-panel" : ""}`}>
@@ -88,16 +93,7 @@ export function AppShell({ route, children }: { route: string; children: Compone
       </aside>
 
       <div class="shell__content">
-        <MobileTopBar
-          empresas={listaEmpresas}
-          anos={listaAnos}
-          notifCount={resumo.total}
-          hasCriticos={resumo.criticos > 0}
-          onOpenNotif={() => setPainelNotifAberto(!painelNotifAberto)}
-          onOpenAuth={() => setAuthModalAberta(true)}
-        />
-
-        <header class="topbar hide-mobile">
+        <header class="topbar">
           <div class="topbar__brand">
             <a href="#/" aria-label="Finansys Início" style="display:flex;align-items:center;text-decoration:none;">
               <img src="/favicon.svg" alt="Finansys" />
@@ -124,7 +120,7 @@ export function AppShell({ route, children }: { route: string; children: Compone
                   <CustomSelect
                     id="year-switch"
                     ariaLabel="Ano Fiscal"
-                    value={anoAtivo.value}
+                    value={currentAno}
                     placeholder="Ano"
                     options={listaAnos.map((a) => ({ value: a.ano, label: String(a.ano) }))}
                     onChange={(ano) => setAno(Number(ano))}
@@ -159,17 +155,17 @@ export function AppShell({ route, children }: { route: string; children: Compone
           {/* Ações de Topo para Desktop (escondidas no Mobile) */}
           <div class="hide-mobile" style="display:inline-flex;align-items:center;gap:var(--sp-2);">
             {/* Usuário / Saudação */}
-            {cloudUser.value ? (
+            {user ? (
               <a
                 href="#/ajustes"
                 class="chip"
                 style="min-height:30px;font-size:var(--fs-xs);gap:6px;text-decoration:none;"
-                title={`Conectado como ${cloudUser.value.email}. Clique para gerenciar conta em Ajustes.`}
+                title={`Conectado como ${user.email}. Clique para gerenciar conta em Ajustes.`}
               >
                 <Icon name="user" />
                 <span class="muted">Olá,</span>
                 <strong style="color:var(--text);max-width:85px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                  {cloudUser.value.nome || cloudUser.value.email.split("@")[0]}
+                  {user.nome || user.email.split("@")[0]}
                 </strong>
               </a>
             ) : (
@@ -186,9 +182,9 @@ export function AppShell({ route, children }: { route: string; children: Compone
 
             {/* Status do Backup em Nuvem */}
             {(() => {
-              const status = cloudSyncStatus.value;
-              const ultimo = cloudUltimoBackup.value;
-              const email = cloudUser.value?.email;
+              const status = syncStatus;
+              const ultimo = ultimoBackup;
+              const email = user?.email;
 
               return (
                 <a
@@ -244,12 +240,6 @@ export function AppShell({ route, children }: { route: string; children: Compone
         onClose={() => setPainelNotifAberto(false)}
         onTogglePin={togglePinPainel}
       />
-
-      {/* Mobile */}
-      <a id="fab-new" href="#/realizacoes/novo" class="fab" aria-label="Nova realização">
-        <Icon name="plus" />
-      </a>
-      <MobileNavBar route={route} />
 
       {/* Modal de Autenticação / Boas-vindas Inicial */}
       <ModalAuth isOpen={authModalAberta} onClose={() => setAuthModalAberta(false)} />

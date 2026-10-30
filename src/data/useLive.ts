@@ -1,5 +1,5 @@
 import { liveQuery } from "dexie";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "react";
 
 /** Executa uma consulta Dexie e re-renderiza automaticamente quando os dados mudam. */
 export function useLive<T>(query: () => Promise<T>, deps: unknown[], initial: T): T {

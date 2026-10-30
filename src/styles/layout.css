@@ -290,8 +290,8 @@
   .hscroll { margin: 0; padding: 0; overflow: visible; flex-wrap: wrap; }
 }
 
-/* ================= Desktop ================= */
-@media (min-width: 1024px) {
+/* ================= Desktop & Laptops ================= */
+@media (min-width: 768px) {
   .shell {
     display: grid;
     grid-template-columns: var(--sidebar-w) 1fr;

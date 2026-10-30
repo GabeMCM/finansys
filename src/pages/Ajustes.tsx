@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { CustomSelect } from "../components/CustomSelect.tsx";
 import { Icon } from "../components/Icon.tsx";
 import { Modal } from "../components/Modal.tsx";
@@ -19,8 +19,17 @@ import { formatCpfCnpj, labelCpfCnpj, money } from "../lib/format.ts";
 import { avaliarFormula, calcularFormulaProjecoes, extrairVariaveis } from "../lib/formula.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../state.ts";
+import { useSignal } from "../lib/signal.ts";
 
 export function Ajustes() {
+  const empId = useSignal(empresaAtiva);
+  const currentAno = useSignal(anoAtivo);
+  const user = useSignal(cloudUser);
+  const syncStatus = useSignal(cloudSyncStatus);
+  const ultimoBackup = useSignal(cloudUltimoBackup);
+  const currentTheme = useSignal(theme);
+  const inactivityTimeout = useSignal(inactivityTimeoutSignal);
+
   // Cardlists retráteis (accordions) - todos recolhidos por padrão
   const [secoesAbertas, setSecoesAbertas] = useState<Set<string>>(() => new Set());
 
@@ -53,7 +62,6 @@ export function Ajustes() {
   const [modalEditarNomePerfil, setModalEditarNomePerfil] = useState<string | null>(null);
 
   // Live data
-  const empId = empresaAtiva.value;
   const listaEmpresas = useLive(() => empresas.list(), [], []);
   const listaAnos = useLive(() => (empId ? anos.byEmpresa(empId) : Promise.resolve([])), [empId], []);
   const listaCats = useLive(() => (empId ? categorias.byEmpresa(empId, natTab) : Promise.resolve([])), [empId, natTab], []);
@@ -119,7 +127,7 @@ export function Ajustes() {
         endereco: modalEmpresa.endereco?.trim() || "",
         logo: modalEmpresa.logo || "",
       });
-      if (!empresaAtiva.value) setEmpresa(criada.id);
+      if (!empId) setEmpresa(criada.id);
     }
     setModalEmpresa(null);
   };
@@ -209,8 +217,8 @@ export function Ajustes() {
     }
 
     // Se possui regra de vínculo/fórmula e o ano ativo está aberto, calcula e aplica as projeções
-    if (targetContaId && vinculoPayload && anoAtivo.value) {
-      const anoCorrente = await anos.find(empId, anoAtivo.value);
+    if (targetContaId && vinculoPayload && currentAno) {
+      const anoCorrente = await anos.find(empId, currentAno);
       if (anoCorrente) {
         const [todasCs, todasCats, todasPs] = await Promise.all([
           contas.byEmpresa(empId),
@@ -420,7 +428,7 @@ export function Ajustes() {
                           });
                           if (ok) {
                             await empresas.remove(emp.id);
-                            if (empresaAtiva.value === emp.id) empresaAtiva.value = null;
+                            if (empId === emp.id) setEmpresa("");
                             toast.success(`Empresa "${emp.nome}" excluída.`);
                           }
                         }}
@@ -490,7 +498,7 @@ export function Ajustes() {
           ) : (
             <div class="list">
               {listaAnos.map((a) => {
-                const isSelected = a.ano === anoAtivo.value;
+                const isSelected = a.ano === currentAno;
                 return (
                   <div class="list__item" key={a.id}>
                     <div class="list__icon bg-aporte">
@@ -541,7 +549,7 @@ export function Ajustes() {
                           });
                           if (ok) {
                             await anos.remove(a.id);
-                            if (anoAtivo.value === a.ano) {
+                            if (currentAno === a.ano) {
                               const restantes = listaAnos.filter((x) => x.id !== a.id);
                               if (restantes.length) setAno(restantes[restantes.length - 1].ano);
                             }
@@ -947,43 +955,43 @@ export function Ajustes() {
                   Basta entrar com seu e-mail para ter backup automático e acessar em qualquer aparelho.
                 </p>
               </div>
-              <span class={`badge ${cloudSyncStatus.value === "salvo" ? "badge--in" : cloudSyncStatus.value === "erro" ? "badge--warn" : ""}`}>
-                {cloudSyncStatus.value === "salvo"
+              <span class={`badge ${syncStatus === "salvo" ? "badge--in" : syncStatus === "erro" ? "badge--warn" : ""}`}>
+                {syncStatus === "salvo"
                   ? "Sincronizado"
-                  : cloudSyncStatus.value === "salvando"
+                  : syncStatus === "salvando"
                   ? "Salvando..."
-                  : cloudSyncStatus.value === "pendente"
+                  : syncStatus === "pendente"
                   ? "Pendente"
-                  : cloudSyncStatus.value === "erro"
+                  : syncStatus === "erro"
                   ? "Falha"
                   : "Não conectado"}
               </span>
             </div>
 
             <div class="stack" style="gap:var(--sp-3);">
-              {cloudUser.value ? (
+              {user ? (
                 <>
                   <div style="display:flex;align-items:center;justify-content:space-between;border:1px solid var(--border);border-radius:var(--r-md);padding:14px;background:var(--surface);flex-wrap:wrap;gap:12px;">
                     <div>
                       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         <i class="dot" style="background:var(--in);" />
                         <b style="font-size:var(--fs-sm);color:var(--text);">
-                          {cloudUser.value.nome ? `${cloudUser.value.nome} (${cloudUser.value.email})` : cloudUser.value.email}
+                          {user.nome ? `${user.nome} (${user.email})` : user.email}
                         </b>
                         <span class="badge badge--in">Nuvem Ativa</span>
                         <button
                           type="button"
                           class="btn btn--ghost"
                           style="font-size:0.7rem;padding:2px 8px;min-height:22px;gap:4px;"
-                          onClick={() => setModalEditarNomePerfil(cloudUser.value?.nome || "")}
+                          onClick={() => setModalEditarNomePerfil(user?.nome || "")}
                           title="Alterar seu nome salvo"
                         >
                           <Icon name="pencil" style="width:12px;height:12px;" /> Alterar nome
                         </button>
                       </div>
                       <div class="muted" style="font-size:var(--fs-xs);margin-top:4px;">
-                        {cloudUltimoBackup.value ? (
-                          <>Último backup em nuvem: {cloudUltimoBackup.value.toLocaleDateString("pt-BR")} às {cloudUltimoBackup.value.toLocaleTimeString("pt-BR")}</>
+                        {ultimoBackup ? (
+                          <>Último backup em nuvem: {ultimoBackup.toLocaleDateString("pt-BR")} às {ultimoBackup.toLocaleTimeString("pt-BR")}</>
                         ) : (
                           "Sincronização contínua ativada."
                         )}
@@ -1058,7 +1066,7 @@ export function Ajustes() {
                       <select
                         class="input"
                         style="font-size:var(--fs-xs);min-height:32px;padding:2px 8px;"
-                        value={inactivityTimeoutSignal.value}
+                        value={inactivityTimeout}
                         onChange={(e) => {
                           const val = Number(e.currentTarget.value);
                           setInactivityTimeout(val);
@@ -1182,14 +1190,14 @@ export function Ajustes() {
                 <div style="display:flex;gap:6px;">
                   <button
                     type="button"
-                    class={`btn ${theme.value === "dark" ? "btn--primary" : "btn--secondary"}`}
+                    class={`btn ${currentTheme === "dark" ? "btn--primary" : "btn--secondary"}`}
                     onClick={() => applyTheme("dark")}
                   >
                     <Icon name="moon" /> Escuro
                   </button>
                   <button
                     type="button"
-                    class={`btn ${theme.value === "light" ? "btn--primary" : "btn--secondary"}`}
+                    class={`btn ${currentTheme === "light" ? "btn--primary" : "btn--secondary"}`}
                     onClick={() => applyTheme("light")}
                   >
                     <Icon name="sun" /> Claro

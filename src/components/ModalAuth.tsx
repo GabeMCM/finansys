@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "react";
 import { autenticarConta, buscarPerfilPorEmail, cloudUser } from "../data/cloudSync.ts";
 import { Icon } from "./Icon.tsx";
 import { Modal } from "./Modal.tsx";

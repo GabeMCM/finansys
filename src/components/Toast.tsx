@@ -1,4 +1,4 @@
-import { signal } from "@preact/signals";
+import { signal, useSignal } from "../lib/signal.ts";
 import { Icon, type IconName } from "./Icon.tsx";
 
 export type ToastType = "success" | "error" | "warn" | "info";
@@ -44,7 +44,7 @@ const iconesMap: Record<ToastType, IconName> = {
 };
 
 export function ToastContainer() {
-  const lista = toasts.value;
+  const lista = useSignal(toasts);
   if (lista.length === 0) return null;
 
   return (

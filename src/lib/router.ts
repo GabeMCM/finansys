@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useState } from "react";
 
 /** Roteador mínimo baseado em hash (#/rota) — funciona offline e em hospedagem estática. */
 export function useRoute(): string {

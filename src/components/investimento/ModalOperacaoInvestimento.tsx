@@ -1,4 +1,4 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect } from "react";
 import { Icon } from "../Icon.tsx";
 import { Modal } from "../Modal.tsx";
 import { searchTicker } from "../../lib/marketApi.ts";

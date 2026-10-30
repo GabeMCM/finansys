@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "./Icon.tsx";
 import { calcularPendencias } from "../data/calc.ts";
 import { db } from "../data/db.ts";
@@ -7,6 +7,7 @@ import { type Ano, type Conta, type Empresa, SINAL } from "../data/types.ts";
 import { useLive } from "../data/useLive.ts";
 import { money, MONTHS } from "../lib/format.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
+import { useSignal } from "../lib/signal.ts";
 
 export type SeveridadeAlerta = "critica" | "alta" | "aviso" | "info";
 export type CategoriaAlerta = "orcamento" | "despesa" | "reserva" | "vencimento";
@@ -216,8 +217,8 @@ export function PainelNotificacoes({
   onClose,
   onTogglePin,
 }: PainelNotificacoesProps) {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   const { alertas, resumo } = useDiagnosticoFinanceiro(empId, anoNum);
   const [filtroCategoria, setFiltroCategoria] = useState<string>("todas");

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "./Icon.tsx";
 
 export interface CustomSelectOption {

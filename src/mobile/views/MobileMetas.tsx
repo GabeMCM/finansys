@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
 import { toast } from "../../components/Toast.tsx";
 import { anos, categorias, contas, lancamentos, projecoes } from "../../data/repo.ts";
@@ -6,10 +6,11 @@ import type { Categoria, Conta, Natureza } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
 import { moneyPrivacidade, MONTHS } from "../../lib/format.ts";
 import { anoAtivo, empresaAtiva } from "../../state.ts";
+import { useSignal } from "../../lib/signal.ts";
 
 export function MobileMetas() {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   const [mesAtivo, setMesAtivo] = useState<number>(new Date().getMonth());
   const [natureza, setNatureza] = useState<Natureza>("saida");

@@ -1,4 +1,4 @@
-import { signal } from "@preact/signals";
+import { signal } from "../lib/signal.ts";
 import { cloudSyncStatus, cloudUser, sincronizarInteligente } from "./cloudSync.ts";
 
 export const isScreenLocked = signal<boolean>(false);

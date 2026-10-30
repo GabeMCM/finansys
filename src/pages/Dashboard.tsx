@@ -7,6 +7,7 @@ import { useLive } from "../data/useLive.ts";
 import { money, moneyCompact, MONTHS, signed } from "../lib/format.ts";
 import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva, setAno, setEmpresa } from "../state.ts";
+import { useSignal } from "../lib/signal.ts";
 
 const MESES_LONGOS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
@@ -30,8 +31,8 @@ function Vazio() {
 }
 
 export function Dashboard() {
-  const empId = empresaAtiva.value;
-  const anoNum = anoAtivo.value;
+  const empId = useSignal(empresaAtiva);
+  const anoNum = useSignal(anoAtivo);
 
   const dados = useLive(async () => {
     if (!empId) return null;

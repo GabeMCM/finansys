@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useState } from "react";
 import { Icon } from "../Icon.tsx";
 import { money, MONTHS } from "../../lib/format.ts";
 import { NATURE_META } from "../../lib/natureza.ts";
