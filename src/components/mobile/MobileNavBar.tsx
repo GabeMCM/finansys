@@ -18,6 +18,7 @@ export function MobileNavBar({ route }: { route: string }) {
   const isItemActive = (href: string) => {
     if (href === "/") return route === "/" || route.startsWith("/relatorios");
     if (href === "/realizacoes") return route.startsWith("/realizacoes") || route.startsWith("/lancamentos");
+    if (href === "/reservas") return route.startsWith("/reservas") || route.startsWith("/investimentos");
     return route.startsWith(href);
   };
 

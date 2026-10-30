@@ -106,7 +106,26 @@ export function MobileCaixinhas() {
   };
 
   return (
-    <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:70px;">
+    <div style="display:flex;flex-direction:column;gap:12px;padding-bottom:70px;">
+      {/* 0. Switcher Superior de Contexto: Caixinhas vs Bolsa de Valores */}
+      <div class="mobile-segmented" style="margin-bottom:2px;">
+        <button
+          type="button"
+          class="mobile-segmented__btn is-active"
+        >
+          <Icon name="wallet" style="width:16px;height:16px;" />
+          Caixinhas & Metas
+        </button>
+        <a
+          href="#/investimentos"
+          class="mobile-segmented__btn"
+          style="text-decoration:none;"
+        >
+          <Icon name="chart" style="width:16px;height:16px;" />
+          Bolsa & Ações
+        </a>
+      </div>
+
       {/* 1. Header Hero Patrimonial */}
       <div class="bank-hero-card">
         <div class="bank-hero-card__header">

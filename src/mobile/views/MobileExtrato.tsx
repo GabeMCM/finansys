@@ -110,8 +110,8 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
         />
       </div>
 
-      {/* 2. Chips Horizontais de Meses */}
-      <div class="hscroll" style="padding-bottom:4px;">
+      {/* 2. Chips Horizontais de Meses Compactos */}
+      <div class="hscroll" style="padding-bottom:2px;gap:3px;">
         <button
           type="button"
           class={`chip ${mesAtivo === "todos" ? "is-active" : ""}`}
@@ -119,7 +119,7 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
         >
           Ano Todo
         </button>
-        {MONTHS.map((m, idx) => (
+        {["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"].map((m, idx) => (
           <button
             key={m}
             type="button"

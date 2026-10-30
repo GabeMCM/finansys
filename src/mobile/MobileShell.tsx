@@ -16,6 +16,8 @@ import { MobileExtrato } from "./views/MobileExtrato.tsx";
 import { MobileNovoLancamento } from "./views/MobileNovoLancamento.tsx";
 import { MobileMetas } from "./views/MobileMetas.tsx";
 import { MobileCaixinhas } from "./views/MobileCaixinhas.tsx";
+import { MobileInvestimentos } from "./views/MobileInvestimentos.tsx";
+import { MobileRelatorios } from "./views/MobileRelatorios.tsx";
 import { MobileAjustes } from "./views/MobileAjustes.tsx";
 import { useSignal } from "../lib/signal.ts";
 
@@ -122,8 +124,12 @@ export function MobileShell({ route }: { route: string }) {
     );
   } else if (route.startsWith("/projecoes")) {
     currentView = <MobileMetas />;
-  } else if (route.startsWith("/reservas") || route.startsWith("/investimentos")) {
+  } else if (route.startsWith("/investimentos")) {
+    currentView = <MobileInvestimentos />;
+  } else if (route.startsWith("/reservas")) {
     currentView = <MobileCaixinhas />;
+  } else if (route.startsWith("/relatorios")) {
+    currentView = <MobileRelatorios />;
   } else if (route.startsWith("/ajustes")) {
     currentView = <MobileAjustes onOpenAuth={() => setAuthModalAberta(true)} />;
   } else {
@@ -139,7 +145,7 @@ export function MobileShell({ route }: { route: string }) {
         reservasSaldos={reservasSaldosMap}
         ultimosLancamentos={ultimosLancamentosMobile}
         onVerRelatorioCompleto={() => {
-          window.location.hash = "#/realizacoes";
+          window.location.hash = "#/relatorios";
         }}
       />
     );

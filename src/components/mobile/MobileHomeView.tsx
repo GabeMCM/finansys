@@ -203,18 +203,26 @@ export function MobileHomeView({
         </div>
       </section>
 
-      {/* 4. Minhas Caixinhas / Reservas */}
+      {/* 4. Minhas Caixinhas & Investimentos */}
       <section style="display:flex;flex-direction:column;gap:10px;">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px;">
           <h2 style="font-size:0.95rem;font-weight:800;color:var(--text);margin:0;">
             Minhas Caixinhas
           </h2>
-          <a
-            href="#/reservas"
-            style="font-size:0.78rem;font-weight:700;color:var(--primary);text-decoration:none;"
-          >
-            Ver todas
-          </a>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <a
+              href="#/investimentos"
+              style="font-size:0.75rem;font-weight:700;color:var(--primary);text-decoration:none;"
+            >
+              Bolsa B3 &rarr;
+            </a>
+            <a
+              href="#/reservas"
+              style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-decoration:none;"
+            >
+              Ver todas
+            </a>
+          </div>
         </div>
 
         {reservas.length === 0 ? (
