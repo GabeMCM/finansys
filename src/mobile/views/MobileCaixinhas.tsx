@@ -25,9 +25,17 @@ export function MobileCaixinhas() {
   } | null>(null);
   const [modalProjecao, setModalProjecao] = useState<Reserva | null>(null);
 
-  // Aba interna: Minhas Caixinhas ou Extrato de Movimentações
-  const [secaoAtiva, setSecaoAtiva] = useState<"caixinhas" | "extrato">("caixinhas");
+  // 3 Abas: Minhas Caixinhas, Histórico ou Evolução Anual 12M
+  const [secaoAtiva, setSecaoAtiva] = useState<"caixinhas" | "extrato" | "evolucao">("caixinhas");
   const [refreshKey, setRefreshKey] = useState<number>(0);
+
+  // Filtros do Histórico
+  const [filtroReservaHist, setFiltroReservaHist] = useState<string>("todas");
+  const [filtroTipoHist, setFiltroTipoHist] = useState<string>("todos");
+  const [filtroMesHist, setFiltroMesHist] = useState<number | "todos">("todos");
+
+  // Filtro da Evolução
+  const [filtroReservaEvolucao, setFiltroReservaEvolucao] = useState<string>("todas");
 
   const dados = useLive(async () => {
     if (!empId) return null;
@@ -64,6 +72,14 @@ export function MobileCaixinhas() {
       </div>
     );
   }
+
+  // Filtragem do Histórico
+  const movsFiltradas = movList.filter((m) => {
+    if (filtroReservaHist !== "todas" && m.reservaId !== filtroReservaHist) return false;
+    if (filtroTipoHist !== "todos" && m.tipo !== filtroTipoHist) return false;
+    if (filtroMesHist !== "todos" && m.mes !== filtroMesHist) return false;
+    return true;
+  });
 
   return (
     <div style="display:flex;flex-direction:column;gap:12px;padding-bottom:70px;">
@@ -117,7 +133,7 @@ export function MobileCaixinhas() {
           </div>
         </div>
 
-        {/* Ações Rápidas no Hero: Nova Caixinha e Movimentar */}
+        {/* Ações Rápidas no Hero: Nova Caixinha e Guardar */}
         <div style="display:flex;gap:6px;margin-top:10px;">
           <button
             type="button"
@@ -138,7 +154,7 @@ export function MobileCaixinhas() {
         </div>
       </div>
 
-      {/* 2. Switcher de Visualização: Caixinhas vs Extrato de Movimentações */}
+      {/* 2. Switcher de 3 Abas: Caixinhas vs Histórico vs Evolução 12M */}
       <div class="mobile-segmented" style="margin-bottom:2px;">
         <button
           type="button"
@@ -146,7 +162,7 @@ export function MobileCaixinhas() {
           onClick={() => setSecaoAtiva("caixinhas")}
         >
           <Icon name="grid" style="width:14px;height:14px;" />
-          Minhas Caixinhas ({resList.length})
+          Caixinhas ({resList.length})
         </button>
         <button
           type="button"
@@ -156,9 +172,19 @@ export function MobileCaixinhas() {
           <Icon name="list" style="width:14px;height:14px;" />
           Histórico ({movList.length})
         </button>
+        <button
+          type="button"
+          class={`mobile-segmented__btn ${secaoAtiva === "evolucao" ? "is-active" : ""}`}
+          onClick={() => setSecaoAtiva("evolucao")}
+        >
+          <Icon name="chart" style="width:14px;height:14px;" />
+          Evolução 12M
+        </button>
       </div>
 
-      {/* 3. CONTEÚDO: MINHAS CAIXINHAS */}
+      {/* =========================================================================
+          3. CONTEÚDO: MINHAS CAIXINHAS
+          ========================================================================= */}
       {secaoAtiva === "caixinhas" && (
         <>
           {resList.length === 0 ? (
@@ -166,7 +192,7 @@ export function MobileCaixinhas() {
               <Icon name="wallet" style="width:36px;height:36px;color:var(--text-muted);margin:0 auto 10px;display:block;" />
               <h3 style="font-size:1rem;font-weight:800;margin:0 0 4px;color:var(--text);">Nenhuma Caixinha</h3>
               <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 16px;">
-                Crie metas como Reserva de Emergência, Viagem ou Carro Novo.
+                Crie metas como Reserva de Emergência, Viagem ou Provisão de 13º.
               </p>
               <button
                 type="button"
@@ -228,7 +254,7 @@ export function MobileCaixinhas() {
                       </div>
                     )}
 
-                    {/* Botões de Ação da Caixinha: Guardar, Resgatar, Rendimento e Simular */}
+                    {/* 4 Ações Rápidas: Guardar, Resgatar, Rendimento e Simular */}
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px;">
                       <button
                         type="button"
@@ -275,16 +301,77 @@ export function MobileCaixinhas() {
         </>
       )}
 
-      {/* 4. CONTEÚDO: HISTÓRICO DE MOVIMENTAÇÕES */}
+      {/* =========================================================================
+          4. CONTEÚDO: HISTÓRICO COM FILTROS (CAIXINHA / TIPO / MÊS)
+          ========================================================================= */}
       {secaoAtiva === "extrato" && (
         <div style="display:flex;flex-direction:column;gap:8px;">
-          {movList.length === 0 ? (
+          {/* Filtros em Chips */}
+          <div class="hscroll" style="gap:4px;padding-bottom:2px;">
+            <button
+              type="button"
+              class={`chip chip--sm ${filtroReservaHist === "todas" ? "is-active" : ""}`}
+              onClick={() => setFiltroReservaHist("todas")}
+            >
+              Todas as Caixinhas
+            </button>
+            {resList.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                class={`chip chip--sm ${filtroReservaHist === r.id ? "is-active" : ""}`}
+                onClick={() => setFiltroReservaHist(r.id)}
+              >
+                {r.nome}
+              </button>
+            ))}
+          </div>
+
+          <div class="hscroll" style="gap:4px;padding-bottom:2px;">
+            <button
+              type="button"
+              class={`chip chip--sm ${filtroTipoHist === "todos" ? "is-active" : ""}`}
+              onClick={() => setFiltroTipoHist("todos")}
+            >
+              Todos os Tipos
+            </button>
+            <button
+              type="button"
+              class={`chip chip--sm ${filtroTipoHist === "aporte" ? "is-active" : ""}`}
+              onClick={() => setFiltroTipoHist("aporte")}
+            >
+              Aportes (+)
+            </button>
+            <button
+              type="button"
+              class={`chip chip--sm ${filtroTipoHist === "resgate" ? "is-active" : ""}`}
+              onClick={() => setFiltroTipoHist("resgate")}
+            >
+              Resgates (−)
+            </button>
+            <button
+              type="button"
+              class={`chip chip--sm ${filtroTipoHist === "rendimento" ? "is-active" : ""}`}
+              onClick={() => setFiltroTipoHist("rendimento")}
+            >
+              Rendimentos
+            </button>
+            <button
+              type="button"
+              class={`chip chip--sm ${filtroTipoHist === "transferencia" ? "is-active" : ""}`}
+              onClick={() => setFiltroTipoHist("transferencia")}
+            >
+              Transferências
+            </button>
+          </div>
+
+          {movsFiltradas.length === 0 ? (
             <div class="card empty" style="border-radius:16px;padding:24px;">
               <Icon name="list" />
-              <p style="font-size:0.80rem;color:var(--text-muted);margin:0;">Nenhuma movimentação registrada nas caixinhas.</p>
+              <p style="font-size:0.80rem;color:var(--text-muted);margin:0;">Nenhuma movimentação para os filtros selecionados.</p>
             </div>
           ) : (
-            [...movList]
+            [...movsFiltradas]
               .sort((a, b) => b.data.localeCompare(a.data))
               .map((m) => {
                 const res = resMap.get(m.reservaId);
@@ -358,6 +445,176 @@ export function MobileCaixinhas() {
           )}
         </div>
       )}
+
+      {/* =========================================================================
+          5. CONTEÚDO: EVOLUÇÃO MENSAL 12 MESES (PROJ × REAL)
+          ========================================================================= */}
+      {secaoAtiva === "evolucao" && (() => {
+        const reservasAlvo =
+          filtroReservaEvolucao === "todas"
+            ? carteira.reservas
+            : carteira.reservas.filter((r) => r.reserva.id === filtroReservaEvolucao);
+
+        const totAportesReal = reservasAlvo.reduce((s, r) => s + r.totalAportesReal, 0);
+        const totAportesProj = reservasAlvo.reduce((s, r) => s + r.totalAportesProj, 0);
+        const totResgReal = reservasAlvo.reduce((s, r) => s + r.totalResgatesReal, 0);
+        const totRendReal = reservasAlvo.reduce((s, r) => s + r.totalRendimentosReal, 0);
+        const saldoFinalReal = reservasAlvo.reduce((s, r) => s + (r.evolucaoMensalReal[11] || 0), 0);
+        const saldoFinalProj = reservasAlvo.reduce((s, r) => s + (r.saldoFinalProj || 0), 0);
+
+        return (
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            {/* Seletor da Reserva Alvo */}
+            <div class="hscroll" style="gap:4px;padding-bottom:2px;">
+              <button
+                type="button"
+                class={`chip chip--sm ${filtroReservaEvolucao === "todas" ? "is-active" : ""}`}
+                onClick={() => setFiltroReservaEvolucao("todas")}
+              >
+                Todas as Caixinhas
+              </button>
+              {resList.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  class={`chip chip--sm ${filtroReservaEvolucao === r.id ? "is-active" : ""}`}
+                  onClick={() => setFiltroReservaEvolucao(r.id)}
+                >
+                  {r.nome}
+                </button>
+              ))}
+            </div>
+
+            {/* Card Hero de Totais Anuais */}
+            <div
+              class="card"
+              style="padding:12px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--border);"
+            >
+              <div style="font-size:0.75rem;font-weight:700;color:var(--text);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.04em;">
+                Totais Anuais da Carteira ({anoNum})
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:0.72rem;">
+                <div style="background:var(--surface-soft);padding:8px 10px;border-radius:10px;">
+                  <span style="color:var(--text-muted);font-size:0.68rem;">Aportes Totais:</span>
+                  <div style="font-weight:800;color:var(--in);margin-top:2px;">
+                    +{moneyPrivacidade(totAportesReal)}
+                    <span style="color:var(--text-muted);font-weight:normal;font-size:0.65rem;"> / {moneyPrivacidade(totAportesProj)}</span>
+                  </div>
+                </div>
+                <div style="background:var(--surface-soft);padding:8px 10px;border-radius:10px;">
+                  <span style="color:var(--text-muted);font-size:0.68rem;">Rendimentos Totais:</span>
+                  <div style="font-weight:800;color:var(--primary);margin-top:2px;">
+                    +{moneyPrivacidade(totRendReal)}
+                  </div>
+                </div>
+                <div style="background:var(--surface-soft);padding:8px 10px;border-radius:10px;">
+                  <span style="color:var(--text-muted);font-size:0.68rem;">Resgates Totais:</span>
+                  <div style="font-weight:800;color:var(--out);margin-top:2px;">
+                    -{moneyPrivacidade(totResgReal)}
+                  </div>
+                </div>
+                <div style="background:var(--surface-soft);padding:8px 10px;border-radius:10px;">
+                  <span style="color:var(--text-muted);font-size:0.68rem;">Saldo Final Previsto:</span>
+                  <div style="font-weight:800;color:var(--text);margin-top:2px;">
+                    {moneyPrivacidade(saldoFinalReal)}
+                    <span style="color:var(--text-muted);font-weight:normal;font-size:0.65rem;"> / {moneyPrivacidade(saldoFinalProj)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Evolução Mês a Mês (Jan a Dez) */}
+            <div style="display:flex;flex-direction:column;gap:6px;">
+              {MONTHS.map((mNome, mIdx) => {
+                const isAtual = mIdx === mesAtual;
+
+                let apReal = 0;
+                let apProj = 0;
+                let resgReal = 0;
+                let rendReal = 0;
+                let saldoReal = 0;
+                let saldoProj = 0;
+
+                for (const r of reservasAlvo) {
+                  saldoReal += r.evolucaoMensalReal[mIdx] || 0;
+                  saldoProj += r.evolucaoMensalProj[mIdx] || 0;
+
+                  const movs = movList.filter((m) => m.reservaId === r.reserva.id && m.mes === mIdx);
+                  for (const m of movs) {
+                    if (m.tipo === "aporte") apReal += m.valor;
+                    else if (m.tipo === "resgate") resgReal += m.valor;
+                    else if (m.tipo === "rendimento") rendReal += m.valor;
+                  }
+
+                  const p = projList.find((item) => item.reservaId === r.reserva.id && item.mes === mIdx);
+                  if (p) {
+                    apProj += p.valorAporte;
+                  }
+                }
+
+                return (
+                  <div
+                    key={mIdx}
+                    class="card"
+                    style={{
+                      borderRadius: "12px",
+                      padding: "10px 12px",
+                      background: isAtual ? "color-mix(in srgb, var(--primary) 4%, var(--surface))" : "var(--surface)",
+                      border: isAtual ? "1px solid var(--primary)" : "1px solid var(--border)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "6px",
+                    }}
+                  >
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                      <div style="display:flex;align-items:center;gap:6px;">
+                        <strong style="font-size:0.84rem;color:var(--text);">{mNome}</strong>
+                        {isAtual && (
+                          <span class="badge badge--in" style="font-size:0.65rem;padding:1px 5px;">
+                            Mês Atual
+                          </span>
+                        )}
+                      </div>
+                      <div style="text-align:right;">
+                        <span style="font-size:0.70rem;color:var(--text-muted);">Saldo Acumulado: </span>
+                        <strong style="font-size:0.86rem;color:var(--primary);font-variant-numeric:tabular-nums;">
+                          {moneyPrivacidade(saldoReal)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        fontSize: "0.70rem",
+                        paddingTop: "4px",
+                        borderTop: "1px dashed var(--border-soft)",
+                      }}
+                    >
+                      <span style="color:var(--in);">
+                        Aporte: +{moneyPrivacidade(apReal)}
+                        {apProj > 0 && <span style="color:var(--text-muted);font-size:0.65rem;"> (meta {moneyPrivacidade(apProj)})</span>}
+                      </span>
+                      {resgReal > 0 && (
+                        <span style="color:var(--out);">
+                          Resgate: -{moneyPrivacidade(resgReal)}
+                        </span>
+                      )}
+                      {rendReal > 0 && (
+                        <span style="color:var(--primary);">
+                          Rend: +{moneyPrivacidade(rendReal)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* =========================================================================
           MODAIS INTEGRADOS (NATIVOS DO SISTEMA)

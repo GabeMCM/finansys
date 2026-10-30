@@ -3,8 +3,8 @@ import { Icon } from "../../components/Icon.tsx";
 import { toast } from "../../components/Toast.tsx";
 import { CardPendencias } from "../../components/lancamento/CardPendencias.tsx";
 import { calcularPendencias, type ProjecaoPendente } from "../../data/calc.ts";
-import { anos, categorias, contas, contasBancarias, lancamentos, projecoes } from "../../data/repo.ts";
-import type { Conta, Lancamento, Natureza } from "../../data/types.ts";
+import { anos, categorias, contas, contasBancarias, lancamentos, projecoes, reservaMovimentos, reservas } from "../../data/repo.ts";
+import { FORMAS_PAGAMENTO_PADRAO, type Conta, type Lancamento, type Natureza, type Reserva } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
 import { money, MONTHS, signedPrivacidade } from "../../lib/format.ts";
 import { NATURE_META } from "../../lib/natureza.ts";
@@ -43,6 +43,8 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
   const [editData, setEditData] = useState<string>("");
   const [editContaId, setEditContaId] = useState<string>("");
   const [editBancoId, setEditBancoId] = useState<string>("");
+  const [editFormaPagamento, setEditFormaPagamento] = useState<string>("PIX");
+  const [editReservaId, setEditReservaId] = useState<string>("");
   const [editObs, setEditObs] = useState<string>("");
 
   const iniciarEdicao = (l: Lancamento) => {
@@ -51,6 +53,8 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
     setEditData(l.data);
     setEditContaId(l.contaId);
     setEditBancoId(l.bancoId || "");
+    setEditFormaPagamento(l.formaPagamento || "PIX");
+    setEditReservaId(l.reservaId || "");
     setEditObs(l.obs || "");
     setTxEmEdicao(true);
   };
@@ -65,6 +69,12 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
     }
     const mes = parseInt(editData.split("-")[1], 10) - 1;
 
+    const cConta = contaMap.get(editContaId);
+    const nat = cConta?.natureza || txSelecionada.tipoReserva || "saida";
+    const tipoRes = editReservaId
+      ? (nat === "saida" || nat === "pagar" ? "aporte" : "resgate")
+      : undefined;
+
     await lancamentos.update(txSelecionada.id, {
       valor: centavos,
       descricao: editDescricao.trim() || undefined,
@@ -72,8 +82,44 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
       mes,
       contaId: editContaId,
       bancoId: editBancoId || undefined,
+      formaPagamento: editFormaPagamento || undefined,
+      reservaId: editReservaId || undefined,
+      tipoReserva: tipoRes,
       obs: editObs.trim() || undefined,
     });
+
+    // Sincroniza com reservaMovimentos
+    const movVinculado = await reservaMovimentos.byLancamento(txSelecionada.id);
+    if (editReservaId && tipoRes && empId && ano) {
+      if (movVinculado) {
+        await reservaMovimentos.update(movVinculado.id, {
+          reservaId: editReservaId,
+          tipo: tipoRes,
+          valor: centavos,
+          data: editData,
+          mes,
+          contaId: editContaId,
+          bancoId: editBancoId || undefined,
+          obs: editDescricao || editObs || undefined,
+        });
+      } else {
+        await reservaMovimentos.create({
+          empresaId: empId,
+          anoId: ano.id,
+          reservaId: editReservaId,
+          tipo: tipoRes,
+          valor: centavos,
+          data: editData,
+          mes,
+          contaId: editContaId,
+          bancoId: editBancoId || undefined,
+          lancamentoId: txSelecionada.id,
+          obs: editDescricao || editObs || undefined,
+        });
+      }
+    } else if (movVinculado) {
+      await reservaMovimentos.remove(movVinculado.id);
+    }
 
     toast.success("Lançamento atualizado com sucesso!");
     setTxEmEdicao(false);
@@ -84,14 +130,15 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
     if (!empId) return null;
     const ano = await anos.find(empId, anoNum);
     if (!ano) return null;
-    const [cs, ls, cats, bancos, ps] = await Promise.all([
+    const [cs, ls, cats, bancos, ps, resList] = await Promise.all([
       contas.byEmpresa(empId),
       lancamentos.byAno(ano.id),
       categorias.byEmpresa(empId),
       contasBancarias.byEmpresa(empId),
       projecoes.byAno(ano.id),
+      reservas.byEmpresa(empId),
     ]);
-    return { ano, cs, ls, cats, bancos, ps };
+    return { ano, cs, ls, cats, bancos, ps, resList };
   }, [empId, anoNum], null);
 
   const cs = dados?.cs || [];
@@ -99,11 +146,13 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
   const cats = dados?.cats || [];
   const bancos = dados?.bancos || [];
   const ps = dados?.ps || [];
+  const resList = dados?.resList || [];
   const ano = dados?.ano;
 
   const contaMap = new Map<string, Conta>(cs.map((c) => [c.id, c]));
   const catMap = new Map<string, string>(cats.map((c) => [c.id, c.nome]));
   const bancoMap = new Map<string, string>(bancos.map((b) => [b.id, b.nome]));
+  const resMap = new Map<string, string>(resList.map((r) => [r.id, r.nome]));
 
   // Calcula pendências financeiras (vencidas e a vencer)
   const pendencias = calcularPendencias(ps, ls, anoNum, mesAtivo);
@@ -407,6 +456,41 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                     ))}
                   </select>
 
+                  {/* Forma de Pagamento */}
+                  <label class="form-label">Forma de Pagamento</label>
+                  <select
+                    class="select"
+                    value={editFormaPagamento}
+                    onChange={(e) => setEditFormaPagamento((e.currentTarget as HTMLSelectElement).value)}
+                    style="border-radius:14px;min-height:42px;"
+                  >
+                    {FORMAS_PAGAMENTO_PADRAO.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Vínculo com Reserva / Caixinha */}
+                  {resList.length > 0 && (
+                    <>
+                      <label class="form-label">Vínculo com Caixinha / Reserva</label>
+                      <select
+                        class="select"
+                        value={editReservaId}
+                        onChange={(e) => setEditReservaId((e.currentTarget as HTMLSelectElement).value)}
+                        style="border-radius:14px;min-height:42px;"
+                      >
+                        <option value="">Nenhuma caixinha vinculada</option>
+                        {resList.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+
                   {/* Observação */}
                   <label class="form-label">Observação (Opcional)</label>
                   <input
@@ -488,6 +572,24 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                     <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
                       <span style="color:var(--text-muted);">Banco / Conta:</span>
                       <strong>{bancoNome}</strong>
+                    </div>
+                  )}
+                  {txSelecionada.formaPagamento && (
+                    <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
+                      <span style="color:var(--text-muted);">Forma de Pagamento:</span>
+                      <strong>{txSelecionada.formaPagamento}</strong>
+                    </div>
+                  )}
+                  {txSelecionada.reservaId && (
+                    <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
+                      <span style="color:var(--text-muted);">Caixinha / Reserva:</span>
+                      <strong style="color:var(--primary);">{resMap.get(txSelecionada.reservaId) || "Caixinha"}</strong>
+                    </div>
+                  )}
+                  {txSelecionada.parcela && txSelecionada.totalParcelas && (
+                    <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
+                      <span style="color:var(--text-muted);">Parcela:</span>
+                      <strong>{txSelecionada.parcela} de {txSelecionada.totalParcelas}</strong>
                     </div>
                   )}
                   {txSelecionada.obs && (
