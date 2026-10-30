@@ -7,6 +7,7 @@ import { type Ano, type Conta, type ContaBancaria, SINAL, type TipoContaBancaria
 import { cloudUser } from "../data/cloudSync.ts";
 import { useLive } from "../data/useLive.ts";
 import { labelCpfCnpj, money, signed } from "../lib/format.ts";
+import { NATURE_META } from "../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
 import { useSignal } from "../lib/signal.ts";
 import { MobileHomeView, type MobileLancamentoItem } from "../components/mobile/MobileHomeView.tsx";

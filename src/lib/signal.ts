@@ -1,1 +1,6 @@
-export { signal, useSignal, type Signal } from "@preact/signals";
+import { type Signal } from "@preact/signals";
+export { signal, type Signal } from "@preact/signals";
+
+export function useSignal<T>(s: Signal<T>): T {
+  return s.value;
+}

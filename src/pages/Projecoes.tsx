@@ -43,7 +43,6 @@ interface ModalNovaProjecaoState {
   salvarVinculoNaConta: boolean;
 }
 
-import { anoAtivo, empresaAtiva } from "../state.ts";
 import { useSignal } from "../lib/signal.ts";
 
 export function Projecoes() {
