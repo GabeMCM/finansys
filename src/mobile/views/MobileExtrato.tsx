@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
 import { toast } from "../../components/Toast.tsx";
-import { anos, categorias, contas, contasBancarias, lancamentos } from "../../data/repo.ts";
+import { CardPendencias } from "../../components/lancamento/CardPendencias.tsx";
+import { calcularPendencias, type ProjecaoPendente } from "../../data/calc.ts";
+import { anos, categorias, contas, contasBancarias, lancamentos, projecoes } from "../../data/repo.ts";
 import type { Conta, Lancamento, Natureza } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
-import { MONTHS, signedPrivacidade } from "../../lib/format.ts";
+import { money, MONTHS, signedPrivacidade } from "../../lib/format.ts";
 import { NATURE_META } from "../../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../../state.ts";
 import { useSignal } from "../../lib/signal.ts";
@@ -31,6 +33,8 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
   const [filtroNat, setFiltroNat] = useState<"todas" | Natureza>("todas");
   const [mesAtivo, setMesAtivo] = useState<number | "todos">(new Date().getMonth());
   const [txSelecionada, setTxSelecionada] = useState<Lancamento | null>(null);
+  const [modalQuitarPendencia, setModalQuitarPendencia] = useState<ProjecaoPendente | null>(null);
+  const [quitarBancoId, setQuitarBancoId] = useState<string>("");
 
   // Estados de Edição
   const [txEmEdicao, setTxEmEdicao] = useState<boolean>(false);
@@ -80,23 +84,29 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
     if (!empId) return null;
     const ano = await anos.find(empId, anoNum);
     if (!ano) return null;
-    const [cs, ls, cats, bancos] = await Promise.all([
+    const [cs, ls, cats, bancos, ps] = await Promise.all([
       contas.byEmpresa(empId),
       lancamentos.byAno(ano.id),
       categorias.byEmpresa(empId),
       contasBancarias.byEmpresa(empId),
+      projecoes.byAno(ano.id),
     ]);
-    return { ano, cs, ls, cats, bancos };
+    return { ano, cs, ls, cats, bancos, ps };
   }, [empId, anoNum], null);
 
   const cs = dados?.cs || [];
   const ls = dados?.ls || [];
   const cats = dados?.cats || [];
   const bancos = dados?.bancos || [];
+  const ps = dados?.ps || [];
+  const ano = dados?.ano;
 
   const contaMap = new Map<string, Conta>(cs.map((c) => [c.id, c]));
   const catMap = new Map<string, string>(cats.map((c) => [c.id, c.nome]));
   const bancoMap = new Map<string, string>(bancos.map((b) => [b.id, b.nome]));
+
+  // Calcula pendências financeiras (vencidas e a vencer)
+  const pendencias = calcularPendencias(ps, ls, anoNum, mesAtivo);
 
   // Filtra lançamentos
   const filtrados = ls.filter((l) => {
@@ -210,6 +220,23 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
           Aportes
         </button>
       </div>
+
+      {/* 3.5. Card de Pendências Financeiras (Contas Vencidas e a Vencer) */}
+      {pendencias.length > 0 && (
+        <CardPendencias
+          pendencias={pendencias}
+          contas={cs}
+          categorias={cats}
+          mesFiltro={mesAtivo}
+          onLancar={(p) => {
+            setQuitarBancoId(bancos[0]?.id || "");
+            setModalQuitarPendencia(p);
+          }}
+          onIgnorar={(_p) => {
+            toast.info("Para ignorar projeções, acesse o painel completo de lançamentos.");
+          }}
+        />
+      )}
 
       {/* 4. Lista do Extrato Agrupado por Data */}
       {datasOrdenadas.length === 0 ? (
@@ -488,6 +515,94 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                   onClick={() => iniciarEdicao(txSelecionada)}
                 >
                   <Icon name="pencil" /> Editar Lançamento
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Bottom Sheet de Quitação Rápida de Pendência */}
+      {modalQuitarPendencia && (() => {
+        const c = contaMap.get(modalQuitarPendencia.contaId);
+        const catNome = c ? catMap.get(c.categoriaId) || "Geral" : "Geral";
+        return (
+          <div class="modal-backdrop" onClick={() => setModalQuitarPendencia(null)}>
+            <div class="modal" onClick={(e) => e.stopPropagation()}>
+              <div class="modal__head">
+                <h3 class="modal__title">Quitar Conta Pendente</h3>
+                <button type="button" class="btn btn--ghost btn--icon" onClick={() => setModalQuitarPendencia(null)}>
+                  <Icon name="x" />
+                </button>
+              </div>
+
+              <div class="modal__body" style="display:flex;flex-direction:column;gap:12px;">
+                <div style="text-align:center;padding:10px 0;">
+                  <div style="font-size:2rem;font-weight:900;color:var(--out);">
+                    {money(modalQuitarPendencia.valorPendente)}
+                  </div>
+                  <div style="font-size:1rem;font-weight:800;color:var(--text);margin-top:4px;">
+                    {c?.nome || "Conta Pendente"}
+                  </div>
+                  <div style="font-size:0.75rem;color:var(--text-muted);">{catNome} • {MONTHS[modalQuitarPendencia.mes]}</div>
+                </div>
+
+                <div class="card" style="display:flex;flex-direction:column;gap:8px;padding:12px;border-radius:14px;">
+                  <div style="display:flex;justify-content:space-between;font-size:0.80rem;">
+                    <span style="color:var(--text-muted);">Data do Pagamento:</span>
+                    <strong>{modalQuitarPendencia.dataSugerida.split("-").reverse().join("/")}</strong>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;font-size:0.80rem;">
+                    <span style="color:var(--text-muted);">Status:</span>
+                    <strong style={{ color: modalQuitarPendencia.status === "vencida" ? "var(--out)" : "var(--warn)" }}>
+                      {modalQuitarPendencia.status === "vencida" ? "Vencida" : "A Vencer"}
+                    </strong>
+                  </div>
+                </div>
+
+                {bancos.length > 0 && (
+                  <div>
+                    <label class="form-label" style="font-size:0.75rem;font-weight:700;color:var(--text-muted);display:block;margin-bottom:6px;">
+                      Conta Bancária de Saída
+                    </label>
+                    <select
+                      class="select"
+                      value={quitarBancoId}
+                      onChange={(e) => setQuitarBancoId((e.currentTarget as HTMLSelectElement).value)}
+                      style="border-radius:12px;min-height:42px;"
+                    >
+                      {bancos.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div class="modal__foot">
+                <button
+                  type="button"
+                  class="btn btn--primary"
+                  style="width:100%;min-height:46px;border-radius:14px;font-weight:800;"
+                  onClick={async () => {
+                    if (!ano || !c) return;
+                    await lancamentos.create({
+                      anoId: ano.id,
+                      contaId: c.id,
+                      mes: modalQuitarPendencia.mes,
+                      data: modalQuitarPendencia.dataSugerida,
+                      valor: modalQuitarPendencia.valorPendente,
+                      descricao: c.nome,
+                      bancoId: quitarBancoId || undefined,
+                      obs: "Quitado via app mobile",
+                    });
+                    toast.success(`Conta "${c.nome}" quitada com sucesso!`);
+                    setModalQuitarPendencia(null);
+                  }}
+                >
+                  <Icon name="check" /> Confirmar Pagamento
                 </button>
               </div>
             </div>

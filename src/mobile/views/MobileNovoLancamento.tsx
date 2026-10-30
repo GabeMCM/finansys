@@ -11,20 +11,40 @@ import { anoAtivo, empresaAtiva } from "../../state.ts";
 interface MobileNovoLancamentoProps {
   onSuccess: () => void;
   onCancel: () => void;
+  initialContaId?: string;
+  initialValorCentavos?: number;
+  initialData?: string;
+  initialDescricao?: string;
 }
 
-export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamentoProps) {
+export function MobileNovoLancamento({
+  onSuccess,
+  onCancel,
+  initialContaId,
+  initialValorCentavos,
+  initialData,
+  initialDescricao,
+}: MobileNovoLancamentoProps) {
   const empId = useSignal(empresaAtiva);
   const anoNum = useSignal(anoAtivo);
 
   const [natureza, setNatureza] = useState<Natureza>("saida");
-  const [centavos, setCentavos] = useState<number>(0);
-  const [descricao, setDescricao] = useState<string>("");
+  const [centavos, setCentavos] = useState<number>(initialValorCentavos || 0);
+  const [descricao, setDescricao] = useState<string>(initialDescricao || "");
   const [categoriaId, setCategoriaId] = useState<string>("");
-  const [contaId, setContaId] = useState<string>("");
+  const [contaId, setContaId] = useState<string>(initialContaId || "");
   const [bancoId, setBancoId] = useState<string>("");
-  const [dataPreset, setDataPreset] = useState<"hoje" | "ontem" | "outro">("hoje");
+  const [bancoDestinoId, setBancoDestinoId] = useState<string>("");
+  const [isTransferencia, setIsTransferencia] = useState<boolean>(false);
+
+  // Parcelamento / Repetição
+  const [modoRepeticao, setModoRepeticao] = useState<"unico" | "parcelado">("unico");
+  const [qtdParcelas, setQtdParcelas] = useState<number>(3);
+  const [dividirValor, setDividirValor] = useState<boolean>(true);
+
+  const [dataPreset, setDataPreset] = useState<"hoje" | "ontem" | "outro">(initialData ? "outro" : "hoje");
   const [dataCustom, setDataCustom] = useState<string>(() => {
+    if (initialData) return initialData;
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
@@ -94,23 +114,52 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
       return;
     }
 
-    const partesData = (dataFinal || "").split("-");
-    const mes = partesData.length >= 2 ? Math.max(0, Math.min(11, parseInt(partesData[1], 10) - 1)) : new Date().getMonth();
+    const [yyyyStr, mmStr, ddStr] = (dataFinal || "").split("-");
+    const anoBase = parseInt(yyyyStr, 10);
+    const mesBase = parseInt(mmStr, 10) - 1;
+    const diaBase = parseInt(ddStr, 10);
 
     try {
       setSalvando(true);
-      await lancamentos.create({
-        anoId: ano.id,
-        contaId: finalContaId,
-        mes,
-        data: dataFinal,
-        valor: centavos,
-        descricao: descricao.trim() || undefined,
-        bancoId: bancoId || undefined,
-        obs: obs.trim() || undefined,
-      });
 
-      toast.success(natureza === "receber" || natureza === "aporte" ? "Receita registrada!" : "Gasto registrado com sucesso!");
+      if (modoRepeticao === "parcelado" && qtdParcelas > 1) {
+        // Parcelamento em N vezes
+        const valorPorParcela = dividirValor ? Math.round(centavos / qtdParcelas) : centavos;
+        for (let i = 0; i < qtdParcelas; i++) {
+          const dParcela = new Date(anoBase, mesBase + i, diaBase);
+          const mesParcela = dParcela.getMonth();
+          const dataParcelaStr = formatarData(dParcela);
+          const descParcela = `${descricao.trim() || "Lançamento"} (${i + 1}/${qtdParcelas})`;
+
+          await lancamentos.create({
+            anoId: ano.id,
+            contaId: finalContaId,
+            mes: mesParcela,
+            data: dataParcelaStr,
+            valor: valorPorParcela,
+            descricao: descParcela,
+            bancoId: bancoId || undefined,
+            bancoDestinoId: isTransferencia && bancoDestinoId ? bancoDestinoId : undefined,
+            obs: obs.trim() || undefined,
+          });
+        }
+        toast.success(`Compra parcelada em ${qtdParcelas}x registrada com sucesso!`);
+      } else {
+        // Lançamento Único
+        await lancamentos.create({
+          anoId: ano.id,
+          contaId: finalContaId,
+          mes: mesBase,
+          data: dataFinal,
+          valor: centavos,
+          descricao: descricao.trim() || undefined,
+          bancoId: bancoId || undefined,
+          bancoDestinoId: isTransferencia && bancoDestinoId ? bancoDestinoId : undefined,
+          obs: obs.trim() || undefined,
+        });
+        toast.success(natureza === "receber" || natureza === "aporte" ? "Receita registrada!" : "Gasto registrado com sucesso!");
+      }
+
       onSuccess();
     } catch (e) {
       toast.error("Erro ao registrar lançamento: " + (e as Error).message);
@@ -122,7 +171,7 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
   return (
     <div style="display:flex;flex-direction:column;min-height:calc(100dvh - 120px);padding-bottom:80px;">
       {/* Top Header do Fluxo */}
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <button
           type="button"
           class="btn btn--ghost btn--icon"
@@ -131,14 +180,14 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
         >
           <Icon name="arrowLeft" />
         </button>
-        <h2 style="font-size:1.05rem;font-weight:800;margin:0;color:var(--text);">
+        <h2 style="font-size:1rem;font-weight:800;margin:0;color:var(--text);">
           Nova Transação
         </h2>
         <div style="width:36px;" />
       </div>
 
-      {/* 1. Seletor de Natureza (Despesa / Receita) */}
-      <div class="mobile-segmented">
+      {/* 1. Seletor de Natureza (Despesa / Receita / Aporte) */}
+      <div class="mobile-segmented" style="grid-template-columns:1fr 1fr;margin-bottom:10px;">
         <button
           type="button"
           class={`mobile-segmented__btn ${natureza === "saida" ? "is-active-out" : ""}`}
@@ -148,7 +197,7 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
             setContaId("");
           }}
         >
-          <Icon name="arrowUp" style="width:16px;height:16px;" /> Despesa
+          <Icon name="arrowUp" style="width:15px;height:15px;" /> Despesa
         </button>
         <button
           type="button"
@@ -159,14 +208,14 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
             setContaId("");
           }}
         >
-          <Icon name="arrowDown" style="width:16px;height:16px;" /> Receita
+          <Icon name="arrowDown" style="width:15px;height:15px;" /> Receita
         </button>
       </div>
 
-      {/* 2. Display de Valor Gigante */}
-      <div class="mobile-amount-box">
+      {/* 2. Display de Valor */}
+      <div class="mobile-amount-box" style="margin-bottom:12px;">
         <span class="mobile-amount-box__label">
-          {natureza === "receber" ? "Valor a Receber" : "Valor a Pagar"}
+          {natureza === "receber" ? "Valor da Receita" : "Valor do Gasto"}
         </span>
         <div class="mobile-amount-box__input-row">
           <span class="mobile-amount-box__currency">R$</span>
@@ -185,34 +234,34 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
         </div>
       </div>
 
-      {/* 3. Descrição Curta */}
-      <div style="margin-bottom:16px;">
-        <label class="form-label" style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block;">
-          Descrição (Opcional)
+      {/* 3. Descrição */}
+      <div style="margin-bottom:12px;">
+        <label class="form-label" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;display:block;">
+          Descrição
         </label>
         <input
           type="text"
           class="input"
-          placeholder="Ex: Mercado, Aluguel, Salário, Internet..."
+          placeholder="Ex: Mercado, Aluguel, Combustível, Salário..."
           value={descricao}
           onInput={(e) => setDescricao((e.currentTarget as HTMLInputElement).value)}
-          style="border-radius:14px;min-height:46px;"
+          style="border-radius:12px;min-height:42px;font-size:0.85rem;"
         />
       </div>
 
       {/* 4. Escolha da Categoria */}
-      <div style="margin-bottom:16px;">
-        <label class="form-label" style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;display:block;">
+      <div style="margin-bottom:12px;">
+        <label class="form-label" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block;">
           Categoria
         </label>
-        <div class="mobile-pill-grid">
+        <div class="hscroll" style="gap:4px;padding-bottom:2px;">
           {catsFiltradas.map((cat) => {
             const isSelected = categoriaId === cat.id;
             return (
               <button
                 key={cat.id}
                 type="button"
-                class={`mobile-choice-chip ${isSelected ? "is-selected" : ""}`}
+                class={`chip ${isSelected ? "is-active" : ""}`}
                 onClick={() => {
                   setCategoriaId(isSelected ? "" : cat.id);
                   setContaId("");
@@ -227,18 +276,18 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
 
       {/* 5. Escolha da Conta / Subcategoria */}
       {contasFiltradas.length > 0 && (
-        <div style="margin-bottom:16px;">
-          <label class="form-label" style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;display:block;">
-            Conta Específica
+        <div style="margin-bottom:12px;">
+          <label class="form-label" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block;">
+            Conta
           </label>
-          <div class="mobile-pill-grid">
+          <div class="hscroll" style="gap:4px;padding-bottom:2px;">
             {contasFiltradas.map((c) => {
               const isSelected = contaId === c.id;
               return (
                 <button
                   key={c.id}
                   type="button"
-                  class={`mobile-choice-chip ${isSelected ? "is-selected" : ""}`}
+                  class={`chip ${isSelected ? "is-active" : ""}`}
                   onClick={() => setContaId(isSelected ? "" : c.id)}
                 >
                   <span>{c.nome}</span>
@@ -249,16 +298,83 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
         </div>
       )}
 
-      {/* 6. Data da Transação */}
-      <div style="margin-bottom:16px;">
-        <label class="form-label" style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;display:block;">
+      {/* 6. Modo de Repetição / Parcelamento */}
+      <div style="margin-bottom:12px;">
+        <label class="form-label" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block;">
+          Repetição / Parcelas
+        </label>
+        <div class="mobile-segmented" style="margin-bottom:6px;">
+          <button
+            type="button"
+            class={`mobile-segmented__btn ${modoRepeticao === "unico" ? "is-active" : ""}`}
+            onClick={() => setModoRepeticao("unico")}
+          >
+            Lançamento Único
+          </button>
+          <button
+            type="button"
+            class={`mobile-segmented__btn ${modoRepeticao === "parcelado" ? "is-active" : ""}`}
+            onClick={() => setModoRepeticao("parcelado")}
+          >
+            Parcelado em N vezes
+          </button>
+        </div>
+
+        {modoRepeticao === "parcelado" && (
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="font-size:0.78rem;font-weight:700;">Número de Parcelas:</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <button
+                  type="button"
+                  class="btn btn--secondary btn--sm"
+                  onClick={() => setQtdParcelas((p) => Math.max(2, p - 1))}
+                >
+                  -
+                </button>
+                <strong style="font-size:0.95rem;width:24px;text-align:center;">{qtdParcelas}x</strong>
+                <button
+                  type="button"
+                  class="btn btn--secondary btn--sm"
+                  onClick={() => setQtdParcelas((p) => Math.min(24, p + 1))}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:6px;">
+              <button
+                type="button"
+                class={`chip ${dividirValor ? "is-active" : ""}`}
+                style="flex:1;justify-content:center;"
+                onClick={() => setDividirValor(true)}
+              >
+                Dividir valor total
+              </button>
+              <button
+                type="button"
+                class={`chip ${!dividirValor ? "is-active" : ""}`}
+                style="flex:1;justify-content:center;"
+                onClick={() => setDividirValor(false)}
+              >
+                Valor fixo p/ parcela
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 7. Data da Transação */}
+      <div style="margin-bottom:12px;">
+        <label class="form-label" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:6px;display:block;">
           Data
         </label>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:6px;">
           <button
             type="button"
             class={`mobile-choice-chip ${dataPreset === "hoje" ? "is-selected" : ""}`}
-            style="flex:1;justify-content:center;"
+            style="flex:1;justify-content:center;min-height:34px;font-size:0.78rem;"
             onClick={() => setDataPreset("hoje")}
           >
             Hoje
@@ -266,7 +382,7 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
           <button
             type="button"
             class={`mobile-choice-chip ${dataPreset === "ontem" ? "is-selected" : ""}`}
-            style="flex:1;justify-content:center;"
+            style="flex:1;justify-content:center;min-height:34px;font-size:0.78rem;"
             onClick={() => setDataPreset("ontem")}
           >
             Ontem
@@ -274,7 +390,7 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
           <button
             type="button"
             class={`mobile-choice-chip ${dataPreset === "outro" ? "is-selected" : ""}`}
-            style="flex:1;justify-content:center;"
+            style="flex:1;justify-content:center;min-height:34px;font-size:0.78rem;"
             onClick={() => setDataPreset("outro")}
           >
             Outra data
@@ -287,37 +403,89 @@ export function MobileNovoLancamento({ onSuccess, onCancel }: MobileNovoLancamen
             class="input"
             value={dataCustom}
             onChange={(e) => setDataCustom((e.currentTarget as HTMLInputElement).value)}
-            style="margin-top:8px;border-radius:14px;min-height:44px;"
+            style="margin-top:6px;border-radius:12px;min-height:40px;font-size:0.85rem;"
           />
         )}
       </div>
 
-      {/* 7. Banco / Instituição Financeira */}
+      {/* 8. Banco / Conta Bancária */}
       {bancos.length > 0 && (
-        <div style="margin-bottom:16px;">
-          <label class="form-label" style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;display:block;">
-            Banco / Forma de Pagamento
-          </label>
-          <div class="mobile-pill-grid">
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <label class="form-label" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin:0;">
+              Banco / Forma de Pagamento
+            </label>
+            {bancos.length > 1 && (
+              <button
+                type="button"
+                class="btn btn--ghost btn--sm"
+                style="padding:0;font-size:0.70rem;height:auto;color:var(--primary);"
+                onClick={() => setIsTransferencia(!isTransferencia)}
+              >
+                {isTransferencia ? "Lançamento Normal" : "+ Transferência"}
+              </button>
+            )}
+          </div>
+
+          <div class="hscroll" style="gap:4px;padding-bottom:2px;">
             {bancos.map((b) => {
               const isSelected = bancoId === b.id;
               return (
                 <button
                   key={b.id}
                   type="button"
-                  class={`mobile-choice-chip ${isSelected ? "is-selected" : ""}`}
+                  class={`chip ${isSelected ? "is-active" : ""}`}
                   onClick={() => setBancoId(isSelected ? "" : b.id)}
                 >
-                  <Icon name="bank" style="width:14px;height:14px;" />
+                  <Icon name="bank" style="width:12px;height:12px;" />
                   <span>{b.nome}</span>
                 </button>
               );
             })}
           </div>
+
+          {/* Banco Destino se for Transferência */}
+          {isTransferencia && (
+            <div style="margin-top:8px;">
+              <label class="form-label" style="font-size:0.70rem;font-weight:700;color:var(--text-muted);margin-bottom:4px;display:block;">
+                Banco de Destino
+              </label>
+              <select
+                class="select"
+                value={bancoDestinoId}
+                onChange={(e) => setBancoDestinoId((e.currentTarget as HTMLSelectElement).value)}
+                style="border-radius:12px;min-height:40px;font-size:0.80rem;"
+              >
+                <option value="">Selecione o banco de destino...</option>
+                {bancos
+                  .filter((b) => b.id !== bancoId)
+                  .map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nome}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
-      {/* 8. Botão Fixo de Confirmação na Base */}
+      {/* 9. Observação Opcional */}
+      <div style="margin-bottom:24px;">
+        <label class="form-label" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;display:block;">
+          Observação (Opcional)
+        </label>
+        <input
+          type="text"
+          class="input"
+          placeholder="Ex: Pago via Pix, nota fiscal, etc."
+          value={obs}
+          onInput={(e) => setObs((e.currentTarget as HTMLInputElement).value)}
+          style="border-radius:12px;min-height:40px;font-size:0.80rem;"
+        />
+      </div>
+
+      {/* 10. Botão Fixo de Confirmação na Base */}
       <div class="mobile-bottom-bar">
         <button
           type="button"

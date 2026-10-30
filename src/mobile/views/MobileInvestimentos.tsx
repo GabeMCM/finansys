@@ -16,7 +16,7 @@ export function MobileInvestimentos() {
   const empId = useSignal(empresaAtiva);
   const anoNum = useSignal(anoAtivo);
 
-  const [abaAtiva, setAbaAtiva] = useState<"carteira" | "radar">("carteira");
+  const [abaAtiva, setAbaAtiva] = useState<"carteira" | "radar" | "operacoes">("carteira");
   const [modalOperacaoAberta, setModalOperacaoAberta] = useState(false);
   const [operacaoEdicao, setOperacaoEdicao] = useState<OperacaoInvestimento | null>(null);
   const [tickerOperacao, setTickerOperacao] = useState<string>("");
@@ -26,7 +26,7 @@ export function MobileInvestimentos() {
   const [taxaCambioUsd, setTaxaCambioUsd] = useState<number>(5.35);
   const [carregandoMercado, setCarregandoMercado] = useState<boolean>(false);
   const [radarItems, setRadarItems] = useState<LongTermAnalysis[]>([]);
-  const [filtroRadar, setFiltroRadar] = useState<"todos" | "oportunidades" | "dividendos" | "baratas">("todos");
+  const [filtroRadar, setFiltroRadar] = useState<"todos" | "oportunidades" | "bestt" | "aristocratas" | "dividendos" | "baratas">("todos");
   const [buscaRadar, setBuscaRadar] = useState<string>("");
   const [refreshKey, setRefreshKey] = useState<number>(0);
 
@@ -121,6 +121,8 @@ export function MobileInvestimentos() {
       if (!sym.includes(q) && !n.includes(q) && !sec.includes(q)) return false;
     }
     if (filtroRadar === "oportunidades") return item.status === "oportunidade";
+    if (filtroRadar === "bestt") return item.isBestt;
+    if (filtroRadar === "aristocratas") return item.isAristocrat;
     if (filtroRadar === "dividendos") return item.dividendYield >= 6;
     if (filtroRadar === "baratas") return item.priceToBook > 0 && item.priceToBook < 1;
     return true;
@@ -264,15 +266,15 @@ export function MobileInvestimentos() {
         </div>
       </section>
 
-      {/* 3. Segmented de Abas: Minha Carteira vs Radar B3 */}
-      <div class="mobile-segmented" style="margin-bottom:4px;">
+      {/* 3. Segmented de Abas: Minha Carteira vs Radar B3 vs Histórico */}
+      <div class="mobile-segmented" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:4px;">
         <button
           type="button"
           class={`mobile-segmented__btn ${abaAtiva === "carteira" ? "is-active" : ""}`}
           onClick={() => setAbaAtiva("carteira")}
         >
-          <Icon name="wallet" style="width:15px;height:15px;" />
-          Minha Carteira ({carteira.posicoes.length})
+          <Icon name="wallet" style="width:13px;height:13px;" />
+          Carteira ({carteira.posicoes.length})
         </button>
 
         <button
@@ -280,8 +282,17 @@ export function MobileInvestimentos() {
           class={`mobile-segmented__btn ${abaAtiva === "radar" ? "is-active" : ""}`}
           onClick={() => setAbaAtiva("radar")}
         >
-          <Icon name="sparkles" style="width:15px;height:15px;" />
-          Radar B3 Hot 100
+          <Icon name="sparkles" style="width:13px;height:13px;" />
+          Radar B3
+        </button>
+
+        <button
+          type="button"
+          class={`mobile-segmented__btn ${abaAtiva === "operacoes" ? "is-active" : ""}`}
+          onClick={() => setAbaAtiva("operacoes")}
+        >
+          <Icon name="list" style="width:13px;height:13px;" />
+          Operações ({ops.length})
         </button>
       </div>
 
@@ -309,6 +320,51 @@ export function MobileInvestimentos() {
             </div>
           ) : (
             <div style="display:flex;flex-direction:column;gap:8px;">
+              {/* Card Efeito Bola de Neve (Barsi Dividend Growth) */}
+              <div
+                class="card"
+                style="border-radius:14px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);"
+              >
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <Icon name="sparkles" style="width:14px;height:14px;color:var(--primary);" />
+                    <strong style="font-size:0.80rem;color:var(--text);text-transform:uppercase;letter-spacing:0.04em;">
+                      Efeito Bola de Neve
+                    </strong>
+                  </div>
+                  <span class="badge" style="background:var(--primary-soft);color:var(--primary);font-size:0.68rem;font-weight:700;">
+                    YoC Médio {carteira.yieldOnCostMedioPct.toFixed(1)}%
+                  </span>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.72rem;">
+                  <div style="background:var(--surface-soft);padding:8px;border-radius:10px;">
+                    <div style="color:var(--text-muted);font-size:0.64rem;">Em 1 Ano (Proventos)</div>
+                    <div style="font-weight:800;color:var(--in);margin-top:2px;">
+                      +{money(carteira.projecaoBolaDeNeve.em1AnoCentavos)}
+                    </div>
+                  </div>
+                  <div style="background:var(--surface-soft);padding:8px;border-radius:10px;">
+                    <div style="color:var(--text-muted);font-size:0.64rem;">Em 3 Anos</div>
+                    <div style="font-weight:800;color:var(--in);margin-top:2px;">
+                      +{money(carteira.projecaoBolaDeNeve.em3AnosCentavos)}
+                    </div>
+                  </div>
+                  <div style="background:var(--surface-soft);padding:8px;border-radius:10px;">
+                    <div style="color:var(--text-muted);font-size:0.64rem;">Em 5 Anos (~{money(carteira.projecaoBolaDeNeve.rendaMensalEm5AnosCentavos)}/mês)</div>
+                    <div style="font-weight:800;color:var(--primary);margin-top:2px;">
+                      +{money(carteira.projecaoBolaDeNeve.em5AnosCentavos)}
+                    </div>
+                  </div>
+                  <div style="background:var(--surface-soft);padding:8px;border-radius:10px;">
+                    <div style="color:var(--text-muted);font-size:0.64rem;">Em 10 Anos (Meta Barsi)</div>
+                    <div style="font-weight:800;color:var(--primary);margin-top:2px;">
+                      +{money(carteira.projecaoBolaDeNeve.em10AnosCentavos)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {carteira.posicoes.map((pos) => {
                 const rentPositiva = pos.lucroPrejuizoCentavos >= 0;
                 return (
@@ -471,6 +527,20 @@ export function MobileInvestimentos() {
             </button>
             <button
               type="button"
+              class={`chip ${filtroRadar === "bestt" ? "is-active" : ""}`}
+              onClick={() => setFiltroRadar("bestt")}
+            >
+              Ações BESTT
+            </button>
+            <button
+              type="button"
+              class={`chip ${filtroRadar === "aristocratas" ? "is-active" : ""}`}
+              onClick={() => setFiltroRadar("aristocratas")}
+            >
+              Aristocratas
+            </button>
+            <button
+              type="button"
               class={`chip ${filtroRadar === "dividendos" ? "is-active" : ""}`}
               onClick={() => setFiltroRadar("dividendos")}
             >
@@ -583,6 +653,103 @@ export function MobileInvestimentos() {
             </div>
           )}
         </>
+      )}
+
+      {/* 5.5 CONTEÚDO: ABA HISTÓRICO DE OPERAÇÕES */}
+      {abaAtiva === "operacoes" && (
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          {ops.length === 0 ? (
+            <div class="card empty" style="border-radius:16px;padding:24px;">
+              <Icon name="list" />
+              <h3 style="font-size:0.95rem;font-weight:700;margin:0;">Nenhuma operação registrada</h3>
+              <p style="font-size:0.75rem;color:var(--text-muted);margin:4px 0 12px;">
+                Registre suas compras e vendas de ações ou FIIs para auditar o histórico.
+              </p>
+              <button
+                type="button"
+                class="btn btn--primary btn--sm"
+                onClick={() => {
+                  setTickerOperacao("");
+                  setOperacaoEdicao(null);
+                  setModalOperacaoAberta(true);
+                }}
+              >
+                <Icon name="plus" /> Nova Operação
+              </button>
+            </div>
+          ) : (
+            [...ops]
+              .sort((a, b) => b.data.localeCompare(a.data))
+              .map((op) => {
+                const isCompra = op.tipo === "compra";
+                const totalOp = (op.quantidade * op.precoUnitarioCentavos) + (op.taxasCentavos || 0);
+
+                return (
+                  <div
+                    key={op.id}
+                    class="card"
+                    style={{
+                      borderRadius: "14px",
+                      padding: "10px 12px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "10px",
+                      cursor: "pointer",
+                    }}
+                    onClick={() => {
+                      setOperacaoEdicao(op);
+                      setTickerOperacao(op.ticker);
+                      setModalOperacaoAberta(true);
+                    }}
+                  >
+                    <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
+                      <div
+                        class="mobile-tx-card__icon"
+                        style={{
+                          background: isCompra ? "var(--in-soft)" : "var(--out-soft)",
+                          color: isCompra ? "var(--in)" : "var(--out)",
+                          width: "32px",
+                          height: "32px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Icon name={isCompra ? "arrowDown" : "arrowUp"} style="width:16px;height:16px;" />
+                      </div>
+
+                      <div style="flex:1;min-width:0;">
+                        <div style="font-size:0.85rem;font-weight:800;color:var(--text);letter-spacing:0.02em;">
+                          {op.ticker} • {isCompra ? "Compra" : "Venda"}
+                        </div>
+                        <div style="font-size:0.68rem;color:var(--text-muted);">
+                          {op.data.split("-").reverse().join("/")} • {op.quantidade} cotas a {money(op.precoUnitarioCentavos)}
+                          {op.corretora ? ` • ${op.corretora}` : ""}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style="text-align:right;flex-shrink:0;">
+                      <div
+                        style={{
+                          fontSize: "0.88rem",
+                          fontWeight: "800",
+                          color: isCompra ? "var(--text)" : "var(--in)",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {money(totalOp)}
+                      </div>
+                      <span style="font-size:0.64rem;color:var(--text-muted);">
+                        {op.moeda || "BRL"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+          )}
+        </div>
       )}
 
       {/* 6. MODAIS DE INVESTIMENTOS */}
