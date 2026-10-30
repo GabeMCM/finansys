@@ -768,4 +768,298 @@
   .cockpit-card__val {
     font-size: 1.05rem !important;
   }
+
+  /* ==========================================================================
+     10. COMPONENTES DEDICADOS DAS TELAS REIMAGINADAS
+     ========================================================================== */
+  /* Display Financeiro Gigante (Novo Lançamento) */
+  .mobile-amount-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    margin-bottom: 16px;
+  }
+
+  .mobile-amount-box__label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .mobile-amount-box__input-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .mobile-amount-box__currency {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--text-muted);
+  }
+
+  .mobile-amount-box__input {
+    font-size: 2.4rem !important;
+    font-weight: 900 !important;
+    color: var(--text) !important;
+    background: transparent !important;
+    border: none !important;
+    outline: none !important;
+    text-align: center !important;
+    font-variant-numeric: tabular-nums !important;
+    letter-spacing: -0.03em !important;
+    width: 100% !important;
+    max-width: 240px !important;
+    padding: 0 !important;
+  }
+
+  /* Seletor Segmentado de Natureza no Mobile */
+  .mobile-segmented {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    background: var(--surface-soft);
+    padding: 4px;
+    border-radius: 14px;
+    margin-bottom: 16px;
+  }
+
+  .mobile-segmented__btn {
+    min-height: 40px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--t-fast);
+  }
+
+  .mobile-segmented__btn.is-active-out {
+    background: var(--out);
+    color: #fff;
+    box-shadow: 0 4px 12px -2px rgba(239, 68, 68, 0.4);
+  }
+
+  .mobile-segmented__btn.is-active-in {
+    background: var(--in);
+    color: #fff;
+    box-shadow: 0 4px 12px -2px rgba(16, 185, 129, 0.4);
+  }
+
+  /* Pílulas de Categoria & Chips de Toque Rápido */
+  .mobile-pill-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .mobile-choice-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--t-fast);
+  }
+
+  .mobile-choice-chip:active {
+    transform: scale(0.96);
+  }
+
+  .mobile-choice-chip.is-selected {
+    background: var(--primary-soft);
+    border-color: var(--primary);
+    color: var(--primary);
+    font-weight: 700;
+  }
+
+  /* Card de Meta / Orçamento com Termômetro */
+  .mobile-meta-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .mobile-meta-item__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mobile-meta-item__title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mobile-meta-item__numbers {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .mobile-meta-item__bar {
+    height: 7px;
+    border-radius: 4px;
+    background: var(--surface-soft);
+    overflow: hidden;
+  }
+
+  .mobile-meta-item__fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+
+  /* Grupos de Configurações / Ajustes Estilo iOS */
+  .mobile-settings-section {
+    margin-bottom: 20px;
+  }
+
+  .mobile-settings-section__title {
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 0 8px 8px;
+    margin: 0;
+  }
+
+  .mobile-settings-list {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  .mobile-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+    background: transparent;
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    width: 100%;
+    text-align: left;
+    transition: background var(--t-fast);
+  }
+
+  .mobile-settings-row:last-child {
+    border-bottom: none;
+  }
+
+  .mobile-settings-row:active {
+    background: var(--surface-hover);
+  }
+
+  .mobile-settings-row__left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .mobile-settings-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .mobile-settings-row__title {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .mobile-settings-row__sub {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .mobile-settings-row__right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    flex-shrink: 0;
+  }
+
+  /* Barra Fixa Inferior de Ação Principal (Safe Area) */
+  .mobile-bottom-bar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 55;
+    background: color-mix(in srgb, var(--chrome-bg) 94%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    padding: 10px var(--page-pad) calc(10px + var(--safe-b));
+  }
+
+  .mobile-cta-btn {
+    width: 100%;
+    min-height: 50px;
+    border-radius: 16px;
+    font-size: 0.95rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--gradient-brand);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 8px 24px -6px hsl(214 60% 40% / 0.5);
+    transition: transform var(--t-fast);
+  }
+
+  .mobile-cta-btn:active {
+    transform: scale(0.97);
+  }
 }

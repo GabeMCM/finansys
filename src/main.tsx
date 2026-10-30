@@ -17,9 +17,19 @@ import "./styles/layout.css";
 import "./styles/components.css";
 import "./styles/mobile.css";
 
+import { useIsMobile } from "./lib/useIsMobile.ts";
+import { MobileShell } from "./mobile/MobileShell.tsx";
+
 function App() {
   const route = useRoute();
+  const isMobile = useIsMobile();
 
+  // Em dispositivos móveis (< 768px), carrega a experiência mobile 100% reimaginada do zero
+  if (isMobile) {
+    return <MobileShell route={route} />;
+  }
+
+  // Em desktop (>= 768px), mantém a estação de trabalho completa
   let page;
   if (route === "/" || route.startsWith("/relatorios")) page = <Relatorios />;
   else if (route.startsWith("/projecoes")) page = <Projecoes />;
