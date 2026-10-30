@@ -158,42 +158,42 @@ export function MobileHomeView({
           <div class="bank-quick-action__btn">
             <Icon name="plus" />
           </div>
-          <span class="bank-quick-action__label">Novo Gasto</span>
-        </a>
-
-        <a href="#/realizacoes" class="bank-quick-action">
-          <div class="bank-quick-action__btn">
-            <Icon name="list" />
-          </div>
-          <span class="bank-quick-action__label">Extrato</span>
-        </a>
-
-        <a href="#/investimentos" class="bank-quick-action">
-          <div class="bank-quick-action__btn">
-            <Icon name="sparkles" />
-          </div>
-          <span class="bank-quick-action__label">Investir</span>
-        </a>
-
-        <a href="#/reservas" class="bank-quick-action">
-          <div class="bank-quick-action__btn">
-            <Icon name="wallet" />
-          </div>
-          <span class="bank-quick-action__label">Caixinhas</span>
+          <span class="bank-quick-action__label">Nova Realização</span>
         </a>
 
         <a href="#/projecoes" class="bank-quick-action">
           <div class="bank-quick-action__btn">
             <Icon name="grid" />
           </div>
-          <span class="bank-quick-action__label">Metas</span>
+          <span class="bank-quick-action__label">Projeções</span>
+        </a>
+
+        <a href="#/realizacoes" class="bank-quick-action">
+          <div class="bank-quick-action__btn">
+            <Icon name="list" />
+          </div>
+          <span class="bank-quick-action__label">Realizações</span>
+        </a>
+
+        <a href="#/reservas" class="bank-quick-action">
+          <div class="bank-quick-action__btn">
+            <Icon name="wallet" />
+          </div>
+          <span class="bank-quick-action__label">Reservas</span>
+        </a>
+
+        <a href="#/investimentos" class="bank-quick-action">
+          <div class="bank-quick-action__btn">
+            <Icon name="sparkles" />
+          </div>
+          <span class="bank-quick-action__label">Investimentos</span>
         </a>
 
         <div class="bank-quick-action" onClick={onVerRelatorioCompleto} role="button" tabIndex={0}>
           <div class="bank-quick-action__btn">
-            <Icon name="download" />
+            <Icon name="chart" />
           </div>
-          <span class="bank-quick-action__label">Relatório</span>
+          <span class="bank-quick-action__label">Relatórios</span>
         </div>
       </section>
 
@@ -446,26 +446,18 @@ export function MobileHomeView({
         </section>
       )}
 
-      {/* 7. Minhas Caixinhas & Investimentos */}
+      {/* 7. Minhas Reservas */}
       <section style="display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px;">
           <h2 style="font-size:0.92rem;font-weight:800;color:var(--text);margin:0;">
-            Minhas Caixinhas
+            Minhas Reservas
           </h2>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <a
-              href="#/investimentos"
-              style="font-size:0.75rem;font-weight:700;color:var(--primary);text-decoration:none;"
-            >
-              Bolsa B3 &rarr;
-            </a>
-            <a
-              href="#/reservas"
-              style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-decoration:none;"
-            >
-              Ver todas
-            </a>
-          </div>
+          <a
+            href="#/reservas"
+            style="font-size:0.75rem;font-weight:700;color:var(--primary);text-decoration:none;"
+          >
+            Ver todas &rarr;
+          </a>
         </div>
 
         {reservas.length === 0 ? (

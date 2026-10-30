@@ -8,10 +8,10 @@ interface NavItem {
 
 const MOBILE_NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Início", icon: "chart" },
-  { href: "/realizacoes", label: "Extrato", icon: "list" },
   { href: "/projecoes", label: "Projeções", icon: "grid" },
-  { href: "/investimentos", label: "Investir", icon: "sparkles" },
-  { href: "/reservas", label: "Caixinhas", icon: "wallet" },
+  { href: "/realizacoes", label: "Realizações", icon: "list" },
+  { href: "/reservas", label: "Reservas", icon: "wallet" },
+  { href: "/investimentos", label: "Investimentos", icon: "sparkles" },
   { href: "/ajustes", label: "Ajustes", icon: "settings" },
 ];
 

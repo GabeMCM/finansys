@@ -142,7 +142,7 @@
   }
 }
 
-@media (max-width: 639px) {
+@media (max-width: 768px) {
   :root { --page-pad: 12px; }
   .hide-mobile { display: none !important; }
   .only-mobile { display: inline-flex !important; }

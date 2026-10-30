@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
+import { confirmarAcao } from "../../components/ModalConfirm.tsx";
 import { toast } from "../../components/Toast.tsx";
 import { CardPendencias } from "../../components/lancamento/CardPendencias.tsx";
 import { calcularPendencias, type ProjecaoPendente } from "../../data/calc.ts";
@@ -43,6 +44,7 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
   const [editData, setEditData] = useState<string>("");
   const [editContaId, setEditContaId] = useState<string>("");
   const [editBancoId, setEditBancoId] = useState<string>("");
+  const [editBancoDestinoId, setEditBancoDestinoId] = useState<string>("");
   const [editFormaPagamento, setEditFormaPagamento] = useState<string>("PIX");
   const [editReservaId, setEditReservaId] = useState<string>("");
   const [editObs, setEditObs] = useState<string>("");
@@ -53,6 +55,7 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
     setEditData(l.data);
     setEditContaId(l.contaId);
     setEditBancoId(l.bancoId || "");
+    setEditBancoDestinoId(l.bancoDestinoId || "");
     setEditFormaPagamento(l.formaPagamento || "PIX");
     setEditReservaId(l.reservaId || "");
     setEditObs(l.obs || "");
@@ -82,6 +85,7 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
       mes,
       contaId: editContaId,
       bancoId: editBancoId || undefined,
+      bancoDestinoId: editBancoDestinoId || undefined,
       formaPagamento: editFormaPagamento || undefined,
       reservaId: editReservaId || undefined,
       tipoReserva: tipoRes,
@@ -190,9 +194,16 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
   const datasOrdenadas = Array.from(gruposPorData.keys()).sort((a, b) => b.localeCompare(a));
 
   const excluirTx = async (l: Lancamento) => {
-    if (confirm("Deseja realmente excluir esta transação?")) {
+    const ok = await confirmarAcao({
+      titulo: "Excluir Realização",
+      mensagem: `Deseja realmente excluir esta realização no valor de ${money(l.valor)}?`,
+      rotuloConfirmar: "Excluir",
+      tipo: "danger",
+    });
+    if (ok) {
       await lancamentos.remove(l.id);
       setTxSelecionada(null);
+      toast.success("Realização excluída!");
     }
   };
 
@@ -235,7 +246,7 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
         ))}
       </div>
 
-      {/* 3. Filtros Rápidos de Natureza */}
+      {/* 3. Filtros Rápidos de Natureza Oficial */}
       <div class="hscroll" style="padding-bottom:4px;">
         <button
           type="button"
@@ -246,27 +257,35 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
         </button>
         <button
           type="button"
-          class={`mobile-choice-chip ${filtroNat === "saida" ? "is-selected" : ""}`}
-          onClick={() => setFiltroNat("saida")}
-        >
-          <i class="dot" style="background:var(--out);" />
-          Despesas
-        </button>
-        <button
-          type="button"
           class={`mobile-choice-chip ${filtroNat === "receber" ? "is-selected" : ""}`}
           onClick={() => setFiltroNat("receber")}
         >
           <i class="dot" style="background:var(--in);" />
-          Receitas
+          A Receber
+        </button>
+        <button
+          type="button"
+          class={`mobile-choice-chip ${filtroNat === "pagar" ? "is-selected" : ""}`}
+          onClick={() => setFiltroNat("pagar")}
+        >
+          <i class="dot" style="background:var(--out);" />
+          A Pagar
         </button>
         <button
           type="button"
           class={`mobile-choice-chip ${filtroNat === "aporte" ? "is-selected" : ""}`}
           onClick={() => setFiltroNat("aporte")}
         >
-          <i class="dot" style="background:var(--primary);" />
-          Aportes
+          <i class="dot" style="background:var(--aporte);" />
+          Aporte Livre
+        </button>
+        <button
+          type="button"
+          class={`mobile-choice-chip ${filtroNat === "saida" ? "is-selected" : ""}`}
+          onClick={() => setFiltroNat("saida")}
+        >
+          <i class="dot" style="background:var(--saida);" />
+          Saída Livre
         </button>
       </div>
 
@@ -308,7 +327,8 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                 if (!c) return null;
                 const meta = NATURE_META[c.natureza];
                 const isEntrada = c.natureza === "receber" || c.natureza === "aporte";
-                const bancoNome = l.bancoId ? bancoMap.get(l.bancoId) : null;
+                const bancoOrigemNome = l.bancoId ? bancoMap.get(l.bancoId) : null;
+                const bancoDestinoNome = l.bancoDestinoId ? bancoMap.get(l.bancoDestinoId) : null;
 
                 return (
                   <div
@@ -334,12 +354,22 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                       </div>
                       <div class="mobile-tx-card__sub">
                         <span>{catMap.get(c.categoriaId) || "Geral"}</span>
-                        {bancoNome && (
+                        {bancoOrigemNome && bancoDestinoNome ? (
                           <>
                             <span>•</span>
-                            <span>{bancoNome}</span>
+                            <span>{bancoOrigemNome} → {bancoDestinoNome}</span>
                           </>
-                        )}
+                        ) : bancoOrigemNome ? (
+                          <>
+                            <span>•</span>
+                            <span>{bancoOrigemNome}</span>
+                          </>
+                        ) : bancoDestinoNome ? (
+                          <>
+                            <span>•</span>
+                            <span>{bancoDestinoNome}</span>
+                          </>
+                        ) : null}
                       </div>
                     </div>
 
@@ -375,6 +405,7 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
         const c = contaMap.get(txSelecionada.contaId);
         const isEntrada = c?.natureza === "receber" || c?.natureza === "aporte";
         const bancoNome = txSelecionada.bancoId ? bancoMap.get(txSelecionada.bancoId) : null;
+        const bancoDestinoNome = txSelecionada.bancoDestinoId ? bancoMap.get(txSelecionada.bancoDestinoId) : null;
 
         if (txEmEdicao) {
           return (
@@ -440,18 +471,34 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                     style="border-radius:14px;min-height:42px;"
                   />
 
-                  {/* Banco / Carteira */}
-                  <label class="form-label">Banco / Instituição</label>
+                  {/* Banco de Origem (De onde saiu) */}
+                  <label class="form-label">Banco de Origem (De onde saiu)</label>
                   <select
                     class="select"
                     value={editBancoId}
                     onChange={(e) => setEditBancoId((e.currentTarget as HTMLSelectElement).value)}
                     style="border-radius:14px;min-height:42px;"
                   >
-                    <option value="">Nenhum banco associado</option>
+                    <option value="">Nenhum banco de origem</option>
                     {bancos.map((b) => (
                       <option key={b.id} value={b.id}>
-                        {b.nome}
+                        {b.nome} ({b.tipo || "corrente"})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Banco de Destino (Para onde vai) */}
+                  <label class="form-label">Banco de Destino (Para onde vai / Se houver)</label>
+                  <select
+                    class="select"
+                    value={editBancoDestinoId}
+                    onChange={(e) => setEditBancoDestinoId((e.currentTarget as HTMLSelectElement).value)}
+                    style="border-radius:14px;min-height:42px;"
+                  >
+                    <option value="">Sem banco de destino (lançamento simples)</option>
+                    {bancos.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.nome} ({b.tipo || "corrente"})
                       </option>
                     ))}
                   </select>
@@ -570,8 +617,16 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                   </div>
                   {bancoNome && (
                     <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
-                      <span style="color:var(--text-muted);">Banco / Conta:</span>
+                      <span style="color:var(--text-muted);">
+                        {bancoDestinoNome ? "Banco de Origem (Saiu de):" : (isEntrada ? "Banco de Entrada:" : "Banco de Saída:")}
+                      </span>
                       <strong>{bancoNome}</strong>
+                    </div>
+                  )}
+                  {bancoDestinoNome && (
+                    <div style="display:flex;justify-content:space-between;font-size:0.84rem;">
+                      <span style="color:var(--text-muted);">Banco de Destino (Vai para):</span>
+                      <strong style="color:var(--primary);">{bancoDestinoNome}</strong>
                     </div>
                   )}
                   {txSelecionada.formaPagamento && (

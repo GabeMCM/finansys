@@ -83,34 +83,15 @@ export function MobileCaixinhas() {
 
   return (
     <div style="display:flex;flex-direction:column;gap:12px;padding-bottom:70px;">
-      {/* 0. Switcher Superior de Contexto: Caixinhas vs Bolsa de Valores */}
-      <div class="mobile-segmented" style="margin-bottom:2px;">
-        <button
-          type="button"
-          class="mobile-segmented__btn is-active"
-        >
-          <Icon name="wallet" style="width:16px;height:16px;" />
-          Caixinhas & Metas
-        </button>
-        <a
-          href="#/investimentos"
-          class="mobile-segmented__btn"
-          style="text-decoration:none;"
-        >
-          <Icon name="chart" style="width:16px;height:16px;" />
-          Bolsa & Ações
-        </a>
-      </div>
-
-      {/* 1. Header Hero Patrimonial das Caixinhas */}
+      {/* 1. Header Hero Patrimonial das Reservas */}
       <div class="bank-hero-card">
         <div class="bank-hero-card__header">
           <span class="bank-hero-card__title">
             <Icon name="wallet" style="width:16px;height:16px;color:var(--primary);" />
-            Total em Caixinhas
+            Reservas & Caixinhas
           </span>
           <span class="badge" style="background:var(--in-soft);color:var(--in);font-weight:700;font-size:0.70rem;">
-            {resList.length} caixinhas
+            {resList.length} reserva{resList.length !== 1 ? "s" : ""}
           </span>
         </div>
 
@@ -162,7 +143,7 @@ export function MobileCaixinhas() {
           onClick={() => setSecaoAtiva("caixinhas")}
         >
           <Icon name="grid" style="width:14px;height:14px;" />
-          Caixinhas ({resList.length})
+          Reservas ({resList.length})
         </button>
         <button
           type="button"
@@ -287,10 +268,10 @@ export function MobileCaixinhas() {
                         type="button"
                         class="caixinha-card__btn"
                         onClick={() => setModalProjecao(r)}
-                        title="Simular Juros Compostos / Projeção"
+                        title="Lançar Projeções / Simular Mês a Mês"
                       >
-                        <Icon name="chart" style="width:14px;height:14px;color:var(--primary);" />
-                        Simulador
+                        <Icon name="calendar" style="width:14px;height:14px;color:var(--primary);" />
+                        Projetar
                       </button>
                     </div>
                   </div>

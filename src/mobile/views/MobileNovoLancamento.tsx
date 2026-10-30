@@ -5,6 +5,7 @@ import { anos, categorias, contas, contasBancarias, lancamentos, reservas, reser
 import { FORMAS_PAGAMENTO_PADRAO, type Conta, type ContaBancaria, type Natureza, type Reserva } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
 import { digitsToCentavos, formatCentavosValor, money } from "../../lib/format.ts";
+import { NATURE_META } from "../../lib/natureza.ts";
 import { useSignal } from "../../lib/signal.ts";
 import { anoAtivo, empresaAtiva } from "../../state.ts";
 
@@ -28,7 +29,7 @@ export function MobileNovoLancamento({
   const empId = useSignal(empresaAtiva);
   const anoNum = useSignal(anoAtivo);
 
-  const [natureza, setNatureza] = useState<Natureza>("saida");
+  const [natureza, setNatureza] = useState<Natureza>("pagar");
   const [centavos, setCentavos] = useState<number>(initialValorCentavos || 0);
   const [descricao, setDescricao] = useState<string>(initialDescricao || "");
   const [categoriaId, setCategoriaId] = useState<string>("");
@@ -284,24 +285,13 @@ export function MobileNovoLancamento({
           <Icon name="arrowLeft" />
         </button>
         <h2 style="font-size:1rem;font-weight:800;margin:0;color:var(--text);">
-          Nova Transação
+          Nova Realização
         </h2>
         <div style="width:36px;" />
       </div>
 
-      {/* 1. Seletor de Natureza (Despesa / Receita) */}
-      <div class="mobile-segmented" style="grid-template-columns:1fr 1fr;margin-bottom:10px;">
-        <button
-          type="button"
-          class={`mobile-segmented__btn ${natureza === "saida" ? "is-active-out" : ""}`}
-          onClick={() => {
-            setNatureza("saida");
-            setCategoriaId("");
-            setContaId("");
-          }}
-        >
-          <Icon name="arrowUp" style="width:15px;height:15px;" /> Despesa
-        </button>
+      {/* 1. Seletor de Natureza Oficial (A Receber, A Pagar, Aporte Livre, Saída Livre) */}
+      <div class="mobile-segmented mobile-segmented--4" style="margin-bottom:12px;">
         <button
           type="button"
           class={`mobile-segmented__btn ${natureza === "receber" ? "is-active-in" : ""}`}
@@ -311,14 +301,47 @@ export function MobileNovoLancamento({
             setContaId("");
           }}
         >
-          <Icon name="arrowDown" style="width:15px;height:15px;" /> Receita
+          <Icon name="arrowDown" style="width:14px;height:14px;" /> A Receber
+        </button>
+        <button
+          type="button"
+          class={`mobile-segmented__btn ${natureza === "pagar" ? "is-active-out" : ""}`}
+          onClick={() => {
+            setNatureza("pagar");
+            setCategoriaId("");
+            setContaId("");
+          }}
+        >
+          <Icon name="arrowUp" style="width:14px;height:14px;" /> A Pagar
+        </button>
+        <button
+          type="button"
+          class={`mobile-segmented__btn ${natureza === "aporte" ? "is-active-aporte" : ""}`}
+          onClick={() => {
+            setNatureza("aporte");
+            setCategoriaId("");
+            setContaId("");
+          }}
+        >
+          <Icon name="wallet" style="width:14px;height:14px;" /> Aporte Livre
+        </button>
+        <button
+          type="button"
+          class={`mobile-segmented__btn ${natureza === "saida" ? "is-active-saida" : ""}`}
+          onClick={() => {
+            setNatureza("saida");
+            setCategoriaId("");
+            setContaId("");
+          }}
+        >
+          <Icon name="sparkle" style="width:14px;height:14px;" /> Saída Livre
         </button>
       </div>
 
       {/* 2. Display de Valor */}
       <div class="mobile-amount-box" style="margin-bottom:12px;">
         <span class="mobile-amount-box__label">
-          {natureza === "receber" ? "Valor da Receita" : "Valor do Gasto"}
+          {natureza === "receber" ? "Valor a Receber" : natureza === "pagar" ? "Valor a Pagar" : natureza === "aporte" ? "Valor do Aporte Livre" : "Valor da Saída Livre"}
         </span>
         <div class="mobile-amount-box__input-row">
           <span class="mobile-amount-box__currency">R$</span>
@@ -576,20 +599,25 @@ export function MobileNovoLancamento({
         </div>
       </div>
 
-      {/* 9. Banco / Instituição */}
+      {/* 9. Banco / Instituição (Origem: de onde saiu / Destino: para onde vai) */}
       {bancos.length > 0 && (
         <div style="margin-bottom:12px;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
             <label class="form-label" style="font-size:0.72rem;font-weight:700;text-transform:uppercase;color:var(--text-muted);margin:0;">
-              Banco Liquidante
+              {isTransferencia
+                ? "Banco de Origem (De qual saiu)"
+                : (natureza === "receber" || natureza === "aporte")
+                ? "Banco de Destino (Para qual vai entrar)"
+                : "Banco de Origem (De qual saiu)"}
             </label>
             {bancos.length > 1 && (
               <button
                 type="button"
                 class="btn btn--ghost btn--sm"
-                style="padding:0;font-size:0.70rem;height:auto;color:var(--primary);"
+                style="padding:0;font-size:0.70rem;height:auto;color:var(--primary);display:inline-flex;align-items:center;gap:4px;"
                 onClick={() => setIsTransferencia(!isTransferencia)}
               >
+                <Icon name="arrowLeftRight" style="width:12px;height:12px;" />
                 {isTransferencia ? "Lançamento Normal" : "+ Transferência"}
               </button>
             )}
@@ -616,7 +644,7 @@ export function MobileNovoLancamento({
           {isTransferencia && (
             <div style="margin-top:8px;">
               <label class="form-label" style="font-size:0.70rem;font-weight:700;color:var(--text-muted);margin-bottom:4px;display:block;">
-                Banco de Destino
+                Banco de Destino (Para qual vai entrar)
               </label>
               <select
                 class="select"
@@ -629,7 +657,7 @@ export function MobileNovoLancamento({
                   .filter((b) => b.id !== bancoId)
                   .map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.nome}
+                      {b.nome} ({b.tipo || "corrente"})
                     </option>
                   ))}
               </select>
@@ -723,7 +751,7 @@ export function MobileNovoLancamento({
           onClick={() => handleSalvar(false)}
         >
           <Icon name="check" />
-          <span>{salvando ? "Salvando..." : `Confirmar ${natureza === "receber" ? "Receita" : "Gasto"}`}</span>
+          <span>{salvando ? "Salvando..." : `Confirmar ${NATURE_META[natureza]?.label || "Lançamento"}`}</span>
         </button>
       </div>
     </div>

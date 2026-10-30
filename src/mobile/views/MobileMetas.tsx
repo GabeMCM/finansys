@@ -424,7 +424,13 @@ export function MobileMetas() {
             {MONTHS[mesAtivo]} de {anoNum}
           </h2>
           <span style="font-size:0.70rem;color:var(--text-muted);">
-            {natureza === "pagar" ? "Planejamento de Despesas" : natureza === "receber" ? "Metas de Receitas" : "Aportes em Reservas"}
+            {natureza === "pagar"
+              ? "Planejamento: A Pagar"
+              : natureza === "receber"
+              ? "Metas: A Receber"
+              : natureza === "aporte"
+              ? "Metas: Aporte Livre"
+              : "Planejamento: Saída Livre"}
           </span>
         </div>
 
@@ -452,28 +458,35 @@ export function MobileMetas() {
         ))}
       </div>
 
-      {/* 3. Alternador de Natureza (Despesas / Receitas / Aportes) */}
-      <div class="mobile-segmented" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:0;">
-        <button
-          type="button"
-          class={`mobile-segmented__btn ${natureza === "pagar" ? "is-active-out" : ""}`}
-          onClick={() => setNatureza("pagar")}
-        >
-          <Icon name="arrowUp" style="width:14px;height:14px;" /> Despesas
-        </button>
+      {/* 3. Alternador de Natureza (4 Opções Oficiais) */}
+      <div class="mobile-segmented mobile-segmented--4" style="grid-template-columns:repeat(4, 1fr);margin-bottom:0;">
         <button
           type="button"
           class={`mobile-segmented__btn ${natureza === "receber" ? "is-active-in" : ""}`}
           onClick={() => setNatureza("receber")}
         >
-          <Icon name="arrowDown" style="width:14px;height:14px;" /> Receitas
+          <Icon name="arrowDown" style="width:13px;height:13px;" /> A Receber
         </button>
         <button
           type="button"
-          class={`mobile-segmented__btn ${natureza === "aporte" ? "is-active" : ""}`}
+          class={`mobile-segmented__btn ${natureza === "pagar" ? "is-active-out" : ""}`}
+          onClick={() => setNatureza("pagar")}
+        >
+          <Icon name="arrowUp" style="width:13px;height:13px;" /> A Pagar
+        </button>
+        <button
+          type="button"
+          class={`mobile-segmented__btn ${natureza === "aporte" ? "is-active-aporte" : ""}`}
           onClick={() => setNatureza("aporte")}
         >
-          <Icon name="wallet" style="width:14px;height:14px;" /> Aportes
+          <Icon name="wallet" style="width:13px;height:13px;" /> Aporte Livre
+        </button>
+        <button
+          type="button"
+          class={`mobile-segmented__btn ${natureza === "saida" ? "is-active-saida" : ""}`}
+          onClick={() => setNatureza("saida")}
+        >
+          <Icon name="arrowUpRight" style="width:13px;height:13px;" /> Saída Livre
         </button>
       </div>
 
@@ -482,7 +495,15 @@ export function MobileMetas() {
         <div class="bank-hero-card__header">
           <div class="bank-hero-card__title">
             <Icon name="grid" />
-            <span>{natureza === "pagar" ? "Teto Orçamentário" : natureza === "receber" ? "Meta de Receitas" : "Meta de Aportes"}</span>
+            <span>
+              {natureza === "pagar"
+                ? "Teto Orçamentário (A Pagar)"
+                : natureza === "receber"
+                ? "Previsão (A Receber)"
+                : natureza === "aporte"
+                ? "Meta de Aporte Livre"
+                : "Teto de Saída Livre"}
+            </span>
           </div>
           <span
             class="badge"
@@ -721,18 +742,7 @@ export function MobileMetas() {
             <div class="modal__body" style="display:flex;flex-direction:column;gap:12px;">
               {/* Natureza */}
               <label class="form-label">Natureza</label>
-              <div class="mobile-segmented" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:0;">
-                <button
-                  type="button"
-                  class={`mobile-segmented__btn ${novaProjNat === "pagar" ? "is-active-out" : ""}`}
-                  onClick={() => {
-                    setNovaProjNat("pagar");
-                    const p = cs.find((c) => c.natureza === "pagar");
-                    setNovaProjContaId(p ? p.id : "");
-                  }}
-                >
-                  Despesa
-                </button>
+              <div class="mobile-segmented mobile-segmented--4" style="grid-template-columns:repeat(4, 1fr);margin-bottom:0;">
                 <button
                   type="button"
                   class={`mobile-segmented__btn ${novaProjNat === "receber" ? "is-active-in" : ""}`}
@@ -742,18 +752,40 @@ export function MobileMetas() {
                     setNovaProjContaId(p ? p.id : "");
                   }}
                 >
-                  Receita
+                  <Icon name="arrowDown" style="width:12px;height:12px;" /> A Receber
                 </button>
                 <button
                   type="button"
-                  class={`mobile-segmented__btn ${novaProjNat === "aporte" ? "is-active" : ""}`}
+                  class={`mobile-segmented__btn ${novaProjNat === "pagar" ? "is-active-out" : ""}`}
+                  onClick={() => {
+                    setNovaProjNat("pagar");
+                    const p = cs.find((c) => c.natureza === "pagar");
+                    setNovaProjContaId(p ? p.id : "");
+                  }}
+                >
+                  <Icon name="arrowUp" style="width:12px;height:12px;" /> A Pagar
+                </button>
+                <button
+                  type="button"
+                  class={`mobile-segmented__btn ${novaProjNat === "aporte" ? "is-active-aporte" : ""}`}
                   onClick={() => {
                     setNovaProjNat("aporte");
                     const p = cs.find((c) => c.natureza === "aporte");
                     setNovaProjContaId(p ? p.id : "");
                   }}
                 >
-                  Aporte
+                  <Icon name="wallet" style="width:12px;height:12px;" /> Aporte Livre
+                </button>
+                <button
+                  type="button"
+                  class={`mobile-segmented__btn ${novaProjNat === "saida" ? "is-active-saida" : ""}`}
+                  onClick={() => {
+                    setNovaProjNat("saida");
+                    const p = cs.find((c) => c.natureza === "saida");
+                    setNovaProjContaId(p ? p.id : "");
+                  }}
+                >
+                  <Icon name="arrowUpRight" style="width:12px;height:12px;" /> Saída Livre
                 </button>
               </div>
 
@@ -807,7 +839,7 @@ export function MobileMetas() {
                       <option value="">Selecione a conta base...</option>
                       {cs.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.nome} ({c.natureza === "receber" ? "Receita" : c.natureza === "pagar" ? "Despesa" : "Aporte"})
+                          {c.nome} ({c.natureza === "receber" ? "A Receber" : c.natureza === "pagar" ? "A Pagar" : c.natureza === "aporte" ? "Aporte Livre" : "Saída Livre"})
                         </option>
                       ))}
                     </select>

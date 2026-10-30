@@ -150,44 +150,43 @@ export function ModalProjecaoReserva({
 
         {/* Grade Mês a Mês */}
         <div style="max-height: 420px; overflow-y: auto; overflow-x: auto; padding-right: 4px;">
-          <div style="display: flex; flex-direction: column; gap: 8px; min-width: 440px;">
+          <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
             {linhas.map((linha) => (
-              <div
-                key={linha.mes}
-                style="display: grid; grid-template-columns: 80px repeat(3, 1fr); gap: 8px; align-items: center; background: var(--surface-solid); padding: 8px 12px; border-radius: var(--r-md); border: 1px solid var(--border);"
-              >
-                <div style="font-weight: 700; font-size: var(--fs-sm); color: var(--text);">
+              <div key={linha.mes} class="projecao-reserva-mes-card">
+                <div class="projecao-reserva-mes-card__month">
                   {MONTHS[linha.mes]}
                 </div>
-                <div>
-                  <span style="font-size: 0.7rem; color: var(--in); font-weight: 600; display: block; margin-bottom: 2px;">
-                    (+) Aporte
-                  </span>
-                  <MoneyInput
-                    variant="compact"
-                    valueCentavos={linha.valorAporte}
-                    onChangeCentavos={(v) => atualizarLinha(linha.mes, "valorAporte", v)}
-                  />
-                </div>
-                <div>
-                  <span style="font-size: 0.7rem; color: var(--aporte); font-weight: 600; display: block; margin-bottom: 2px;">
-                    (−) Resgate
-                  </span>
-                  <MoneyInput
-                    variant="compact"
-                    valueCentavos={linha.valorResgate}
-                    onChangeCentavos={(v) => atualizarLinha(linha.mes, "valorResgate", v)}
-                  />
-                </div>
-                <div>
-                  <span style="font-size: 0.7rem; color: var(--rendimento); font-weight: 600; display: block; margin-bottom: 2px;">
-                    (+) Rendimento
-                  </span>
-                  <MoneyInput
-                    variant="compact"
-                    valueCentavos={linha.valorRendimento}
-                    onChangeCentavos={(v) => atualizarLinha(linha.mes, "valorRendimento", v)}
-                  />
+                <div class="projecao-reserva-mes-card__inputs">
+                  <div>
+                    <span style="font-size: 0.7rem; color: var(--in); font-weight: 600; display: block; margin-bottom: 2px;">
+                      (+) Aporte
+                    </span>
+                    <MoneyInput
+                      variant="compact"
+                      valueCentavos={linha.valorAporte}
+                      onChangeCentavos={(v) => atualizarLinha(linha.mes, "valorAporte", v)}
+                    />
+                  </div>
+                  <div>
+                    <span style="font-size: 0.7rem; color: var(--aporte); font-weight: 600; display: block; margin-bottom: 2px;">
+                      (−) Resgate
+                    </span>
+                    <MoneyInput
+                      variant="compact"
+                      valueCentavos={linha.valorResgate}
+                      onChangeCentavos={(v) => atualizarLinha(linha.mes, "valorResgate", v)}
+                    />
+                  </div>
+                  <div>
+                    <span style="font-size: 0.7rem; color: var(--rendimento); font-weight: 600; display: block; margin-bottom: 2px;">
+                      (+) Rendimento
+                    </span>
+                    <MoneyInput
+                      variant="compact"
+                      valueCentavos={linha.valorRendimento}
+                      onChangeCentavos={(v) => atualizarLinha(linha.mes, "valorRendimento", v)}
+                    />
+                  </div>
                 </div>
               </div>
             ))}

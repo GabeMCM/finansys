@@ -167,31 +167,12 @@ export function MobileInvestimentos() {
 
   return (
     <div style="display:flex;flex-direction:column;gap:12px;padding-bottom:70px;">
-      {/* 1. Switcher Superior de Contexto: Caixinhas vs Bolsa de Valores */}
-      <div class="mobile-segmented" style="margin-bottom:2px;">
-        <a
-          href="#/reservas"
-          class="mobile-segmented__btn"
-          style="text-decoration:none;"
-        >
-          <Icon name="wallet" style="width:16px;height:16px;" />
-          Caixinhas & Metas
-        </a>
-        <button
-          type="button"
-          class="mobile-segmented__btn is-active"
-        >
-          <Icon name="chart" style="width:16px;height:16px;" />
-          Bolsa & Ações
-        </button>
-      </div>
-
-      {/* 2. Cartão Executivo de Patrimônio em Ações */}
+      {/* 1. Cartão Executivo de Patrimônio em Investimentos */}
       <section class="bank-hero-card" aria-label="Patrimônio em Investimentos">
         <div class="bank-hero-card__header">
           <div class="bank-hero-card__title">
             <Icon name="sparkles" />
-            <span>Carteira de Ativos</span>
+            <span>Investimentos & Bolsa</span>
           </div>
           <button
             type="button"

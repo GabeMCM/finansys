@@ -901,6 +901,46 @@
     box-shadow: 0 4px 12px -2px rgba(16, 185, 129, 0.4);
   }
 
+  .mobile-segmented__btn.is-active-aporte {
+    background: var(--aporte);
+    color: #fff;
+    box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--aporte) 40%, transparent);
+  }
+
+  .mobile-segmented__btn.is-active-saida {
+    background: var(--saida);
+    color: #fff;
+    box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--saida) 40%, transparent);
+  }
+
+  .mobile-segmented__btn.is-active {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 4px 12px -2px color-mix(in srgb, var(--primary) 40%, transparent);
+  }
+
+  .mobile-segmented--4 {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 2px !important;
+    padding: 3px !important;
+  }
+
+  .mobile-segmented--4 .mobile-segmented__btn {
+    font-size: 0.68rem !important;
+    padding: 6px 2px !important;
+    gap: 3px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .mobile-segmented--4 .mobile-segmented__btn svg {
+    width: 12px !important;
+    height: 12px !important;
+    flex-shrink: 0 !important;
+  }
+
   /* Pílulas de Categoria & Chips de Toque Rápido */
   .mobile-pill-grid {
     display: flex;

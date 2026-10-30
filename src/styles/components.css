@@ -2951,4 +2951,39 @@
   border-top: 1px solid var(--border);
 }
 
+/* Modal Projeção de Reserva: Grade Responsiva */
+.projecao-reserva-mes-card {
+  display: grid;
+  grid-template-columns: 80px repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+  background: var(--surface-solid);
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+
+.projecao-reserva-mes-card__month {
+  font-weight: 700;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.projecao-reserva-mes-card__inputs {
+  display: contents;
+}
+
+@media (max-width: 600px) {
+  .projecao-reserva-mes-card {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .projecao-reserva-mes-card__inputs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+}
+
 

@@ -8,6 +8,8 @@ import { dumpDatabase, restoreDatabase } from "../../data/backup.ts";
 import { anos, categorias, contas, contasBancarias, empresas } from "../../data/repo.ts";
 import type { Ano, Categoria, Conta, ContaBancaria, Empresa, Natureza } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
+import { MoneyInput } from "../../components/lancamento/MoneyInput.tsx";
+import { money } from "../../lib/format.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../../state.ts";
 import { useSignal } from "../../lib/signal.ts";
 
@@ -31,9 +33,7 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
 
   // Modais de Bancos
   const [modalBancos, setModalBancos] = useState(false);
-  const [modalNovoBanco, setModalNovoBanco] = useState(false);
-  const [novoNomeBanco, setNovoNomeBanco] = useState("");
-  const [novoTipoBanco, setNovoTipoBanco] = useState<"corrente" | "investimento" | "poupanca" | "dinheiro">("corrente");
+  const [modalBancoEdicao, setModalBancoEdicao] = useState<Partial<ContaBancaria> | null>(null);
 
   // Modais de Categorias
   const [modalCategorias, setModalCategorias] = useState(false);
@@ -90,22 +90,43 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
   };
 
   // Ações de Banco
-  const criarBanco = async () => {
-    if (!empId) return;
-    if (!novoNomeBanco.trim()) {
+  const salvarBanco = async () => {
+    if (!empId || !modalBancoEdicao) return;
+    const nome = (modalBancoEdicao.nome || "").trim();
+    if (!nome) {
       toast.warn("Informe o nome do banco.");
       return;
     }
-    await contasBancarias.create({
+    const dados = {
       empresaId: empId,
-      nome: novoNomeBanco.trim(),
-      saldoInicialCentavos: 0,
-      tipo: novoTipoBanco,
-      ativa: true,
+      nome,
+      tipo: modalBancoEdicao.tipo || "corrente",
+      saldoInicialCentavos: modalBancoEdicao.saldoInicialCentavos || 0,
+      agencia: (modalBancoEdicao.agencia || "").trim() || undefined,
+      numeroConta: (modalBancoEdicao.numeroConta || "").trim() || undefined,
+      ativa: modalBancoEdicao.ativa !== false,
+    };
+
+    if (modalBancoEdicao.id) {
+      await contasBancarias.update(modalBancoEdicao.id, dados);
+      toast.success("Banco atualizado!");
+    } else {
+      await contasBancarias.create(dados);
+      toast.success("Banco cadastrado!");
+    }
+    setModalBancoEdicao(null);
+  };
+
+  const excluirBanco = async (b: ContaBancaria) => {
+    const ok = await confirmarAcao({
+      titulo: "Excluir Conta Bancária",
+      mensagem: `Deseja excluir a conta bancária "${b.nome}"?`,
+      rotuloConfirmar: "Excluir",
+      tipo: "danger",
     });
-    setNovoNomeBanco("");
-    setModalNovoBanco(false);
-    toast.success("Banco cadastrado!");
+    if (!ok) return;
+    await contasBancarias.remove(b.id);
+    toast.success("Banco excluído!");
   };
 
   // Ações de Categorias
@@ -765,91 +786,166 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
         <div class="modal-backdrop" onClick={() => setModalBancos(false)}>
           <div class="modal" onClick={(e) => e.stopPropagation()}>
             <div class="modal__head">
-              <h3 class="modal__title">Contas Bancárias</h3>
+              <h3 class="modal__title">Contas Bancárias ({listaBancos.length})</h3>
               <button type="button" class="btn btn--ghost btn--icon" onClick={() => setModalBancos(false)}>
                 <Icon name="x" />
               </button>
             </div>
 
-            <div class="modal__body" style="display:flex;flex-direction:column;gap:8px;">
-              {listaBancos.map((b) => (
-                <div
-                  key={b.id}
-                  class="card"
-                  style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:14px;background:var(--surface);"
-                >
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    <div class="mobile-tx-card__icon" style="background:var(--primary-soft);color:var(--primary);width:32px;height:32px;">
-                      <Icon name="bank" style="width:16px;height:16px;" />
-                    </div>
-                    <div>
-                      <strong style="color:var(--text);font-size:0.85rem;">{b.nome}</strong>
-                      <div style="font-size:0.68rem;color:var(--text-muted);text-transform:capitalize;">
-                        {b.tipo || "Conta Corrente"}
+            <div class="modal__body" style="display:flex;flex-direction:column;gap:8px;max-height:65dvh;overflow-y:auto;">
+              {listaBancos.length === 0 ? (
+                <div class="card empty" style="border-radius:14px;padding:20px;text-align:center;">
+                  <Icon name="bank" style="width:28px;height:28px;margin:0 auto 6px;color:var(--text-muted);display:block;" />
+                  <p style="font-size:0.80rem;color:var(--text-muted);margin:0;">Nenhum banco cadastrado.</p>
+                </div>
+              ) : (
+                listaBancos.map((b) => (
+                  <div
+                    key={b.id}
+                    class="card"
+                    style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:14px;background:var(--surface);gap:8px;"
+                  >
+                    <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+                      <div class="mobile-tx-card__icon" style="background:var(--primary-soft);color:var(--primary);width:34px;height:34px;flex-shrink:0;">
+                        <Icon name="bank" style="width:16px;height:16px;" />
+                      </div>
+                      <div style="min-width:0;flex:1;">
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                          <strong style="color:var(--text);font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{b.nome}</strong>
+                          <span class="badge" style="font-size:0.65rem;padding:1px 6px;">
+                            {b.tipo === "investimento" ? "Investimento" : b.tipo === "poupanca" ? "Poupança" : b.tipo === "dinheiro" ? "Dinheiro" : "Corrente"}
+                          </span>
+                        </div>
+                        <div style="font-size:0.70rem;color:var(--text-muted);margin-top:2px;">
+                          Saldo Inicial: <strong style="color:var(--text);">{money(b.saldoInicialCentavos || 0)}</strong>
+                          {b.agencia ? ` · Ag ${b.agencia}` : ""}
+                          {b.numeroConta ? ` · Cc ${b.numeroConta}` : ""}
+                        </div>
                       </div>
                     </div>
+
+                    <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--icon"
+                        style="min-height:32px;width:32px;"
+                        title="Editar banco"
+                        onClick={() => setModalBancoEdicao({ ...b })}
+                      >
+                        <Icon name="pencil" style="width:15px;height:15px;" />
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--icon"
+                        style="min-height:32px;width:32px;color:var(--out);"
+                        title="Excluir banco"
+                        onClick={() => excluirBanco(b)}
+                      >
+                        <Icon name="trash" style="width:15px;height:15px;" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
 
               <button
                 type="button"
                 class="btn btn--secondary"
-                style="margin-top:8px;min-height:42px;border-radius:12px;font-weight:700;"
-                onClick={() => setModalNovoBanco(true)}
+                style="margin-top:8px;min-height:44px;border-radius:14px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;"
+                onClick={() => setModalBancoEdicao({ nome: "", tipo: "corrente", saldoInicialCentavos: 0, ativa: true })}
               >
-                <Icon name="plus" /> Adicionar Banco
+                <Icon name="plus" /> Adicionar Banco / Conta
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Bottom Sheet: Novo Banco */}
-      {modalNovoBanco && (
-        <div class="modal-backdrop" onClick={() => setModalNovoBanco(false)}>
-          <div class="modal" onClick={(e) => e.stopPropagation()}>
+      {/* Bottom Sheet: Novo / Editar Banco */}
+      {modalBancoEdicao && (
+        <div class="modal-backdrop" onClick={() => setModalBancoEdicao(null)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()} style="max-height:85dvh;overflow-y:auto;">
             <div class="modal__head">
-              <h3 class="modal__title">Novo Banco / Corretora</h3>
-              <button type="button" class="btn btn--ghost btn--icon" onClick={() => setModalNovoBanco(false)}>
+              <h3 class="modal__title">
+                {modalBancoEdicao.id ? "Editar Conta Bancária" : "Novo Banco / Corretora"}
+              </h3>
+              <button type="button" class="btn btn--ghost btn--icon" onClick={() => setModalBancoEdicao(null)}>
                 <Icon name="x" />
               </button>
             </div>
 
             <div class="modal__body" style="display:flex;flex-direction:column;gap:12px;">
-              <label class="form-label">Nome da Instituição</label>
-              <input
-                type="text"
-                class="input"
-                placeholder="Ex: Nubank, Itaú, XP Investimentos"
-                value={novoNomeBanco}
-                onInput={(e) => setNovoNomeBanco((e.currentTarget as HTMLInputElement).value)}
-                style="border-radius:14px;min-height:42px;"
-                autoFocus
-              />
+              <div>
+                <label class="form-label">Nome da Instituição *</label>
+                <input
+                  type="text"
+                  class="input"
+                  placeholder="Ex: Nubank, Itaú, XP Investimentos"
+                  value={modalBancoEdicao.nome || ""}
+                  onInput={(e) => setModalBancoEdicao({ ...modalBancoEdicao, nome: (e.currentTarget as HTMLInputElement).value })}
+                  style="border-radius:14px;min-height:42px;"
+                  autoFocus
+                />
+              </div>
 
-              <label class="form-label">Tipo de Conta</label>
-              <select
-                class="select"
-                value={novoTipoBanco}
-                onChange={(e) => setNovoTipoBanco((e.currentTarget as HTMLSelectElement).value as any)}
-                style="border-radius:14px;min-height:42px;"
-              >
-                <option value="corrente">Conta Corrente</option>
-                <option value="investimento">Conta Investimentos / Corretora</option>
-                <option value="poupanca">Conta Poupança</option>
-                <option value="dinheiro">Dinheiro Físico / Caixa</option>
-              </select>
+              <div>
+                <label class="form-label">Tipo de Conta</label>
+                <select
+                  class="select"
+                  value={modalBancoEdicao.tipo || "corrente"}
+                  onChange={(e) => setModalBancoEdicao({ ...modalBancoEdicao, tipo: (e.currentTarget as HTMLSelectElement).value as any })}
+                  style="border-radius:14px;min-height:42px;"
+                >
+                  <option value="corrente">Conta Corrente</option>
+                  <option value="investimento">Conta Investimentos / Corretora</option>
+                  <option value="poupanca">Conta Poupança</option>
+                  <option value="dinheiro">Dinheiro Físico / Caixa</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="form-label">Saldo Inicial de Abertura (Banca)</label>
+                <MoneyInput
+                  variant="hero"
+                  valueCentavos={modalBancoEdicao.saldoInicialCentavos || 0}
+                  onChangeCentavos={(cents) => setModalBancoEdicao({ ...modalBancoEdicao, saldoInicialCentavos: cents })}
+                />
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <div>
+                  <label class="form-label">Agência (Opcional)</label>
+                  <input
+                    type="text"
+                    class="input"
+                    placeholder="Ex: 0001"
+                    value={modalBancoEdicao.agencia || ""}
+                    onInput={(e) => setModalBancoEdicao({ ...modalBancoEdicao, agencia: (e.currentTarget as HTMLInputElement).value })}
+                    style="border-radius:12px;min-height:40px;"
+                  />
+                </div>
+                <div>
+                  <label class="form-label">Conta (Opcional)</label>
+                  <input
+                    type="text"
+                    class="input"
+                    placeholder="Ex: 12345-6"
+                    value={modalBancoEdicao.numeroConta || ""}
+                    onInput={(e) => setModalBancoEdicao({ ...modalBancoEdicao, numeroConta: (e.currentTarget as HTMLInputElement).value })}
+                    style="border-radius:12px;min-height:40px;"
+                  />
+                </div>
+              </div>
             </div>
 
-            <div class="modal__foot">
+            <div class="modal__foot" style="margin-top:14px;">
               <button
                 type="button"
                 class="btn btn--primary"
                 style="width:100%;min-height:46px;border-radius:14px;font-weight:800;"
-                onClick={criarBanco}
+                onClick={salvarBanco}
               >
-                Salvar Banco
+                Salvar Conta Bancária
               </button>
             </div>
           </div>
