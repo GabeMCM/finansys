@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
+import { toast } from "../../components/Toast.tsx";
 import { anos, categorias, contas, contasBancarias, lancamentos } from "../../data/repo.ts";
 import type { Conta, Lancamento, Natureza } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
@@ -30,6 +31,50 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
   const [filtroNat, setFiltroNat] = useState<"todas" | Natureza>("todas");
   const [mesAtivo, setMesAtivo] = useState<number | "todos">(new Date().getMonth());
   const [txSelecionada, setTxSelecionada] = useState<Lancamento | null>(null);
+
+  // Estados de Edição
+  const [txEmEdicao, setTxEmEdicao] = useState<boolean>(false);
+  const [editValorStr, setEditValorStr] = useState<string>("");
+  const [editDescricao, setEditDescricao] = useState<string>("");
+  const [editData, setEditData] = useState<string>("");
+  const [editContaId, setEditContaId] = useState<string>("");
+  const [editBancoId, setEditBancoId] = useState<string>("");
+  const [editObs, setEditObs] = useState<string>("");
+
+  const iniciarEdicao = (l: Lancamento) => {
+    setEditValorStr((l.valor / 100).toFixed(2).replace(".", ","));
+    setEditDescricao(l.descricao || "");
+    setEditData(l.data);
+    setEditContaId(l.contaId);
+    setEditBancoId(l.bancoId || "");
+    setEditObs(l.obs || "");
+    setTxEmEdicao(true);
+  };
+
+  const salvarEdicao = async () => {
+    if (!txSelecionada) return;
+    const limpo = editValorStr.replace(/\D/g, "");
+    const centavos = limpo ? parseInt(limpo, 10) : 0;
+    if (centavos <= 0) {
+      toast.warn("Informe um valor maior que zero.");
+      return;
+    }
+    const mes = parseInt(editData.split("-")[1], 10) - 1;
+
+    await lancamentos.update(txSelecionada.id, {
+      valor: centavos,
+      descricao: editDescricao.trim() || undefined,
+      data: editData,
+      mes,
+      contaId: editContaId,
+      bancoId: editBancoId || undefined,
+      obs: editObs.trim() || undefined,
+    });
+
+    toast.success("Lançamento atualizado com sucesso!");
+    setTxEmEdicao(false);
+    setTxSelecionada(null);
+  };
 
   const dados = useLive(async () => {
     if (!empId) return null;
@@ -255,6 +300,120 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
         const isEntrada = c?.natureza === "receber" || c?.natureza === "aporte";
         const bancoNome = txSelecionada.bancoId ? bancoMap.get(txSelecionada.bancoId) : null;
 
+        if (txEmEdicao) {
+          return (
+            <div class="modal-backdrop" onClick={() => setTxEmEdicao(false)}>
+              <div class="modal" onClick={(e) => e.stopPropagation()}>
+                <div class="modal__head">
+                  <h3 class="modal__title">Editar Transação</h3>
+                  <button type="button" class="btn btn--ghost btn--icon" onClick={() => setTxEmEdicao(false)}>
+                    <Icon name="x" />
+                  </button>
+                </div>
+
+                <div class="modal__body" style="display:flex;flex-direction:column;gap:12px;">
+                  {/* Caixa de Valor */}
+                  <div class="mobile-amount-box" style="margin-bottom:0;">
+                    <span class="mobile-amount-box__label">Valor</span>
+                    <div class="mobile-amount-box__input-row">
+                      <span class="mobile-amount-box__currency">R$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        inputMode="decimal"
+                        class="mobile-amount-box__input"
+                        value={editValorStr.replace(",", ".")}
+                        onInput={(e) => setEditValorStr((e.currentTarget as HTMLInputElement).value)}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  {/* Descrição */}
+                  <label class="form-label">Descrição</label>
+                  <input
+                    type="text"
+                    class="input"
+                    value={editDescricao}
+                    onInput={(e) => setEditDescricao((e.currentTarget as HTMLInputElement).value)}
+                    style="border-radius:14px;min-height:42px;"
+                  />
+
+                  {/* Conta Financeira */}
+                  <label class="form-label">Conta</label>
+                  <select
+                    class="select"
+                    value={editContaId}
+                    onChange={(e) => setEditContaId((e.currentTarget as HTMLSelectElement).value)}
+                    style="border-radius:14px;min-height:42px;"
+                  >
+                    {cs.map((conta) => (
+                      <option key={conta.id} value={conta.id}>
+                        {conta.nome} ({catMap.get(conta.categoriaId) || "Geral"})
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Data */}
+                  <label class="form-label">Data</label>
+                  <input
+                    type="date"
+                    class="input"
+                    value={editData}
+                    onChange={(e) => setEditData((e.currentTarget as HTMLInputElement).value)}
+                    style="border-radius:14px;min-height:42px;"
+                  />
+
+                  {/* Banco / Carteira */}
+                  <label class="form-label">Banco / Instituição</label>
+                  <select
+                    class="select"
+                    value={editBancoId}
+                    onChange={(e) => setEditBancoId((e.currentTarget as HTMLSelectElement).value)}
+                    style="border-radius:14px;min-height:42px;"
+                  >
+                    <option value="">Nenhum banco associado</option>
+                    {bancos.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.nome}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Observação */}
+                  <label class="form-label">Observação (Opcional)</label>
+                  <input
+                    type="text"
+                    class="input"
+                    value={editObs}
+                    onInput={(e) => setEditObs((e.currentTarget as HTMLInputElement).value)}
+                    style="border-radius:14px;min-height:40px;font-size:0.80rem;"
+                  />
+                </div>
+
+                <div class="modal__foot" style="display:flex;gap:8px;">
+                  <button
+                    type="button"
+                    class="btn btn--secondary"
+                    style="flex:1;min-height:46px;border-radius:14px;"
+                    onClick={() => setTxEmEdicao(false)}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--primary"
+                    style="flex:1;min-height:46px;border-radius:14px;font-weight:800;"
+                    onClick={salvarEdicao}
+                  >
+                    Salvar Alterações
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
         return (
           <div class="modal-backdrop" onClick={() => setTxSelecionada(null)}>
             <div class="modal" onClick={(e) => e.stopPropagation()}>
@@ -316,10 +475,19 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                 <button
                   type="button"
                   class="btn btn--secondary"
-                  style="flex:1;min-height:46px;border-radius:14px;color:var(--out);"
+                  style="min-height:46px;border-radius:14px;color:var(--out);padding:0 16px;"
                   onClick={() => excluirTx(txSelecionada)}
+                  title="Excluir Lançamento"
                 >
-                  <Icon name="trash" /> Excluir
+                  <Icon name="trash" />
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--primary"
+                  style="flex:1;min-height:46px;border-radius:14px;font-weight:800;"
+                  onClick={() => iniciarEdicao(txSelecionada)}
+                >
+                  <Icon name="pencil" /> Editar Lançamento
                 </button>
               </div>
             </div>

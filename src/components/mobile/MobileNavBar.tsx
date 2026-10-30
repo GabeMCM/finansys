@@ -10,7 +10,8 @@ const MOBILE_NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Início", icon: "chart" },
   { href: "/realizacoes", label: "Extrato", icon: "list" },
   { href: "/projecoes", label: "Projeções", icon: "grid" },
-  { href: "/reservas", label: "Reservas", icon: "wallet" },
+  { href: "/investimentos", label: "Investir", icon: "sparkles" },
+  { href: "/reservas", label: "Caixinhas", icon: "wallet" },
   { href: "/ajustes", label: "Ajustes", icon: "settings" },
 ];
 
@@ -18,7 +19,8 @@ export function MobileNavBar({ route }: { route: string }) {
   const isItemActive = (href: string) => {
     if (href === "/") return route === "/" || route.startsWith("/relatorios");
     if (href === "/realizacoes") return route.startsWith("/realizacoes") || route.startsWith("/lancamentos");
-    if (href === "/reservas") return route.startsWith("/reservas") || route.startsWith("/investimentos");
+    if (href === "/investimentos") return route.startsWith("/investimentos");
+    if (href === "/reservas") return route.startsWith("/reservas");
     return route.startsWith(href);
   };
 

@@ -250,7 +250,7 @@
   }
 
   /* ==========================================================================
-     3. BOTTOM NAVIGATION MOBILE DE 5 GUIAS
+     3. BOTTOM NAVIGATION MOBILE DE 6 GUIAS
      ========================================================================== */
   .mobile-nav {
     position: fixed;
@@ -259,8 +259,8 @@
     height: calc(var(--mobile-nav-h) + var(--safe-b));
     padding-bottom: var(--safe-b);
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    background: color-mix(in srgb, var(--chrome-bg) 92%, transparent);
+    grid-template-columns: repeat(6, 1fr);
+    background: color-mix(in srgb, var(--chrome-bg) 94%, transparent);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid var(--border);
@@ -272,19 +272,28 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 2px;
     color: var(--text-faint);
     text-decoration: none;
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     font-weight: 600;
     transition: color var(--t-fast);
-    padding: 4px 0;
+    padding: 3px 0;
     position: relative;
+    min-width: 0;
+  }
+
+  .mobile-nav__item span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    line-height: 1.1;
   }
 
   .mobile-nav__item svg {
-    width: 22px;
-    height: 22px;
+    width: 19px;
+    height: 19px;
     transition: transform var(--t-fast), color var(--t-fast);
   }
 
@@ -300,8 +309,8 @@
 
   .mobile-nav__indicator {
     position: absolute;
-    top: 4px;
-    width: 20px;
+    top: 3px;
+    width: 16px;
     height: 3px;
     border-radius: 2px;
     background: var(--primary);
