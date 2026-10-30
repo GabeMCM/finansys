@@ -51,7 +51,7 @@ export function AppShell({ route, children }: { route: string; children: ReactNo
   const listaAnos = useLive(() => (empId ? anos.byEmpresa(empId) : Promise.resolve([])), [empId], []);
 
   const [authModalAberta, setAuthModalAberta] = useState(false);
-  const { resumo } = useDiagnosticoFinanceiro(empId, currentAno);
+  const { resumo = { criticos: 0, avisos: 0, total: 0 } } = useDiagnosticoFinanceiro(empId, currentAno) || {};
   const [painelNotifAberto, setPainelNotifAberto] = useState(false);
   const [painelNotifPinned, setPainelNotifPinned] = useState(() => {
     return localStorage.getItem("finansys_notif_pinned") === "true";

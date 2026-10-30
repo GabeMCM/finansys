@@ -1,4 +1,4 @@
-import { createRoot } from "react-dom/client";
+import { render } from "preact";
 import { AppShell } from "./components/AppShell.tsx";
 import { useRoute } from "./lib/router.ts";
 import { Ajustes } from "./pages/Ajustes.tsx";
@@ -46,7 +46,5 @@ function App() {
 loadState().finally(() => {
   initCloudSync();
   initInactivityGuard();
-  const container = document.getElementById("app")!;
-  const root = createRoot(container);
-  root.render(<App />);
+  render(<App />, document.getElementById("app")!);
 });

@@ -1,5 +1,5 @@
 import { defineConfig, type Plugin } from "vite";
-import react from "@vitejs/plugin-react";
+import preact from "@preact/preset-vite";
 import { handleApiRequest } from "./server/api.ts";
 import { Buffer } from "node:buffer";
 
@@ -45,15 +45,7 @@ function apiMiddlewarePlugin(): Plugin {
   };
 }
 
-import path from "node:path";
-
 export default defineConfig({
-  plugins: [react(), apiMiddlewarePlugin()],
-  resolve: {
-    alias: {
-      "react/jsx-runtime": path.resolve("./src/lib/jsx-runtime.ts"),
-      "react/jsx-dev-runtime": path.resolve("./src/lib/jsx-dev-runtime.ts"),
-    },
-  },
+  plugins: [preact(), apiMiddlewarePlugin()],
   server: { host: true, port: 5173 },
 });
