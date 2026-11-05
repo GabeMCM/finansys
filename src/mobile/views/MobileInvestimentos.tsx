@@ -117,14 +117,14 @@ export function MobileInvestimentos() {
       const q = buscaRadar.toLowerCase().trim();
       const sym = item.symbol.toLowerCase();
       const n = (item.name || "").toLowerCase();
-      const sec = (item.sector || "").toLowerCase();
+      const sec = (item.besttCategory || "").toLowerCase();
       if (!sym.includes(q) && !n.includes(q) && !sec.includes(q)) return false;
     }
     if (filtroRadar === "oportunidades") return item.status === "oportunidade";
     if (filtroRadar === "bestt") return item.isBestt;
     if (filtroRadar === "aristocratas") return item.isAristocrat;
     if (filtroRadar === "dividendos") return item.dividendYield >= 6;
-    if (filtroRadar === "baratas") return item.priceToBook > 0 && item.priceToBook < 1;
+    if (filtroRadar === "baratas") return item.pvp > 0 && item.pvp < 1;
     return true;
   });
 
@@ -398,7 +398,7 @@ export function MobileInvestimentos() {
                     {/* Linha 2: Quantidade, PM e Total em Carteira */}
                     <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.74rem;color:var(--text-muted);">
                       <span>
-                        {pos.quantidade} cotas • PM: {money(pos.precoMedioCentavos)}
+                        {pos.quantidadeTotal} cotas • PM: {money(pos.precoMedioCentavos)}
                       </span>
                       <strong style="color:var(--text);font-size:0.80rem;font-variant-numeric:tabular-nums;">
                         {moneyPrivacidade(pos.valorMercadoAtualCentavos)}
@@ -549,7 +549,7 @@ export function MobileInvestimentos() {
           ) : (
             <div style="display:flex;flex-direction:column;gap:8px;">
               {radarFiltrados.slice(0, 30).map((ativo) => {
-                const abaixoDoTeto = ativo.bazinCeilingPrice > 0 && ativo.price <= ativo.bazinCeilingPrice;
+                const abaixoDoTeto = ativo.precoTetoBazin > 0 && ativo.price <= ativo.precoTetoBazin;
                 return (
                   <div
                     key={ativo.symbol}
@@ -581,7 +581,7 @@ export function MobileInvestimentos() {
                           </span>
                         )}
                         <span style="font-size:0.68rem;color:var(--text-muted);">
-                          {ativo.sector || "B3"}
+                          {ativo.besttCategory || "B3"}
                         </span>
                       </div>
 
@@ -595,11 +595,11 @@ export function MobileInvestimentos() {
                     {/* Linha 2: Indicadores Fundamentalistas */}
                     <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);">
                       <span>
-                        DY: <strong style="color:var(--in);">{ativo.dividendYield.toFixed(1)}%</strong> • P/VP: <strong>{ativo.priceToBook > 0 ? ativo.priceToBook.toFixed(2) : "-"}</strong> • P/L: <strong>{ativo.trailingPE > 0 ? ativo.trailingPE.toFixed(1) : "-"}</strong>
+                        DY: <strong style="color:var(--in);">{ativo.dividendYield.toFixed(1)}%</strong> • P/VP: <strong>{ativo.pvp > 0 ? ativo.pvp.toFixed(2) : "-"}</strong> • P/L: <strong>{ativo.pl > 0 ? ativo.pl.toFixed(1) : "-"}</strong>
                       </span>
-                      {ativo.bazinCeilingPrice > 0 && (
+                      {ativo.precoTetoBazin > 0 && (
                         <span>
-                          Teto: <strong style="color:var(--text);">R$ {ativo.bazinCeilingPrice.toFixed(2)}</strong>
+                          Teto: <strong style="color:var(--text);">R$ {ativo.precoTetoBazin.toFixed(2)}</strong>
                         </span>
                       )}
                     </div>

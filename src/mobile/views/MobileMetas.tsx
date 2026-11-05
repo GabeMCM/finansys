@@ -10,6 +10,7 @@ import { useLive } from "../../data/useLive.ts";
 import { money, moneyPrivacidade, MONTHS } from "../../lib/format.ts";
 import { anoAtivo, empresaAtiva } from "../../state.ts";
 import { useSignal } from "../../lib/signal.ts";
+import { NATURE_META } from "../../lib/natureza.ts";
 
 const MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 

@@ -999,7 +999,7 @@ export function MobileHomeView({
               Saldo Consolidado em Bancos
             </div>
             <div style="font-size:1.4rem;font-weight:900;margin-top:4px;color:var(--text);font-variant-numeric:tabular-nums;">
-              {moneyPrivacidade(posicaoBancosAteFim.totalGeral)}
+              {moneyPrivacidade(posicaoBancosAteFim.totalSaldoAtual)}
             </div>
             <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:8px;border-top:1px dashed var(--border-soft);font-size:0.72rem;">
               <span style="color:var(--in);">Entradas: +{moneyPrivacidade(posicaoBancosPeriodo.totalEntradas)}</span>
@@ -1008,7 +1008,7 @@ export function MobileHomeView({
           </div>
 
           <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;">
-            {(["todos", "corrente", "poupanca", "investimento", "caixa"] as const).map((tipo) => (
+            {(["todos", "corrente", "poupanca", "investimento"] as const).map((tipo) => (
               <button
                 key={tipo}
                 type="button"
@@ -1332,8 +1332,6 @@ export function MobileHomeView({
                       valor: modalQuitarPendencia.valorPendente,
                       descricao: c?.nome || "Quitação de pendência",
                       bancoId: quitarBancoId || undefined,
-                      pago: true,
-                      dataQuitacao: modalQuitarPendencia.dataSugerida,
                     });
                     toast.success("Conta quitada com sucesso!");
                     setModalQuitarPendencia(null);

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
 import { toast } from "../../components/Toast.tsx";
-import { anos, categorias, contas, contasBancarias, lancamentos, reservas, reservaMovimentos } from "../../data/repo.ts";
+import { anos, categorias, contas, contasBancarias, lancamentos, projecoes, reservas, reservaMovimentos } from "../../data/repo.ts";
 import { FORMAS_PAGAMENTO_PADRAO, type Conta, type ContaBancaria, type Natureza, type Reserva } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
 import { digitsToCentavos, formatCentavosValor, money } from "../../lib/format.ts";

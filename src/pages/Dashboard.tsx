@@ -760,7 +760,7 @@ export function Dashboard() {
               ) : (
                 <div class="list">
                   {recentes.map((l) => {
-                    const c = contaNome.get(l.contaId);
+                    const c = contaMap.get(l.contaId);
                     const meta = c ? NATURE_META[c.natureza] : NATURE_META.saida;
                     return (
                       <div key={l.id} class="list__item">

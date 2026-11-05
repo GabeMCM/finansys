@@ -186,7 +186,7 @@ export function MobileCaixinhas() {
           ) : (
             <div style="display:flex;flex-direction:column;gap:10px;">
               {resList.map((r) => {
-                const info = carteira.detalhesPorReserva.find((item) => item.reserva.id === r.id);
+                const info = carteira.reservas.find((item) => item.reserva.id === r.id);
                 const saldoAtual = info?.saldoAtualReal ?? (r.saldoInicialCentavos || 0);
                 const meta = r.metaCentavos || 0;
                 const pct = meta > 0 ? Math.min(100, Math.round((saldoAtual / meta) * 100)) : 0;
