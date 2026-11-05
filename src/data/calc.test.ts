@@ -308,5 +308,38 @@ Deno.test("calcularPosicaoBancos processa aportes e resgates com banco de origem
   assertEquals(posDestino.totalSaidas, 1_000_00);
 });
 
+Deno.test("calcular ignora transferencias entre bancos no resultado operacional consolidado", () => {
+  const lancTransferencia: Lancamento = {
+    ...base,
+    id: "l_transf",
+    anoId: "a",
+    contaId: "aluguel",
+    mes: 0,
+    valor: 500_00,
+    bancoId: "b_origem",
+    bancoDestinoId: "b_destino",
+    data: "2026-01-10",
+  };
+  const lancNormal: Lancamento = {
+    ...base,
+    id: "l_normal",
+    anoId: "a",
+    contaId: "cliente",
+    mes: 0,
+    valor: 1_000_00,
+    bancoId: "b_origem",
+    data: "2026-01-15",
+  };
+
+  const r = calcular(10_000_00, contas, [], [lancNormal, lancTransferencia]);
+
+  // A transferência de R$ 500 entre contas próprias NÃO pode entrar como despesa
+  assertEquals(r.real.pagar[0], 0);
+  assertEquals(r.real.receber[0], 1_000_00);
+  assertEquals(r.resultadoReal[0], 1_000_00);
+  assertEquals(r.saldoReal[0], 11_000_00);
+});
+
+
 
 

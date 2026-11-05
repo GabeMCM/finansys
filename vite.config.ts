@@ -64,5 +64,11 @@ function apiMiddlewarePlugin(): Plugin {
 
 export default defineConfig({
   plugins: [jsxClassTransformPlugin(), react(), apiMiddlewarePlugin()],
-  server: { host: true, port: 5173 },
+  server: {
+    host: true,
+    port: 5173,
+    watch: {
+      ignored: ["**/.direnv/**", "**/.git/**", "**/dist/**", "**/.gemini/**"],
+    },
+  },
 });

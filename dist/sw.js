@@ -1,4 +1,4 @@
-const CACHE_NAME = "finansys-v4";
+const CACHE_NAME = "finansys-v5";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -36,7 +36,27 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // 3. Estratégia Stale-While-Revalidate segura com tratamento de erro
+  // 3. Fallback resiliente para SPA Navigation em modo offline
+  if (e.request.mode === "navigate") {
+    e.respondWith(
+      fetch(e.request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === "basic") {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy).catch(() => {}));
+          }
+          return response;
+        })
+        .catch(async () => {
+          const cachedNavigate = await caches.match(e.request);
+          if (cachedNavigate) return cachedNavigate;
+          return (await caches.match("/index.html")) || (await caches.match("/"));
+        })
+    );
+    return;
+  }
+
+  // 4. Estratégia Stale-While-Revalidate com tratamento de erro
   e.respondWith(
     caches.match(e.request).then((cached) => {
       const networked = fetch(e.request)
@@ -44,9 +64,7 @@ self.addEventListener("fetch", (e) => {
           if (response && response.status === 200 && response.type === "basic") {
             const copy = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(e.request, copy).catch(() => {
-                // Previne 'Cache.put encountered a network error' silenciosamente
-              });
+              cache.put(e.request, copy).catch(() => {});
             });
           }
           return response;

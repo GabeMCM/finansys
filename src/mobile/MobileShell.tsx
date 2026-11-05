@@ -7,8 +7,9 @@ import { ModalConfirm } from "../components/ModalConfirm.tsx";
 import { ModalSessionRevoked } from "../components/ModalSessionRevoked.tsx";
 import { PainelNotificacoes, useDiagnosticoFinanceiro } from "../components/PainelNotificacoes.tsx";
 import { ToastContainer } from "../components/Toast.tsx";
-import { anos, categorias, contas, contasBancarias, empresas, lancamentos, projecoes, reservas, reservaMovimentos } from "../data/repo.ts";
+import { anos, categorias, contas, contasBancarias, empresas, lancamentos, operacoesInvestimento, projecoes, reservas, reservaMovimentos } from "../data/repo.ts";
 import { calcular, calcularPendencias } from "../data/calc.ts";
+import { calcularCarteiraInvestimentos } from "../data/calcInvestimentos.ts";
 import { useLive } from "../data/useLive.ts";
 import { anoAtivo, empresaAtiva } from "../state.ts";
 
@@ -39,7 +40,7 @@ export function MobileShell({ route }: { route: string }) {
     const ano = await anos.find(empId, anoNum);
     if (!ano) return null;
 
-    const [cs, ls, ps, cats, resList, movList, bancos] = await Promise.all([
+    const [cs, ls, ps, cats, resList, movList, bancos, ops] = await Promise.all([
       contas.byEmpresa(empId),
       lancamentos.byAno(ano.id),
       projecoes.byAno(ano.id),
@@ -47,9 +48,10 @@ export function MobileShell({ route }: { route: string }) {
       reservas.byEmpresa(empId),
       reservaMovimentos.byAno(ano.id),
       contasBancarias.byEmpresa(empId),
+      operacoesInvestimento.byEmpresa(empId),
     ]);
 
-    return { ano, cs, ls, ps, cats, resList, movList, bancos };
+    return { ano, cs, ls, ps, cats, resList, movList, bancos, ops };
   }, [empId, anoNum], null);
 
   // Cálculos do Dashboard Home
@@ -60,6 +62,7 @@ export function MobileShell({ route }: { route: string }) {
   const resList = dadosHome?.resList || [];
   const movList = dadosHome?.movList || [];
   const bancos = dadosHome?.bancos || [];
+  const ops = dadosHome?.ops || [];
   const ano = dadosHome?.ano;
 
   const hoje = new Date();
@@ -72,6 +75,7 @@ export function MobileShell({ route }: { route: string }) {
   let totEntradasReal = 0;
   let totSaidasReal = 0;
   for (const l of ls) {
+    if (l.bancoDestinoId) continue; // Transferências entre contas próprias não alteram o caixa operacional consolidado
     const c = contaMap.get(l.contaId);
     if (c) {
       if (c.natureza === "receber" || c.natureza === "aporte") totEntradasReal += l.valor;
@@ -94,7 +98,7 @@ export function MobileShell({ route }: { route: string }) {
     const contasDestaCat = cs.filter((c) => c.categoriaId === cat.id);
     const cIds = new Set(contasDestaCat.map((c) => c.id));
     const proj = ps.filter((p) => cIds.has(p.contaId) && p.mes === idx).reduce((s, p) => s + p.valor, 0);
-    const real = ls.filter((l) => cIds.has(l.contaId) && l.mes === idx).reduce((s, l) => s + l.valor, 0);
+    const real = ls.filter((l) => !l.bancoDestinoId && cIds.has(l.contaId) && l.mes === idx).reduce((s, l) => s + l.valor, 0);
     const pct = proj > 0 ? Math.round((real / proj) * 100) : (real > 0 ? 100 : 0);
     const status: "estourado" | "alerta" | "sem_teto" | "ok" =
       proj === 0 && real > 0 ? "sem_teto" : real > proj ? "estourado" : pct >= 80 ? "alerta" : "ok";
@@ -119,7 +123,11 @@ export function MobileShell({ route }: { route: string }) {
     totalReservas += saldo;
   }
 
-  const patrimonioConsolidado = saldoFinalReal + totalReservas;
+  // Consolidação de Investimentos (Ações / FIIs / ETFs) no Patrimônio Líquido Total
+  const carteiraInvest = calcularCarteiraInvestimentos(ops, new Map());
+  const totalInvestimentos = carteiraInvest.valorMercadoAtualCentavos || carteiraInvest.totalInvestidoCentavos || 0;
+
+  const patrimonioConsolidado = saldoFinalReal + totalReservas + totalInvestimentos;
 
   const ultimosLancamentosMobile: MobileLancamentoItem[] = [...ls]
     .sort((a, b) => b.data.localeCompare(a.data))

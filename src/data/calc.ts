@@ -59,6 +59,7 @@ export function calcular(
     if (n) projetado[n][p.mes] += p.valor;
   }
   for (const l of lancamentos) {
+    if (l.bancoDestinoId) continue; // Transferência interna entre bancos não altera o resultado operacional consolidado
     const n = nat.get(l.contaId);
     if (n) real[n][l.mes] += l.valor;
   }
@@ -193,9 +194,10 @@ export function calcularPendencias(
     }
   }
 
-  // Agrupa lançamentos por [contaId_mes]
+  // Agrupa lançamentos operacionais por [contaId_mes] (ignora transferências internas)
   const realizadosMap = new Map<string, number>();
   for (const l of lancamentos) {
+    if (l.bancoDestinoId) continue;
     const key = `${l.contaId}_${l.mes}`;
     realizadosMap.set(key, (realizadosMap.get(key) || 0) + l.valor);
   }
