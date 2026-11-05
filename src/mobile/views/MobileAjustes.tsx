@@ -142,7 +142,6 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
       empresaId: empId,
       nome: novaCatNome.trim(),
       natureza: novaCatNat,
-      cor: novaCatNat === "receber" ? "emerald" : novaCatNat === "aporte" ? "blue" : "rose",
     });
     setNovaCatNome("");
     setModalNovaCategoria(false);
@@ -841,7 +840,7 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
                         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                           <strong style="color:var(--text);font-size:0.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{b.nome}</strong>
                           <span class="badge" style="font-size:0.65rem;padding:1px 6px;">
-                            {b.tipo === "investimento" ? "Investimento" : b.tipo === "poupanca" ? "Poupança" : b.tipo === "dinheiro" ? "Dinheiro" : "Corrente"}
+                            {b.tipo === "investimento" ? "Investimento" : b.tipo === "poupanca" ? "Poupança" : "Corrente"}
                           </span>
                         </div>
                         <div style="font-size:0.70rem;color:var(--text-muted);margin-top:2px;">

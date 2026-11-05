@@ -1436,7 +1436,7 @@ export function MobileMetas() {
           ========================================================================= */}
       {modalReplicacaoAnoAberto && (
         <ModalReplicacao
-          empresaId={empId}
+          empresaId={empId ?? ""}
           anoAtual={anoNum}
           saldoFinalRealAtual={ano?.bancaInicial || 0}
           isOpen={modalReplicacaoAnoAberto}

@@ -124,7 +124,7 @@ export function MobileInvestimentos() {
     if (filtroRadar === "bestt") return item.isBestt;
     if (filtroRadar === "aristocratas") return item.isAristocrat;
     if (filtroRadar === "dividendos") return item.dividendYield >= 6;
-    if (filtroRadar === "baratas") return item.pvp > 0 && item.pvp < 1;
+    if (filtroRadar === "baratas") return (item.pvp ?? 0) > 0 && (item.pvp ?? 0) < 1;
     return true;
   });
 
@@ -595,7 +595,7 @@ export function MobileInvestimentos() {
                     {/* Linha 2: Indicadores Fundamentalistas */}
                     <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);">
                       <span>
-                        DY: <strong style="color:var(--in);">{ativo.dividendYield.toFixed(1)}%</strong> • P/VP: <strong>{ativo.pvp > 0 ? ativo.pvp.toFixed(2) : "-"}</strong> • P/L: <strong>{ativo.pl > 0 ? ativo.pl.toFixed(1) : "-"}</strong>
+                        DY: <strong style="color:var(--in);">{ativo.dividendYield.toFixed(1)}%</strong> • P/VP: <strong>{(ativo.pvp ?? 0) > 0 ? (ativo.pvp ?? 0).toFixed(2) : "-"}</strong> • P/L: <strong>{(ativo.pl ?? 0) > 0 ? (ativo.pl ?? 0).toFixed(1) : "-"}</strong>
                       </span>
                       {ativo.precoTetoBazin > 0 && (
                         <span>
