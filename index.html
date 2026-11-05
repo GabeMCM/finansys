@@ -22,10 +22,16 @@
     <div id="app"></div>
     <script>
       document.documentElement.dataset.theme = localStorage.getItem("theme") || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
-      if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js").catch(() => {});
-        });
+      if ("serviceWorker" in navigator) {
+        if (location.port === "5173" || location.hostname === "localhost") {
+          navigator.serviceWorker.getRegistrations().then((regs) => {
+            for (const reg of regs) reg.unregister();
+          });
+        } else if (location.protocol.startsWith("http")) {
+          window.addEventListener("load", () => {
+            navigator.serviceWorker.register("/sw.js").catch(() => {});
+          });
+        }
       }
     </script>
     <script type="module" src="/src/main.tsx"></script>
