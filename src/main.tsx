@@ -7,7 +7,6 @@ import { Investimentos } from "./pages/Investimentos.tsx";
 import { Lancamentos } from "./pages/Lancamentos.tsx";
 import { Placeholder } from "./pages/Placeholder.tsx";
 import { Projecoes } from "./pages/Projecoes.tsx";
-import { Relatorios } from "./pages/Relatorios.tsx";
 import { Reservas } from "./pages/Reservas.tsx";
 import { initCloudSync } from "./data/cloudSync.ts";
 import { initInactivityGuard } from "./data/inactivityGuard.ts";
@@ -32,8 +31,7 @@ function App() {
 
   // Em desktop (>= 768px), mantém a estação de trabalho completa
   let page;
-  if (route === "/") page = <Dashboard />;
-  else if (route.startsWith("/relatorios")) page = <Relatorios />;
+  if (route === "/" || route.startsWith("/relatorios")) page = <Dashboard />;
   else if (route.startsWith("/projecoes")) page = <Projecoes />;
   else if (route === "/realizacoes/novo" || route === "/lancamentos/novo") page = <Lancamentos openNewOnMount={true} />;
   else if (route.startsWith("/realizacoes") || route.startsWith("/lancamentos")) page = <Lancamentos />;

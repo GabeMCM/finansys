@@ -19,7 +19,6 @@ import { MobileNovoLancamento } from "./views/MobileNovoLancamento.tsx";
 import { MobileMetas } from "./views/MobileMetas.tsx";
 import { MobileCaixinhas } from "./views/MobileCaixinhas.tsx";
 import { MobileInvestimentos } from "./views/MobileInvestimentos.tsx";
-import { MobileRelatorios } from "./views/MobileRelatorios.tsx";
 import { MobileAjustes } from "./views/MobileAjustes.tsx";
 import { useSignal } from "../lib/signal.ts";
 
@@ -172,8 +171,6 @@ export function MobileShell({ route }: { route: string }) {
     currentView = <MobileInvestimentos />;
   } else if (route.startsWith("/reservas")) {
     currentView = <MobileCaixinhas />;
-  } else if (route.startsWith("/relatorios")) {
-    currentView = <MobileRelatorios />;
   } else if (route.startsWith("/ajustes")) {
     currentView = <MobileAjustes onOpenAuth={() => setAuthModalAberta(true)} />;
   } else {
@@ -199,9 +196,8 @@ export function MobileShell({ route }: { route: string }) {
         bancos={bancos}
         anoId={ano?.id}
         anoNum={ano?.ano}
-        onVerRelatorioCompleto={() => {
-          window.location.hash = "#/relatorios";
-        }}
+        initialAba={route.startsWith("/relatorios") ? "dre" : "visao"}
+        onVerRelatorioCompleto={() => {}}
       />
     );
   }

@@ -18,15 +18,13 @@ export const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/", label: "Início", icon: "chart" },
   { href: "/projecoes", label: "Projeções", icon: "grid" },
   { href: "/realizacoes", label: "Realizações", icon: "list" },
-  { href: "/relatorios", label: "Relatórios", icon: "fileText" },
   { href: "/reservas", label: "Reservas", icon: "wallet" },
   { href: "/investimentos", label: "Investimentos", icon: "sparkles" },
   { href: "/ajustes", label: "Ajustes", icon: "settings" },
 ];
 
 const isActive = (route: string, href: string) => {
-  if (href === "/") return route === "/";
-  if (href === "/relatorios") return route.startsWith("/relatorios");
+  if (href === "/") return route === "/" || route.startsWith("/relatorios");
   if (href === "/realizacoes") return route.startsWith("/realizacoes") || route.startsWith("/lancamentos");
   return route.startsWith(href);
 };
