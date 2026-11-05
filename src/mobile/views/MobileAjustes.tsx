@@ -3,14 +3,14 @@ import { Icon } from "../../components/Icon.tsx";
 import { toast } from "../../components/Toast.tsx";
 import { confirmarAcao } from "../../components/ModalConfirm.tsx";
 import { ModalReplicacao } from "../../components/ModalReplicacao.tsx";
-import { cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem } from "../../data/cloudSync.ts";
+import { atualizarNomePerfil, cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem } from "../../data/cloudSync.ts";
 import { getInactivityTimeout, lockScreenNow, setInactivityTimeout } from "../../data/inactivityGuard.ts";
 import { dumpDatabase, restoreDatabase } from "../../data/backup.ts";
 import { anos, categorias, contas, contasBancarias, empresas } from "../../data/repo.ts";
 import type { Ano, Categoria, Conta, ContaBancaria, Empresa, Natureza } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
 import { MoneyInput } from "../../components/lancamento/MoneyInput.tsx";
-import { money } from "../../lib/format.ts";
+import { formatCpfCnpj, money } from "../../lib/format.ts";
 import { anoAtivo, applyTheme, empresaAtiva, setAno, setEmpresa, theme } from "../../state.ts";
 import { useSignal } from "../../lib/signal.ts";
 
@@ -26,12 +26,14 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
   const [modalEmpresas, setModalEmpresas] = useState(false);
   const [modalNovaEmpresa, setModalNovaEmpresa] = useState(false);
   const [novoNomeEmpresa, setNovoNomeEmpresa] = useState("");
+  const [empresaEdicao, setEmpresaEdicao] = useState<Empresa | null>(null);
 
   // Modais de Ano
   const [modalAnos, setModalAnos] = useState(false);
   const [modalNovoAno, setModalNovoAno] = useState(false);
   const [novoAnoNum, setNovoAnoNum] = useState(new Date().getFullYear() + 1);
   const [modalReplicacaoAno, setModalReplicacaoAno] = useState(false);
+  const [anoEdicao, setAnoEdicao] = useState<Ano | null>(null);
 
   // Modais de Bancos
   const [modalBancos, setModalBancos] = useState(false);
@@ -43,6 +45,7 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
   const [novaCatNome, setNovaCatNome] = useState("");
   const [novaCatNat, setNovaCatNat] = useState<Natureza>("pagar");
   const [filtroNatCat, setFiltroNatCat] = useState<"todas" | Natureza>("todas");
+  const [catEdicao, setCatEdicao] = useState<Categoria | null>(null);
 
   // Modais de Contas
   const [modalContas, setModalContas] = useState(false);
@@ -51,6 +54,10 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
   const [novaContaCatId, setNovaContaCatId] = useState("");
   const [novaContaNat, setNovaContaNat] = useState<Natureza>("pagar");
   const [filtroNatConta, setFiltroNatConta] = useState<"todas" | Natureza>("todas");
+  const [contaEdicao, setContaEdicao] = useState<Conta | null>(null);
+
+  // Perfil Cloud
+  const [modalNomePerfil, setModalNomePerfil] = useState<string | null>(null);
 
   // Segurança
   const [modalSeguranca, setModalSeguranca] = useState(false);
@@ -81,6 +88,40 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
     toast.success("Empresa cadastrada!");
   };
 
+  const salvarEdicaoEmpresa = async () => {
+    if (!empresaEdicao) return;
+    const nome = (empresaEdicao.nome || "").trim();
+    if (!nome) {
+      toast.warn("Informe o nome da empresa.");
+      return;
+    }
+    await empresas.update(empresaEdicao.id, {
+      nome,
+      cnpj: empresaEdicao.cnpj?.trim() || undefined,
+      endereco: empresaEdicao.endereco?.trim() || undefined,
+    });
+    setEmpresaEdicao(null);
+    toast.success("Empresa atualizada!");
+  };
+
+  const excluirEmpresa = async (emp: Empresa) => {
+    const ok = await confirmarAcao({
+      titulo: "Excluir Empresa",
+      mensagem: `Tem certeza que deseja excluir a empresa "${emp.nome}"? Esta ação removerá todos os dados vinculados a ela.`,
+      rotuloConfirmar: "Excluir Empresa",
+      tipo: "danger",
+    });
+    if (ok) {
+      await empresas.remove(emp.id);
+      if (empId === emp.id) {
+        const restantes = listaEmpresas.filter((x) => x.id !== emp.id);
+        setEmpresa(restantes[0]?.id || "");
+      }
+      setEmpresaEdicao(null);
+      toast.success(`Empresa "${emp.nome}" excluída.`);
+    }
+  };
+
   // Ações de Ano
   const criarAno = async () => {
     if (!empId) return;
@@ -89,6 +130,73 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
     setModalNovoAno(false);
     setModalAnos(false);
     toast.success(`Ano ${novoAnoNum} criado e ativado!`);
+  };
+
+  const salvarEdicaoAno = async () => {
+    if (!anoEdicao) return;
+    await anos.update(anoEdicao.id, {
+      bancaInicial: anoEdicao.bancaInicial || 0,
+    });
+    setAnoEdicao(null);
+    toast.success(`Banca inicial do ano ${anoEdicao.ano} atualizada!`);
+  };
+
+  const excluirAno = async (a: Ano) => {
+    const ok = await confirmarAcao({
+      titulo: "Remover Ano Fiscal",
+      mensagem: `Deseja remover o ano ${a.ano} e todos os seus lançamentos desta empresa?`,
+      rotuloConfirmar: "Remover Ano",
+      tipo: "danger",
+    });
+    if (ok) {
+      await anos.remove(a.id);
+      if (anoNum === a.ano) {
+        const restantes = listaAnos.filter((x) => x.id !== a.id);
+        if (restantes.length) setAno(restantes[restantes.length - 1].ano);
+      }
+      setAnoEdicao(null);
+      toast.success(`Ano ${a.ano} removido.`);
+    }
+  };
+
+  const salvarEdicaoCategoria = async () => {
+    if (!catEdicao) return;
+    const nome = (catEdicao.nome || "").trim();
+    if (!nome) {
+      toast.warn("Informe o nome da categoria.");
+      return;
+    }
+    await categorias.update(catEdicao.id, { nome });
+    setCatEdicao(null);
+    toast.success("Categoria atualizada!");
+  };
+
+  const salvarEdicaoConta = async () => {
+    if (!contaEdicao) return;
+    const nome = (contaEdicao.nome || "").trim();
+    if (!nome) {
+      toast.warn("Informe o nome da conta.");
+      return;
+    }
+    await contas.update(contaEdicao.id, {
+      nome,
+      categoriaId: contaEdicao.categoriaId,
+      ativa: contaEdicao.ativa !== false,
+    });
+    setContaEdicao(null);
+    toast.success("Conta atualizada!");
+  };
+
+  const salvarNomePerfil = async () => {
+    if (modalNomePerfil === null) return;
+    const nome = modalNomePerfil.trim();
+    if (!nome) {
+      toast.warn("Informe seu nome.");
+      return;
+    }
+    await atualizarNomePerfil(nome);
+    setModalNomePerfil(null);
+    toast.success("Nome de perfil atualizado!");
   };
 
   // Ações de Banco
@@ -277,9 +385,22 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
         </div>
 
         <div style="flex:1;min-width:0;">
-          <h2 style="font-size:0.95rem;font-weight:800;margin:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-            {user?.nome || (user?.email ? user.email.split("@")[0] : "Visitante")}
-          </h2>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <h2 style="font-size:0.95rem;font-weight:800;margin:0;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              {user?.nome || (user?.email ? user.email.split("@")[0] : "Visitante")}
+            </h2>
+            {user && (
+              <button
+                type="button"
+                class="btn btn--ghost btn--icon btn--sm"
+                style="width:24px;height:24px;color:var(--text-muted);"
+                onClick={() => setModalNomePerfil(user.nome || "")}
+                title="Editar nome do perfil"
+              >
+                <Icon name="pencil" style="width:12px;height:12px;" />
+              </button>
+            )}
+          </div>
           <div style="font-size:0.72rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">
             {user?.email || "Nuvem desconectada"}
           </div>
@@ -610,31 +731,45 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
               {listaEmpresas.map((e) => {
                 const isSelected = e.id === empId;
                 return (
-                  <button
+                  <div
                     key={e.id}
-                    type="button"
-                    class="card card--interactive"
+                    class="card"
                     style={{
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      padding: "12px",
+                      padding: "10px 12px",
                       borderRadius: "14px",
                       border: isSelected ? "2px solid var(--primary)" : "1px solid var(--border)",
                       background: isSelected ? "var(--primary-soft)" : "var(--surface)",
-                      textAlign: "left",
-                    }}
-                    onClick={() => {
-                      setEmpresa(e.id);
-                      setModalEmpresas(false);
                     }}
                   >
-                    <div>
+                    <div
+                      style="flex:1;cursor:pointer;min-width:0;"
+                      onClick={() => {
+                        setEmpresa(e.id);
+                        setModalEmpresas(false);
+                      }}
+                    >
                       <strong style="color:var(--text);font-size:0.90rem;">{e.nome}</strong>
                       {e.cnpj && <div style="font-size:0.72rem;color:var(--text-muted);">{e.cnpj}</div>}
                     </div>
-                    {isSelected && <Icon name="check" style="color:var(--primary);" />}
-                  </button>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      {isSelected && <Icon name="check" style="color:var(--primary);width:16px;height:16px;" />}
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--icon btn--sm"
+                        style="width:32px;height:32px;color:var(--text-muted);"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          setEmpresaEdicao({ ...e, cnpj: formatCpfCnpj(e.cnpj || "") });
+                        }}
+                        title="Editar empresa"
+                      >
+                        <Icon name="pencil" style="width:14px;height:14px;" />
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
 
@@ -646,6 +781,77 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
               >
                 <Icon name="plus" /> Cadastrar Nova Empresa
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Empresa */}
+      {empresaEdicao && (
+        <div class="modal-backdrop" onClick={() => setEmpresaEdicao(null)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()} style="max-height:85dvh;overflow-y:auto;">
+            <div class="modal__head">
+              <h3 class="modal__title">Editar Empresa</h3>
+              <button type="button" class="btn btn--ghost btn--icon" onClick={() => setEmpresaEdicao(null)}>
+                <Icon name="x" />
+              </button>
+            </div>
+
+            <div class="modal__body" style="display:flex;flex-direction:column;gap:12px;">
+              <div>
+                <label class="form-label">Nome da Empresa *</label>
+                <input
+                  type="text"
+                  class="input"
+                  value={empresaEdicao.nome}
+                  onInput={(e) => setEmpresaEdicao({ ...empresaEdicao, nome: (e.currentTarget as HTMLInputElement).value })}
+                  style="border-radius:14px;min-height:42px;"
+                />
+              </div>
+
+              <div>
+                <label class="form-label">CPF / CNPJ (Opcional)</label>
+                <input
+                  type="text"
+                  class="input"
+                  placeholder="00.000.000/0000-00"
+                  value={empresaEdicao.cnpj || ""}
+                  onInput={(e) => setEmpresaEdicao({ ...empresaEdicao, cnpj: formatCpfCnpj((e.currentTarget as HTMLInputElement).value) })}
+                  style="border-radius:14px;min-height:42px;"
+                />
+              </div>
+
+              <div>
+                <label class="form-label">Endereço (Opcional)</label>
+                <input
+                  type="text"
+                  class="input"
+                  placeholder="Rua, número, cidade/UF"
+                  value={empresaEdicao.endereco || ""}
+                  onInput={(e) => setEmpresaEdicao({ ...empresaEdicao, endereco: (e.currentTarget as HTMLInputElement).value })}
+                  style="border-radius:14px;min-height:42px;"
+                />
+              </div>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px;">
+                <button
+                  type="button"
+                  class="btn btn--secondary"
+                  style="color:var(--out);border-radius:12px;padding:0 12px;min-height:42px;"
+                  onClick={() => excluirEmpresa(empresaEdicao)}
+                  title="Excluir Empresa"
+                >
+                  <Icon name="trash" /> Excluir
+                </button>
+                <div style="display:flex;gap:8px;">
+                  <button type="button" class="btn btn--ghost" style="border-radius:12px;min-height:42px;" onClick={() => setEmpresaEdicao(null)}>
+                    Cancelar
+                  </button>
+                  <button type="button" class="btn btn--primary" style="border-radius:12px;min-height:42px;font-weight:700;" onClick={salvarEdicaoEmpresa}>
+                    <Icon name="check" /> Salvar
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -704,31 +910,51 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
               {listaAnos.map((a) => {
                 const isSelected = a.ano === anoNum;
                 return (
-                  <button
+                  <div
                     key={a.ano}
-                    type="button"
                     class="card card--interactive"
                     style={{
                       display: "flex",
                       flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      padding: "14px",
+                      padding: "12px",
                       borderRadius: "14px",
                       border: isSelected ? "2px solid var(--primary)" : "1px solid var(--border)",
                       background: isSelected ? "var(--primary-soft)" : "var(--surface)",
+                      position: "relative",
                       gap: "4px",
                     }}
-                    onClick={() => {
-                      setAno(a.ano);
-                      setModalAnos(false);
-                    }}
                   >
-                    <span style="font-size:1.1rem;font-weight:900;color:var(--text);">{a.ano}</span>
-                    <span style="font-size:0.68rem;color:var(--text-muted);">
-                      {isSelected ? "Ativo no momento" : "Tocar para ativar"}
-                    </span>
-                  </button>
+                    <div style="display:flex;justify-content:space-between;align-items:center;width:100%;">
+                      <span style="font-size:1.15rem;font-weight:900;color:var(--text);">{a.ano}</span>
+                      <button
+                        type="button"
+                        class="btn btn--ghost btn--icon btn--sm"
+                        style="width:28px;height:28px;color:var(--text-muted);"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          setAnoEdicao({ ...a });
+                        }}
+                        title="Editar ano"
+                      >
+                        <Icon name="pencil" style="width:13px;height:13px;" />
+                      </button>
+                    </div>
+
+                    <div
+                      style="cursor:pointer;flex:1;width:100%;"
+                      onClick={() => {
+                        setAno(a.ano);
+                        setModalAnos(false);
+                      }}
+                    >
+                      <div style="font-size:0.68rem;color:var(--text-muted);font-variant-numeric:tabular-nums;">
+                        Banca: <strong style="color:var(--text);">{money(a.bancaInicial)}</strong>
+                      </div>
+                      <div style="font-size:0.65rem;color:isSelected ? 'var(--primary)' : 'var(--text-faint)';margin-top:2px;font-weight:600;">
+                        {isSelected ? "● Ativo no momento" : "Tocar para ativar"}
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
 
@@ -756,6 +982,54 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
                 <Icon name="copy" style="width:16px;height:16px;" />
                 Replicar Ano com IPCA / Banco Central
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Ano */}
+      {anoEdicao && (
+        <div class="modal-backdrop" onClick={() => setAnoEdicao(null)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()} style="max-height:85dvh;overflow-y:auto;">
+            <div class="modal__head">
+              <h3 class="modal__title">Editar Exercício {anoEdicao.ano}</h3>
+              <button type="button" class="btn btn--ghost btn--icon" onClick={() => setAnoEdicao(null)}>
+                <Icon name="x" />
+              </button>
+            </div>
+
+            <div class="modal__body" style="display:flex;flex-direction:column;gap:12px;">
+              <div>
+                <label class="form-label">Banca Inicial de Abertura (R$)</label>
+                <MoneyInput
+                  variant="hero"
+                  valueCentavos={anoEdicao.bancaInicial || 0}
+                  onChangeCentavos={(cents) => setAnoEdicao({ ...anoEdicao, bancaInicial: cents })}
+                />
+                <span class="muted" style="font-size:0.68rem;margin-top:4px;display:block;">
+                  Saldo de caixa consolidado com o qual este ano fiscal se inicia.
+                </span>
+              </div>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px;">
+                <button
+                  type="button"
+                  class="btn btn--secondary"
+                  style="color:var(--out);border-radius:12px;padding:0 12px;min-height:42px;"
+                  onClick={() => excluirAno(anoEdicao)}
+                  title="Excluir Ano"
+                >
+                  <Icon name="trash" /> Excluir Ano
+                </button>
+                <div style="display:flex;gap:8px;">
+                  <button type="button" class="btn btn--ghost" style="border-radius:12px;min-height:42px;" onClick={() => setAnoEdicao(null)}>
+                    Cancelar
+                  </button>
+                  <button type="button" class="btn btn--primary" style="border-radius:12px;min-height:42px;font-weight:700;" onClick={salvarEdicaoAno}>
+                    <Icon name="check" /> Salvar
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1036,15 +1310,26 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
                     />
                     <strong style="color:var(--text);font-size:0.85rem;">{cat.nome}</strong>
                   </div>
-                  <button
-                    type="button"
-                    class="btn btn--ghost btn--icon btn--sm"
-                    style="color:var(--text-muted);"
-                    onClick={() => excluirCategoria(cat)}
-                    title="Excluir Categoria"
-                  >
-                    <Icon name="trash" style="width:14px;height:14px;" />
-                  </button>
+                  <div style="display:flex;align-items:center;gap:4px;">
+                    <button
+                      type="button"
+                      class="btn btn--ghost btn--icon btn--sm"
+                      style="color:var(--text-muted);width:32px;height:32px;"
+                      onClick={() => setCatEdicao({ ...cat })}
+                      title="Editar Categoria"
+                    >
+                      <Icon name="pencil" style="width:14px;height:14px;" />
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--ghost btn--icon btn--sm"
+                      style="color:var(--text-muted);width:32px;height:32px;"
+                      onClick={() => excluirCategoria(cat)}
+                      title="Excluir Categoria"
+                    >
+                      <Icon name="trash" style="width:14px;height:14px;" />
+                    </button>
+                  </div>
                 </div>
               ))}
 
@@ -1164,17 +1449,29 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
                     <strong style="color:var(--text);font-size:0.85rem;">{c.nome}</strong>
                     <div style="font-size:0.68rem;color:var(--text-muted);">
                       {catMap.get(c.categoriaId) || "Sem categoria"}
+                      {!c.ativa && " · Inativa"}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    class="btn btn--ghost btn--icon btn--sm"
-                    style="color:var(--text-muted);"
-                    onClick={() => excluirConta(c)}
-                    title="Excluir Conta"
-                  >
-                    <Icon name="trash" style="width:14px;height:14px;" />
-                  </button>
+                  <div style="display:flex;align-items:center;gap:4px;">
+                    <button
+                      type="button"
+                      class="btn btn--ghost btn--icon btn--sm"
+                      style="color:var(--text-muted);width:32px;height:32px;"
+                      onClick={() => setContaEdicao({ ...c })}
+                      title="Editar Conta"
+                    >
+                      <Icon name="pencil" style="width:14px;height:14px;" />
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--ghost btn--icon btn--sm"
+                      style="color:var(--text-muted);width:32px;height:32px;"
+                      onClick={() => excluirConta(c)}
+                      title="Excluir Conta"
+                    >
+                      <Icon name="trash" style="width:14px;height:14px;" />
+                    </button>
+                  </div>
                 </div>
               ))}
 
@@ -1324,6 +1621,145 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
               >
                 <Icon name="lock" /> Bloquear Tela Agora
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Categoria */}
+      {catEdicao && (
+        <div class="modal-backdrop" onClick={() => setCatEdicao(null)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()} style="max-height:85dvh;overflow-y:auto;">
+            <div class="modal__head">
+              <h3 class="modal__title">Editar Categoria</h3>
+              <button type="button" class="btn btn--ghost btn--icon" onClick={() => setCatEdicao(null)}>
+                <Icon name="x" />
+              </button>
+            </div>
+
+            <div class="modal__body" style="display:flex;flex-direction:column;gap:12px;">
+              <div>
+                <label class="form-label">Nome da Categoria *</label>
+                <input
+                  type="text"
+                  class="input"
+                  value={catEdicao.nome}
+                  onInput={(e) => setCatEdicao({ ...catEdicao, nome: (e.currentTarget as HTMLInputElement).value })}
+                  style="border-radius:14px;min-height:42px;"
+                  autoFocus
+                />
+              </div>
+
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+                <button type="button" class="btn btn--ghost" style="border-radius:12px;min-height:42px;" onClick={() => setCatEdicao(null)}>
+                  Cancelar
+                </button>
+                <button type="button" class="btn btn--primary" style="border-radius:12px;min-height:42px;font-weight:700;" onClick={salvarEdicaoCategoria}>
+                  <Icon name="check" /> Salvar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Conta Financeira */}
+      {contaEdicao && (
+        <div class="modal-backdrop" onClick={() => setContaEdicao(null)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()} style="max-height:85dvh;overflow-y:auto;">
+            <div class="modal__head">
+              <h3 class="modal__title">Editar Conta Financeira</h3>
+              <button type="button" class="btn btn--ghost btn--icon" onClick={() => setContaEdicao(null)}>
+                <Icon name="x" />
+              </button>
+            </div>
+
+            <div class="modal__body" style="display:flex;flex-direction:column;gap:12px;">
+              <div>
+                <label class="form-label">Nome da Conta *</label>
+                <input
+                  type="text"
+                  class="input"
+                  value={contaEdicao.nome}
+                  onInput={(e) => setContaEdicao({ ...contaEdicao, nome: (e.currentTarget as HTMLInputElement).value })}
+                  style="border-radius:14px;min-height:42px;"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label class="form-label">Categoria</label>
+                <select
+                  class="select"
+                  value={contaEdicao.categoriaId}
+                  onChange={(e) => setContaEdicao({ ...contaEdicao, categoriaId: (e.currentTarget as HTMLSelectElement).value })}
+                  style="border-radius:14px;min-height:42px;"
+                >
+                  {listaCategorias
+                    .filter((cat) => cat.natureza === contaEdicao.natureza)
+                    .map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.nome}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer;color:var(--text);">
+                <input
+                  type="checkbox"
+                  checked={contaEdicao.ativa !== false}
+                  onChange={(e) => setContaEdicao({ ...contaEdicao, ativa: (e.currentTarget as HTMLInputElement).checked })}
+                />
+                Conta Ativa no Exercício
+              </label>
+
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+                <button type="button" class="btn btn--ghost" style="border-radius:12px;min-height:42px;" onClick={() => setContaEdicao(null)}>
+                  Cancelar
+                </button>
+                <button type="button" class="btn btn--primary" style="border-radius:12px;min-height:42px;font-weight:700;" onClick={salvarEdicaoConta}>
+                  <Icon name="check" /> Salvar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Nome de Perfil Cloud */}
+      {modalNomePerfil !== null && (
+        <div class="modal-backdrop" onClick={() => setModalNomePerfil(null)}>
+          <div class="modal" onClick={(e) => e.stopPropagation()} style="max-height:85dvh;overflow-y:auto;">
+            <div class="modal__head">
+              <h3 class="modal__title">Editar Nome de Perfil</h3>
+              <button type="button" class="btn btn--ghost btn--icon" onClick={() => setModalNomePerfil(null)}>
+                <Icon name="x" />
+              </button>
+            </div>
+
+            <div class="modal__body" style="display:flex;flex-direction:column;gap:12px;">
+              <div>
+                <label class="form-label">Seu Nome *</label>
+                <input
+                  type="text"
+                  class="input"
+                  placeholder="Ex: João da Silva"
+                  value={modalNomePerfil}
+                  onInput={(e) => setModalNomePerfil((e.currentTarget as HTMLInputElement).value)}
+                  style="border-radius:14px;min-height:42px;"
+                  autoFocus
+                />
+              </div>
+
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+                <button type="button" class="btn btn--ghost" style="border-radius:12px;min-height:42px;" onClick={() => setModalNomePerfil(null)}>
+                  Cancelar
+                </button>
+                <button type="button" class="btn btn--primary" style="border-radius:12px;min-height:42px;font-weight:700;" onClick={salvarNomePerfil}>
+                  <Icon name="check" /> Salvar
+                </button>
+              </div>
             </div>
           </div>
         </div>
