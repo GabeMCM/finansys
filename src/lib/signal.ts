@@ -50,5 +50,5 @@ export function signal<T>(initial: T): Signal<T> {
  * utilizando a API oficial useSyncExternalStore do React 18+.
  */
 export function useSignal<T>(s: Signal<T>): T {
-  return useSyncExternalStore(s.subscribe, s.getSnapshot, s.getSnapshot);
+  return useSyncExternalStore(s.subscribe, s.getSnapshot);
 }

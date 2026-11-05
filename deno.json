@@ -1,8 +1,8 @@
 {
   "tasks": {
-    "dev": "deno run -A --unstable-kv npm:vite",
+    "dev": "deno run -A --unstable-kv npm:vite --host 0.0.0.0 --port 5173",
     "build": "deno run -A npm:vite build",
-    "preview": "deno run -A --unstable-kv npm:vite preview",
+    "preview": "deno run -A --unstable-kv npm:vite preview --host 0.0.0.0 --port 5173",
     "start": "deno run -A --unstable-kv server.ts",
     "test": "DENO_TESTING=true deno test -A --unstable-kv",
     "check": "deno check src/main.tsx"
@@ -14,19 +14,22 @@
   "nodeModulesDir": "auto",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "jsxImportSource": "react",
+    "jsxImportSource": "preact",
     "lib": ["dom", "dom.iterable", "esnext", "deno.ns"]
   },
   "imports": {
     "dexie": "npm:dexie@^4.4.6",
     "mongodb": "npm:mongodb@^6.12.0",
     "vite": "npm:vite@^6.3.0",
-    "@vitejs/plugin-react": "npm:@vitejs/plugin-react@^4.3.4",
-    "react": "npm:react@^18.3.1",
-    "react/": "npm:/react@^18.3.1/",
-    "react-dom": "npm:react-dom@^18.3.1",
-    "react-dom/": "npm:/react-dom@^18.3.1/",
-    "react/jsx-runtime": "npm:react@^18.3.1/jsx-runtime",
-    "react-dom/client": "npm:react-dom@^18.3.1/client"
+    "@preact/preset-vite": "npm:@preact/preset-vite@^2.10.0",
+    "preact": "npm:preact@^10.26.0",
+    "preact/": "npm:/preact@^10.26.0/",
+    "@preact/signals": "npm:@preact/signals@^2.0.0",
+    "react": "npm:preact@^10.26.0/compat",
+    "react/": "npm:/preact@^10.26.0/compat/",
+    "react-dom": "npm:preact@^10.26.0/compat",
+    "react-dom/": "npm:/preact@^10.26.0/compat/",
+    "react-dom/client": "npm:preact@^10.26.0/compat/client",
+    "react/jsx-runtime": "npm:preact@^10.26.0/jsx-runtime"
   }
 }
