@@ -20,6 +20,7 @@ export function MobileMetas() {
   const [mesAtivo, setMesAtivo] = useState<number>(new Date().getMonth());
   const [natureza, setNatureza] = useState<Natureza>("pagar");
   const [busca, setBusca] = useState<string>("");
+  const [modoVisaoMetas, setModoVisaoMetas] = useState<"tetos" | "matriz">("tetos");
 
   // Estado do Modal de Nova Projeção
   const [modalNovaProjecao, setModalNovaProjecao] = useState<boolean>(false);
@@ -398,22 +399,151 @@ export function MobileMetas() {
         </button>
       </div>
 
-      {/* 2. Navegador de Mês */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: "var(--surface)",
-          border: "1px solid var(--border)",
-          borderRadius: "16px",
-          padding: "8px 12px",
-        }}
-      >
+      {/* Alternador de Visão: Tetos vs Matriz 12 Meses */}
+      <div class="mobile-segmented" style="margin-bottom:2px;">
         <button
           type="button"
-          class="btn btn--ghost btn--icon btn--sm"
-          disabled={mesAtivo === 0}
+          class={`mobile-segmented__btn ${modoVisaoMetas === "tetos" ? "is-active" : ""}`}
+          onClick={() => setModoVisaoMetas("tetos")}
+        >
+          <Icon name="grid" style="width:14px;height:14px;" /> Tetos & Orçamento
+        </button>
+        <button
+          type="button"
+          class={`mobile-segmented__btn ${modoVisaoMetas === "matriz" ? "is-active" : ""}`}
+          onClick={() => setModoVisaoMetas("matriz")}
+        >
+          <Icon name="list" style="width:14px;height:14px;" /> Matriz 12 Meses
+        </button>
+      </div>
+
+      {/* 2. Conteúdo: Matriz 12 Meses OU Visão Tetos & Navegador de Mês */}
+      {modoVisaoMetas === "matriz" ? (
+        <div class="card" style="padding:0;overflow:hidden;border-radius:16px;">
+          <div style="padding:10px 14px;border-bottom:1px solid var(--border-soft);display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:0.75rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;">
+              Matriz Anual 12 Meses ({NATURE_META[natureza]?.label})
+            </span>
+            <span style="font-size:0.70rem;color:var(--text-faint);">Toque no valor para editar</span>
+          </div>
+
+          {/* Seletor de Natureza na Matriz */}
+          <div class="mobile-segmented mobile-segmented--4" style="margin:8px 10px 4px;">
+            <button
+              type="button"
+              class={`mobile-segmented__btn ${natureza === "pagar" ? "is-active-out" : ""}`}
+              onClick={() => setNatureza("pagar")}
+            >
+              Despesas
+            </button>
+            <button
+              type="button"
+              class={`mobile-segmented__btn ${natureza === "receber" ? "is-active-in" : ""}`}
+              onClick={() => setNatureza("receber")}
+            >
+              Receitas
+            </button>
+            <button
+              type="button"
+              class={`mobile-segmented__btn ${natureza === "aporte" ? "is-active-aporte" : ""}`}
+              onClick={() => setNatureza("aporte")}
+            >
+              Aportes
+            </button>
+            <button
+              type="button"
+              class={`mobile-segmented__btn ${natureza === "saida" ? "is-active-saida" : ""}`}
+              onClick={() => setNatureza("saida")}
+            >
+              Saídas
+            </button>
+          </div>
+
+          <div style="overflow-x:auto;">
+            <table class="table" style="font-size:0.72rem;margin:0;width:100%;white-space:nowrap;">
+              <thead>
+                <tr style="background:var(--surface-sunken);">
+                  <th style="padding:8px 10px;position:sticky;left:0;background:var(--surface-sunken);z-index:2;">Conta</th>
+                  {MESES_ABREV.map((m) => (
+                    <th key={m} style="padding:8px 8px;text-align:right;">{m}</th>
+                  ))}
+                  <th style="padding:8px 10px;text-align:right;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contasDaNatureza.length === 0 ? (
+                  <tr>
+                    <td colSpan={14} style="padding:24px;text-align:center;color:var(--text-muted);">
+                      Nenhuma conta cadastrada nesta natureza.
+                    </td>
+                  </tr>
+                ) : (
+                  contasDaNatureza.map((c) => {
+                    let totalAnoConta = 0;
+                    const mesesVal = Array.from({ length: 12 }, (_, mIdx) => {
+                      const p = ps.find((proj) => proj.contaId === c.id && proj.mes === mIdx);
+                      const val = p ? p.valor : 0;
+                      totalAnoConta += val;
+                      return { mes: mIdx, valor: val, projId: p?.id };
+                    });
+                    const cat = catMap.get(c.categoriaId);
+
+                    return (
+                      <tr key={c.id}>
+                        <td style="padding:8px 10px;font-weight:700;position:sticky;left:0;background:var(--surface);z-index:1;border-right:1px solid var(--border-soft);">
+                          <div style="color:var(--text);">{c.nome}</div>
+                          <div style="font-size:0.65rem;color:var(--text-muted);">{cat?.nome || "Geral"}</div>
+                        </td>
+                        {mesesVal.map((mv) => (
+                          <td
+                            key={mv.mes}
+                            style="padding:8px 8px;text-align:right;cursor:pointer;"
+                            onClick={() => {
+                              setContaEdicao({
+                                conta: c,
+                                categoriaNome: cat?.nome || "Geral",
+                                valorAtualCentavos: mv.valor,
+                                novoValorStr: mv.valor > 0 ? (mv.valor / 100).toFixed(2).replace(".", ",") : "",
+                                obs: "",
+                              });
+                              setMesAtivo(mv.mes);
+                            }}
+                            title={`Toque para editar ${c.nome} em ${MESES_ABREV[mv.mes]}`}
+                          >
+                            <span style={{ color: mv.valor > 0 ? "var(--text)" : "var(--text-faint)", fontWeight: mv.valor > 0 ? 700 : 400 }}>
+                              {mv.valor > 0 ? money(mv.valor) : "-"}
+                            </span>
+                          </td>
+                        ))}
+                        <td style="padding:8px 10px;text-align:right;font-weight:800;color:var(--primary);border-left:1px solid var(--border-soft);">
+                          {money(totalAnoConta)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* 2. Navegador de Mês */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "16px",
+              padding: "8px 12px",
+            }}
+          >
+            <button
+              type="button"
+              class="btn btn--ghost btn--icon btn--sm"
+              disabled={mesAtivo === 0}
           onClick={() => setMesAtivo((prev) => Math.max(0, prev - 1))}
         >
           <Icon name="arrowLeft" style="width:16px;height:16px;" />
@@ -725,6 +855,8 @@ export function MobileMetas() {
           })
         )}
       </div>
+    </>
+  )}
 
       {/* =========================================================================
           BOTTOM SHEET: LANÇAR NOVA PROJEÇÃO

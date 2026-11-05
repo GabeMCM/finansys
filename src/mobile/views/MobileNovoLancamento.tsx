@@ -60,19 +60,21 @@ export function MobileNovoLancamento({
     if (!empId) return null;
     const ano = await anos.find(empId, anoNum);
     if (!ano) return null;
-    const [cs, cats, bancos, resList] = await Promise.all([
+    const [cs, cats, bancos, resList, ps] = await Promise.all([
       contas.byEmpresa(empId),
       categorias.byEmpresa(empId),
       contasBancarias.byEmpresa(empId),
       reservas.byEmpresa(empId),
+      projecoes.byAno(ano.id),
     ]);
-    return { ano, cs, cats, bancos, resList };
+    return { ano, cs, cats, bancos, resList, ps };
   }, [empId, anoNum], null);
 
   const cs = dados?.cs || [];
   const cats = dados?.cats || [];
   const bancos = dados?.bancos || [];
   const resList = dados?.resList || [];
+  const ps = dados?.ps || [];
   const ano = dados?.ano;
 
   // Filtra categorias e contas pela natureza selecionada
@@ -120,6 +122,17 @@ export function MobileNovoLancamento({
       finalContaId = contasFiltradas[0].id;
     }
 
+    if (isTransferencia) {
+      if (!bancoId || !bancoDestinoId) {
+        toast.warn("Selecione os bancos de origem e destino para a transferência.");
+        return;
+      }
+      if (bancoId === bancoDestinoId) {
+        toast.warn("O banco de destino deve ser diferente do de origem.");
+        return;
+      }
+    }
+
     if (!finalContaId) {
       toast.warn("Selecione ou cadastre uma conta para esta transação.");
       return;
@@ -138,21 +151,38 @@ export function MobileNovoLancamento({
       setSalvando(true);
 
       if (modoRepeticao === "parcelado" && qtdParcelas > 1) {
-        // 1. Compra Parcelada em N vezes
-        const valorPorParcela = dividirValor ? Math.round(centavos / qtdParcelas) : centavos;
+        // 1. Compra Parcelada em N vezes com distribuição exata de centavos e suporte a virada de ano
+        const recorrenciaId = crypto.randomUUID();
+        const valorBase = dividirValor ? Math.floor(centavos / qtdParcelas) : centavos;
+        const resto = dividirValor ? centavos - (valorBase * qtdParcelas) : 0;
+
         for (let i = 0; i < qtdParcelas; i++) {
-          const dParcela = new Date(anoBase, mesBase + i, diaBase);
-          const mesParcela = dParcela.getMonth();
-          const dataParcelaStr = formatarData(dParcela);
+          const valorParcela = (i === 0) ? (valorBase + resto) : valorBase;
+          const mesTotal = mesBase + i;
+          const targetYear = anoBase + Math.floor(mesTotal / 12);
+          const targetMonth = mesTotal % 12;
+          const maxDias = new Date(targetYear, targetMonth + 1, 0).getDate();
+          const targetDay = Math.min(diaBase, maxDias);
+          const dataParcelaStr = `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
           const descParcela = `${descricao.trim() || "Lançamento"} (${i + 1}/${qtdParcelas})`;
 
+          let anoAlvoId = ano.id;
+          if (targetYear !== ano.ano) {
+            let anoTarget = await anos.find(empId, targetYear);
+            if (!anoTarget) {
+              anoTarget = await anos.create({ empresaId: empId, ano: targetYear, bancaInicial: 0 });
+            }
+            anoAlvoId = anoTarget.id;
+          }
+
           const novoLanc = await lancamentos.create({
-            anoId: ano.id,
+            anoId: anoAlvoId,
             contaId: finalContaId,
-            mes: mesParcela,
+            mes: targetMonth,
             data: dataParcelaStr,
-            valor: valorPorParcela,
+            valor: valorParcela,
             descricao: descParcela,
+            recorrenciaId,
             parcela: i + 1,
             totalParcelas: qtdParcelas,
             bancoId: bancoId || undefined,
@@ -167,12 +197,12 @@ export function MobileNovoLancamento({
           if (reservaId && tipoRes) {
             await reservaMovimentos.create({
               empresaId: empId,
-              anoId: ano.id,
+              anoId: anoAlvoId,
               reservaId,
               tipo: tipoRes,
-              valor: valorPorParcela,
+              valor: valorParcela,
               data: dataParcelaStr,
-              mes: mesParcela,
+              mes: targetMonth,
               contaId: finalContaId,
               bancoId: bancoId || undefined,
               lancamentoId: novoLanc.id,
@@ -180,20 +210,32 @@ export function MobileNovoLancamento({
             });
           }
         }
-        toast.success(`Compra parcelada em ${qtdParcelas}x de ${money(valorPorParcela)} registrada!`);
+        toast.success(`Compra parcelada em ${qtdParcelas}x de ${money(valorBase)} registrada com sucesso!`);
       } else if (modoRepeticao === "recorrente" && qtdRecorrencias > 1) {
-        // 2. Fixo Recorrente Mensal (repetir por N meses)
+        // 2. Fixo Recorrente Mensal com resolução automática de virada de ano
         const recorrenciaId = crypto.randomUUID();
         for (let i = 0; i < qtdRecorrencias; i++) {
-          const dRec = new Date(anoBase, mesBase + i, diaBase);
-          const mesRec = dRec.getMonth();
-          const dataRecStr = formatarData(dRec);
+          const mesTotal = mesBase + i;
+          const targetYear = anoBase + Math.floor(mesTotal / 12);
+          const targetMonth = mesTotal % 12;
+          const maxDias = new Date(targetYear, targetMonth + 1, 0).getDate();
+          const targetDay = Math.min(diaBase, maxDias);
+          const dataRecStr = `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
           const descRec = descricao.trim() || "Fixo Recorrente";
 
+          let anoAlvoId = ano.id;
+          if (targetYear !== ano.ano) {
+            let anoTarget = await anos.find(empId, targetYear);
+            if (!anoTarget) {
+              anoTarget = await anos.create({ empresaId: empId, ano: targetYear, bancaInicial: 0 });
+            }
+            anoAlvoId = anoTarget.id;
+          }
+
           const novoLanc = await lancamentos.create({
-            anoId: ano.id,
+            anoId: anoAlvoId,
             contaId: finalContaId,
-            mes: mesRec,
+            mes: targetMonth,
             data: dataRecStr,
             valor: centavos,
             descricao: descRec,
@@ -209,12 +251,12 @@ export function MobileNovoLancamento({
           if (reservaId && tipoRes) {
             await reservaMovimentos.create({
               empresaId: empId,
-              anoId: ano.id,
+              anoId: anoAlvoId,
               reservaId,
               tipo: tipoRes,
               valor: centavos,
               data: dataRecStr,
-              mes: mesRec,
+              mes: targetMonth,
               contaId: finalContaId,
               bancoId: bancoId || undefined,
               lancamentoId: novoLanc.id,
@@ -291,11 +333,12 @@ export function MobileNovoLancamento({
       </div>
 
       {/* 1. Seletor de Natureza Oficial (A Receber, A Pagar, Aporte Livre, Saída Livre) */}
-      <div class="mobile-segmented mobile-segmented--4" style="margin-bottom:12px;">
+      <div class="mobile-segmented mobile-segmented--4" style="margin-bottom:8px;">
         <button
           type="button"
-          class={`mobile-segmented__btn ${natureza === "receber" ? "is-active-in" : ""}`}
+          class={`mobile-segmented__btn ${!isTransferencia && natureza === "receber" ? "is-active-in" : ""}`}
           onClick={() => {
+            setIsTransferencia(false);
             setNatureza("receber");
             setCategoriaId("");
             setContaId("");
@@ -305,8 +348,9 @@ export function MobileNovoLancamento({
         </button>
         <button
           type="button"
-          class={`mobile-segmented__btn ${natureza === "pagar" ? "is-active-out" : ""}`}
+          class={`mobile-segmented__btn ${!isTransferencia && natureza === "pagar" ? "is-active-out" : ""}`}
           onClick={() => {
+            setIsTransferencia(false);
             setNatureza("pagar");
             setCategoriaId("");
             setContaId("");
@@ -316,8 +360,9 @@ export function MobileNovoLancamento({
         </button>
         <button
           type="button"
-          class={`mobile-segmented__btn ${natureza === "aporte" ? "is-active-aporte" : ""}`}
+          class={`mobile-segmented__btn ${!isTransferencia && natureza === "aporte" ? "is-active-aporte" : ""}`}
           onClick={() => {
+            setIsTransferencia(false);
             setNatureza("aporte");
             setCategoriaId("");
             setContaId("");
@@ -327,8 +372,9 @@ export function MobileNovoLancamento({
         </button>
         <button
           type="button"
-          class={`mobile-segmented__btn ${natureza === "saida" ? "is-active-saida" : ""}`}
+          class={`mobile-segmented__btn ${!isTransferencia && natureza === "saida" ? "is-active-saida" : ""}`}
           onClick={() => {
+            setIsTransferencia(false);
             setNatureza("saida");
             setCategoriaId("");
             setContaId("");
@@ -338,10 +384,44 @@ export function MobileNovoLancamento({
         </button>
       </div>
 
+      {/* Atalho Rápido de Transferência entre Contas Bancárias */}
+      {bancos.length > 1 && (
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+          <button
+            type="button"
+            class={`btn btn--sm ${isTransferencia ? "btn--primary" : "btn--secondary"}`}
+            style="border-radius:20px;font-size:0.75rem;padding:4px 12px;gap:6px;display:inline-flex;align-items:center;font-weight:700;"
+            onClick={() => {
+              const next = !isTransferencia;
+              setIsTransferencia(next);
+              if (next) {
+                if (!descricao) setDescricao("Transferência entre contas");
+                if (!bancoId && bancos.length > 0) setBancoId(bancos[0].id);
+                if (!bancoDestinoId && bancos.length > 1) {
+                  const outro = bancos.find((b) => b.id !== (bancoId || bancos[0].id));
+                  if (outro) setBancoDestinoId(outro.id);
+                }
+              }
+            }}
+          >
+            <Icon name="arrowLeftRight" style="width:13px;height:13px;" />
+            <span>{isTransferencia ? "✓ Modo Transferência Ativo" : "Transferir entre Bancos"}</span>
+          </button>
+        </div>
+      )}
+
       {/* 2. Display de Valor */}
       <div class="mobile-amount-box" style="margin-bottom:12px;">
         <span class="mobile-amount-box__label">
-          {natureza === "receber" ? "Valor a Receber" : natureza === "pagar" ? "Valor a Pagar" : natureza === "aporte" ? "Valor do Aporte Livre" : "Valor da Saída Livre"}
+          {isTransferencia
+            ? "Valor da Transferência Bancária"
+            : natureza === "receber"
+            ? "Valor a Receber"
+            : natureza === "pagar"
+            ? "Valor a Pagar"
+            : natureza === "aporte"
+            ? "Valor do Aporte Livre"
+            : "Valor da Saída Livre"}
         </span>
         <div class="mobile-amount-box__input-row">
           <span class="mobile-amount-box__currency">R$</span>
@@ -359,6 +439,27 @@ export function MobileNovoLancamento({
           />
         </div>
       </div>
+
+      {/* Sugestão Rápida com base no Orçamento / Projeção */}
+      {(() => {
+        if (!contaId) return null;
+        const mm = parseInt(dataFinal.split("-")[1], 10) - 1;
+        const pObj = ps.find((p) => p.contaId === contaId && p.mes === mm);
+        if (!pObj || pObj.valor <= 0) return null;
+        return (
+          <div style="margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+            <span style="font-size:0.70rem;color:var(--text-muted);">Projetado no mês:</span>
+            <button
+              type="button"
+              class="btn btn--secondary btn--sm"
+              style="padding:2px 8px;height:24px;font-size:0.72rem;border-radius:8px;font-weight:700;"
+              onClick={() => setCentavos(pObj.valor)}
+            >
+              Usar meta de {money(pObj.valor)}
+            </button>
+          </div>
+        );
+      })()}
 
       {/* 3. Descrição */}
       <div style="margin-bottom:12px;">

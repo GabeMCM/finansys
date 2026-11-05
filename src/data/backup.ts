@@ -39,6 +39,90 @@ export interface BackupPayload {
   };
 }
 
+export interface DeltaResult {
+  version: number;
+  isPartial: boolean;
+  exportedAt: number;
+  totalChanged: number;
+  maxUpdatedAt: number;
+  data: Partial<BackupPayload["data"]>;
+}
+
+/**
+ * Serializa de forma granular e leve apenas os registros que foram criados ou atualizados
+ * após `sinceTimestamp`. Retorna apenas as coleções que sofreram mutação.
+ */
+export async function dumpDatabaseDelta(sinceTimestamp = 0): Promise<DeltaResult> {
+  // Se timestamp for 0 ou inválido, gera dump completo
+  if (!sinceTimestamp || sinceTimestamp <= 0) {
+    const full = await dumpDatabase();
+    let total = 0;
+    let maxUpdated = 0;
+    for (const list of Object.values(full.data)) {
+      if (Array.isArray(list)) {
+        total += list.length;
+        for (const item of list) {
+          // deno-lint-ignore no-explicit-any
+          const u = Number((item as any)?.updatedAt) || 0;
+          if (u > maxUpdated) maxUpdated = u;
+        }
+      }
+    }
+    return {
+      version: 4,
+      isPartial: false,
+      exportedAt: full.exportedAt,
+      totalChanged: total,
+      maxUpdatedAt: maxUpdated || full.exportedAt,
+      data: full.data,
+    };
+  }
+
+  const tabelas = [
+    { key: "empresas" as const, t: db.empresas },
+    { key: "anos" as const, t: db.anos },
+    { key: "categorias" as const, t: db.categorias },
+    { key: "contas" as const, t: db.contas },
+    { key: "contasBancarias" as const, t: db.contasBancarias },
+    { key: "projecoes" as const, t: db.projecoes },
+    { key: "lancamentos" as const, t: db.lancamentos },
+    { key: "reservas" as const, t: db.reservas },
+    { key: "reservaMovimentos" as const, t: db.reservaMovimentos },
+    { key: "reservaProjecoes" as const, t: db.reservaProjecoes },
+    { key: "operacoesInvestimento" as const, t: db.operacoesInvestimento },
+  ];
+
+  const data: Partial<BackupPayload["data"]> = {};
+  let totalChanged = 0;
+  let maxUpdatedAt = sinceTimestamp;
+
+  await Promise.all(
+    tabelas.map(async ({ key, t }) => {
+      // Consulta ultra-rápida indexada por `updatedAt > sinceTimestamp`
+      // deno-lint-ignore no-explicit-any
+      const itensModificados = await (t as any).where("updatedAt").above(sinceTimestamp).toArray();
+      if (itensModificados.length > 0) {
+        data[key] = itensModificados;
+        totalChanged += itensModificados.length;
+        // deno-lint-ignore no-explicit-any
+        for (const item of itensModificados) {
+          const u = Number((item as any)?.updatedAt) || 0;
+          if (u > maxUpdatedAt) maxUpdatedAt = u;
+        }
+      }
+    })
+  );
+
+  return {
+    version: 4,
+    isPartial: true,
+    exportedAt: Date.now(),
+    totalChanged,
+    maxUpdatedAt,
+    data,
+  };
+}
+
 /**
  * Serializa todo o banco de dados em um payload JSON.
  */

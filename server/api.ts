@@ -32,6 +32,146 @@ let _mongoClient: MongoClient | null = null;
 let _db: Db | null = null;
 let _dbPromise: Promise<Db> | null = null;
 
+// Mock in-memory do MongoDB para testes automatizados locais quando não houver MONGODB_URI
+class MemoryCollection {
+  private docs: Map<string, any> = new Map();
+
+  async createIndex(_spec: any, _options?: any): Promise<void> {}
+
+  async findOne(filter: any, _options?: any): Promise<any> {
+    for (const doc of this.docs.values()) {
+      if (this.matches(doc, filter)) {
+        return structuredClone(doc);
+      }
+    }
+    return null;
+  }
+
+  find(filter: any = {}, _options?: any) {
+    const matched: any[] = [];
+    for (const doc of this.docs.values()) {
+      if (this.matches(doc, filter)) {
+        matched.push(structuredClone(doc));
+      }
+    }
+    return {
+      sort(sortSpec: any) {
+        const key = Object.keys(sortSpec)[0];
+        const dir = sortSpec[key] || 1;
+        matched.sort((a, b) => {
+          if (a[key] < b[key]) return -1 * dir;
+          if (a[key] > b[key]) return 1 * dir;
+          return 0;
+        });
+        return this;
+      },
+      async toArray() {
+        return matched;
+      },
+    };
+  }
+
+  async insertOne(doc: any): Promise<{ insertedId: string }> {
+    const id = String(doc._id || doc.id || crypto.randomUUID());
+    const stored = { ...structuredClone(doc), _id: id };
+    this.docs.set(id, stored);
+    return { insertedId: id };
+  }
+
+  async updateOne(filter: any, update: any, options: any = {}): Promise<void> {
+    let targetId: string | null = null;
+    for (const [id, doc] of this.docs.entries()) {
+      if (this.matches(doc, filter)) {
+        targetId = id;
+        break;
+      }
+    }
+
+    if (targetId) {
+      const doc = this.docs.get(targetId);
+      if (update.$set) {
+        Object.assign(doc, structuredClone(update.$set));
+      }
+    } else if (options.upsert) {
+      const newDoc: any = {};
+      for (const [k, v] of Object.entries(filter)) {
+        if (!k.startsWith("$") && typeof v !== "object") newDoc[k] = v;
+      }
+      if (update.$set) {
+        Object.assign(newDoc, structuredClone(update.$set));
+      }
+      const id = String(newDoc._id || newDoc.id || crypto.randomUUID());
+      newDoc._id = id;
+      this.docs.set(id, newDoc);
+    }
+  }
+
+  async deleteMany(filter: any): Promise<{ deletedCount: number }> {
+    let count = 0;
+    for (const [id, doc] of Array.from(this.docs.entries())) {
+      if (this.matches(doc, filter)) {
+        this.docs.delete(id);
+        count++;
+      }
+    }
+    return { deletedCount: count };
+  }
+
+  async bulkWrite(ops: any[], _options?: any): Promise<void> {
+    for (const op of ops) {
+      if (op.updateOne) {
+        await this.updateOne(op.updateOne.filter, op.updateOne.update, op.updateOne);
+      } else if (op.deleteMany) {
+        await this.deleteMany(op.deleteMany.filter);
+      }
+    }
+  }
+
+  private matches(doc: any, filter: any): boolean {
+    for (const [key, val] of Object.entries(filter)) {
+      if (key === "$or" && Array.isArray(val)) {
+        if (!val.some((subFilter) => this.matches(doc, subFilter))) return false;
+        continue;
+      }
+      if (val && typeof val === "object") {
+        if ("$in" in val && Array.isArray(val.$in)) {
+          if (!val.$in.includes(doc[key])) return false;
+          continue;
+        }
+        if ("$nin" in val && Array.isArray(val.$nin)) {
+          if (val.$nin.includes(doc[key])) return false;
+          continue;
+        }
+        if ("$gt" in val) {
+          if (!(doc[key] > (val as any).$gt)) return false;
+          continue;
+        }
+        if ("$gte" in val) {
+          if (!(doc[key] >= (val as any).$gte)) return false;
+          continue;
+        }
+      }
+      if (doc[key] !== val) return false;
+    }
+    return true;
+  }
+}
+
+class MemoryDb {
+  private collections: Map<string, MemoryCollection> = new Map();
+
+  collection(name: string): any {
+    if (!this.collections.has(name)) {
+      this.collections.set(name, new MemoryCollection());
+    }
+    return this.collections.get(name)!;
+  }
+
+  async dropDatabase(): Promise<void> {
+    this.collections.clear();
+  }
+}
+
 export async function getDb(): Promise<Db> {
   if (_db) return _db;
   if (_dbPromise) return _dbPromise;
@@ -40,6 +180,11 @@ export async function getDb(): Promise<Db> {
     try {
       const uri = Deno.env.get("MONGODB_URI");
       if (!uri) {
+        if (Deno.env.get("DENO_TESTING") === "true") {
+          console.log("[Finansys DB] MONGODB_URI não configurada: usando MemoryDb para suíte de testes.");
+          _db = new MemoryDb() as any;
+          return _db!;
+        }
         throw new Error("Variável de ambiente MONGODB_URI não configurada no Render.");
       }
 
@@ -93,10 +238,27 @@ const CORS_HEADERS = {
 // Gerenciador global de conexões Server-Sent Events (SSE) para atualização em tempo real entre dispositivos
 const sseSubscribers = new Map<string, Set<ReadableStreamDefaultController>>();
 
-function notifySyncUpdate(email: string, savedAt: number, senderId?: string) {
+// Heartbeat periódico (a cada 25 segundos) para manter ativas conexões SSE em redes móveis e proxies reversos
+setInterval(() => {
+  const ping = new TextEncoder().encode(": ping\n\n");
+  for (const [email, subs] of sseSubscribers.entries()) {
+    for (const controller of Array.from(subs)) {
+      try {
+        controller.enqueue(ping);
+      } catch (_e) {
+        subs.delete(controller);
+      }
+    }
+    if (subs.size === 0) sseSubscribers.delete(email);
+  }
+}, 25_000);
+
+function notifySyncUpdate(email: string, savedAt: number, senderId?: string, tables?: string[]) {
   const subs = sseSubscribers.get(email.toLowerCase());
   if (!subs || subs.size === 0) return;
-  const msg = new TextEncoder().encode(`data: ${JSON.stringify({ type: "sync_updated", savedAt, senderId })}\n\n`);
+  const msg = new TextEncoder().encode(
+    `data: ${JSON.stringify({ type: "sync_updated", savedAt, senderId, tables })}\n\n`
+  );
   for (const controller of subs) {
     try {
       controller.enqueue(msg);
@@ -157,53 +319,61 @@ const FEATURE_COLLECTION_MAP: Record<string, string> = {
 
 /**
  * Grava atômica e individualmente cada entidade em sua própria collection no MongoDB Atlas com vínculo por ID.
+ * Implementa Last-Write-Wins (LWW) por registro e PRESERVA dados criados por outros dispositivos.
+ * NUNCA executa deleteMany destrutivo: exclusões são tratadas via soft-delete (deletedAt).
  */
 async function syncCollectionsIndividuais(db: Db, email: string, data: Record<string, unknown[]>) {
   for (const [field, colName] of Object.entries(FEATURE_COLLECTION_MAP)) {
     const items = data[field];
-    if (!Array.isArray(items)) continue;
+    if (!Array.isArray(items) || items.length === 0) continue;
 
     const col = db.collection(colName);
-    if (items.length === 0) {
-      await col.deleteMany({ userEmail: email });
-      continue;
+    // deno-lint-ignore no-explicit-any
+    const validItems = items.filter((it: any) => it && it.id);
+    if (validItems.length === 0) continue;
+
+    // deno-lint-ignore no-explicit-any
+    const ids = validItems.map((it: any) => String(it.id));
+
+    // Busca registros existentes para comparar timestamps (Last-Write-Wins por registro)
+    // deno-lint-ignore no-explicit-any
+    const existingDocs: any[] = await col.find(
+      // deno-lint-ignore no-explicit-any
+      { userEmail: email, _id: { $in: ids as any } } as any,
+      { projection: { _id: 1, updatedAt: 1 } }
+    ).toArray();
+
+    const existingMap = new Map<string, number>();
+    for (const d of existingDocs) {
+      existingMap.set(String(d._id), Number(d.updatedAt) || 0);
     }
 
-    const currentIds = new Set<string>();
     // deno-lint-ignore no-explicit-any
     const bulkOps: any[] = [];
-
-    for (const rawItem of items) {
+    for (const rawItem of validItems) {
       // deno-lint-ignore no-explicit-any
       const item = rawItem as any;
-      if (!item || !item.id) continue;
-      currentIds.add(String(item.id));
+      const id = String(item.id);
+      const itemUpdated = Number(item.updatedAt) || Date.now();
+      const existingUpdated = existingMap.get(id);
 
-      bulkOps.push({
-        updateOne: {
-          filter: { _id: String(item.id), userEmail: email },
-          update: {
-            $set: {
-              ...item,
-              _id: String(item.id),
-              userEmail: email,
-              updatedAt: item.updatedAt || Date.now(),
+      // Só atualiza se o item for novo ou mais recente que o existente no MongoDB
+      if (existingUpdated === undefined || itemUpdated >= existingUpdated) {
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: id, userEmail: email },
+            update: {
+              $set: {
+                ...item,
+                _id: id,
+                userEmail: email,
+                updatedAt: itemUpdated,
+              },
             },
+            upsert: true,
           },
-          upsert: true,
-        },
-      });
-    }
-
-    if (currentIds.size > 0) {
-      bulkOps.push({
-        deleteMany: {
-          filter: {
-            userEmail: email,
-            _id: { $nin: Array.from(currentIds) },
-          },
-        },
-      });
+        });
+      }
     }
 
     if (bulkOps.length > 0) {
@@ -220,7 +390,8 @@ async function assemblePayloadFromCollections(db: Db, email: string): Promise<Re
   let totalCount = 0;
 
   for (const [field, colName] of Object.entries(FEATURE_COLLECTION_MAP)) {
-    const docs = await db.collection(colName).find({ userEmail: email }).toArray();
+    // deno-lint-ignore no-explicit-any
+    const docs: any[] = await db.collection(colName).find({ userEmail: email }).toArray();
     data[field] = docs.map((d) => {
       // deno-lint-ignore no-unused-vars
       const { _id, userEmail, ...rest } = d;
@@ -408,7 +579,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
       }
     }
 
-    // 6. POST /api/sync/push (Salva backup em nuvem no MongoDB Atlas)
+    // 6. POST /api/sync/push (Salva dados no MongoDB Atlas - Suporta PUSH Granular/Delta e Completo)
     if (url.pathname === "/api/sync/push" && req.method === "POST") {
       const auth = await getAuth();
       if (!auth.ok) {
@@ -419,9 +590,28 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
         const body = await req.json();
         if (!body.payload) return json({ error: "Payload vazio." }, 400);
 
-        // Proteção de segurança no servidor: não sobrescrever backup existente populado por um payload vazio
         // deno-lint-ignore no-explicit-any
         const payloadData = (body.payload as any)?.data || body.payload;
+        const isPartial = Boolean(body.payload?.isPartial);
+        const savedAt = Date.now();
+
+        // 1. Tratamento para PUSH Granular / Delta (apenas coleções alteradas)
+        if (isPartial) {
+          const updatedTables = Object.keys(payloadData).filter((k) => Array.isArray(payloadData[k]) && payloadData[k].length > 0);
+          if (updatedTables.length > 0) {
+            await syncCollectionsIndividuais(db, auth.email, payloadData);
+            await db.collection("backups").updateOne(
+              { email: auth.email },
+              { $set: { email: auth.email, savedAt, updatedAt: new Date() } },
+              { upsert: true }
+            );
+            notifySyncUpdate(auth.email, savedAt, body.clientId, updatedTables);
+            return json({ ok: true, savedAt, isPartial: true, updatedTables });
+          }
+          return json({ ok: true, savedAt, isPartial: true, ignored: true });
+        }
+
+        // 2. Tratamento para PUSH Completo (Snapshot total)
         const empresasCount = payloadData?.empresas?.length ?? 0;
         const lancamentosCount = payloadData?.lancamentos?.length ?? 0;
 
@@ -439,21 +629,7 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           }
         }
 
-        const savedAt = Date.now();
-        await db.collection("backups").updateOne(
-          { email: auth.email },
-          {
-            $set: {
-              email: auth.email,
-              payload: body.payload,
-              savedAt,
-              updatedAt: new Date(),
-            },
-          },
-          { upsert: true }
-        );
-
-        // Gravação individual e atômica por feature em collections dedicadas no MongoDB com vínculo por ID
+        // Gravação e merge individual e atômico por feature em collections dedicadas no MongoDB com Last-Write-Wins (LWW)
         if (payloadData && typeof payloadData === "object") {
           try {
             await syncCollectionsIndividuais(db, auth.email, payloadData);
@@ -462,17 +638,43 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
           }
         }
 
+        // Reconstitui o payload CONSOLIDADO de todas as coleções do usuário
+        let consolidatedData = await assemblePayloadFromCollections(db, auth.email);
+        if (!consolidatedData) {
+          consolidatedData = payloadData;
+        }
+
+        const consolidatedPayload = {
+          version: 4,
+          exportedAt: savedAt,
+          data: consolidatedData,
+        };
+
+        // Atualiza o snapshot consolidado em backups
+        await db.collection("backups").updateOne(
+          { email: auth.email },
+          {
+            $set: {
+              email: auth.email,
+              payload: consolidatedPayload,
+              savedAt,
+              updatedAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
+
         // Notifica nós e navegadores conectados via SSE
         notifySyncUpdate(auth.email, savedAt, body.clientId);
 
-        return json({ ok: true, savedAt });
+        return json({ ok: true, savedAt, payload: consolidatedPayload });
       } catch (err) {
         console.error("Erro ao salvar backup no MongoDB Atlas:", err);
         return json({ error: "Falha ao gravar backup no banco de dados: " + String(err) }, 500);
       }
     }
 
-    // 7. GET /api/sync/pull (Recupera último backup em nuvem)
+    // 7. GET /api/sync/pull (Recupera dados da nuvem - Suporta PULL Granular/Delta via ?since=timestamp)
     if (url.pathname === "/api/sync/pull" && req.method === "GET") {
       const auth = await getAuth();
       if (!auth.ok) {
@@ -480,16 +682,62 @@ export async function handleApiRequest(req: Request): Promise<Response | null> {
       }
 
       try {
-        const doc = await db.collection("backups").findOne({ email: auth.email });
-        if (!doc) {
-          // Tenta reconstituir das collections individuais de features se existirem
-          const assembled = await assemblePayloadFromCollections(db, auth.email);
-          if (assembled) {
-            return json({ payload: { version: 4, exportedAt: Date.now(), data: assembled }, savedAt: Date.now() });
+        const sinceParam = url.searchParams.get("since");
+        const since = sinceParam ? parseInt(sinceParam, 10) : 0;
+        const savedAt = Date.now();
+
+        // 1. PULL DELTA: busca apenas registros que foram alterados após `since`
+        if (since > 0) {
+          const deltaData: Record<string, unknown[]> = {};
+          let totalFound = 0;
+
+          for (const [field, colName] of Object.entries(FEATURE_COLLECTION_MAP)) {
+            // deno-lint-ignore no-explicit-any
+            const docs: any[] = await db.collection(colName).find({
+              userEmail: auth.email,
+              updatedAt: { $gt: since },
+            }).toArray();
+
+            if (docs.length > 0) {
+              deltaData[field] = docs.map((d) => {
+                // deno-lint-ignore no-unused-vars
+                const { _id, userEmail, ...rest } = d;
+                return { id: (rest.id as string) || String(_id), ...rest };
+              });
+              totalFound += docs.length;
+            }
           }
-          return json({ payload: null, savedAt: null });
+
+          return json({
+            payload: {
+              version: 4,
+              isPartial: true,
+              exportedAt: savedAt,
+              data: deltaData,
+            },
+            savedAt,
+            empty: totalFound === 0,
+            totalFound,
+          });
         }
-        return json({ payload: doc.payload, savedAt: doc.savedAt });
+
+        // 2. PULL COMPLETO: para inicialização da base ou restauração total
+        const assembled = await assemblePayloadFromCollections(db, auth.email);
+
+        if (assembled) {
+          return json({
+            payload: { version: 4, isPartial: false, exportedAt: savedAt, data: assembled },
+            savedAt,
+          });
+        }
+
+        // Fallback para a collection backups se as collections individuais ainda não existirem
+        const doc = await db.collection("backups").findOne({ email: auth.email });
+        if (doc && doc.payload) {
+          return json({ payload: doc.payload, savedAt: doc.savedAt || savedAt });
+        }
+
+        return json({ payload: null, savedAt: null });
       } catch (err) {
         console.error("Erro ao recuperar backup do MongoDB Atlas:", err);
         return json({ error: "Falha ao ler backup do banco de dados: " + String(err) }, 500);

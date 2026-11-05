@@ -131,7 +131,61 @@ Deno.test("API Auth & Sync: suporte multi-dispositivo seguro e proteção de bac
   assertEquals(dataCheck.payload.data.empresas.length, 1);
   assertEquals(dataCheck.payload.data.lancamentos.length, 1);
 
-  // 7. Limpeza automática da base de teste
+  // 7. Teste de Sincronização Granular / Delta (Push & Pull em partes)
+  const deltaTimestamp = Date.now() + 1000;
+  const deltaPayload = {
+    version: 4,
+    isPartial: true,
+    exportedAt: deltaTimestamp,
+    totalChanged: 1,
+    maxUpdatedAt: deltaTimestamp,
+    data: {
+      lancamentos: [
+        { id: "lanc_2", valorCentavos: 25000, updatedAt: deltaTimestamp },
+      ],
+    },
+  };
+
+  const reqDeltaPush = new Request("http://localhost/api/sync/push", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${tokenDevice2}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ payload: deltaPayload, clientId: "cli_2" }),
+  });
+  const resDeltaPush = await handleApiRequest(reqDeltaPush);
+  assertEquals(resDeltaPush?.status, 200);
+  const dataDeltaPush = await resDeltaPush?.json();
+  assertEquals(dataDeltaPush.isPartial, true);
+  assertEquals(dataDeltaPush.updatedTables, ["lancamentos"]);
+
+  // Pull Delta: Aparelho 1 consulta com ?since=(deltaTimestamp - 500)
+  // Deve receber APENAS o lançamento lanc_2 (sem retransmitir empresas ou lanc_1)
+  const reqDeltaPull = new Request(`http://localhost/api/sync/pull?since=${deltaTimestamp - 500}`, {
+    headers: { Authorization: `Bearer ${tokenDevice1}` },
+  });
+  const resDeltaPull = await handleApiRequest(reqDeltaPull);
+  assertEquals(resDeltaPull?.status, 200);
+  const dataDeltaPull = await resDeltaPull?.json();
+  assertEquals(dataDeltaPull.totalFound, 1);
+  assertEquals(dataDeltaPull.payload.isPartial, true);
+  assertEquals(dataDeltaPull.payload.data.lancamentos.length, 1);
+  assertEquals(dataDeltaPull.payload.data.lancamentos[0].id, "lanc_2");
+  assertEquals(dataDeltaPull.payload.data.empresas, undefined);
+
+  // Pull Completo: Aparelho 1 consulta sem since
+  // Deve conter o estado consolidado (1 empresa e 2 lançamentos)
+  const reqFullPull = new Request("http://localhost/api/sync/pull", {
+    headers: { Authorization: `Bearer ${tokenDevice1}` },
+  });
+  const resFullPull = await handleApiRequest(reqFullPull);
+  assertEquals(resFullPull?.status, 200);
+  const dataFullPull = await resFullPull?.json();
+  assertEquals(dataFullPull.payload.data.empresas.length, 1);
+  assertEquals(dataFullPull.payload.data.lancamentos.length, 2);
+
+  // 8. Limpeza automática da base de teste
   try {
     const { getDb } = await import("./api.ts");
     const db = await getDb();

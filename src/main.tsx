@@ -1,7 +1,8 @@
-import { render } from "preact";
+import { createRoot } from "react-dom/client";
 import { AppShell } from "./components/AppShell.tsx";
 import { useRoute } from "./lib/router.ts";
 import { Ajustes } from "./pages/Ajustes.tsx";
+import { Dashboard } from "./pages/Dashboard.tsx";
 import { Investimentos } from "./pages/Investimentos.tsx";
 import { Lancamentos } from "./pages/Lancamentos.tsx";
 import { Placeholder } from "./pages/Placeholder.tsx";
@@ -24,14 +25,15 @@ function App() {
   const route = useRoute();
   const isMobile = useIsMobile();
 
-  // Em dispositivos móveis (< 768px), carrega a experiência mobile 100% reimaginada do zero
+  // Em dispositivos móveis (< 768px), carrega a experiência mobile completa
   if (isMobile) {
     return <MobileShell route={route} />;
   }
 
   // Em desktop (>= 768px), mantém a estação de trabalho completa
   let page;
-  if (route === "/" || route.startsWith("/relatorios")) page = <Relatorios />;
+  if (route === "/") page = <Dashboard />;
+  else if (route.startsWith("/relatorios")) page = <Relatorios />;
   else if (route.startsWith("/projecoes")) page = <Projecoes />;
   else if (route === "/realizacoes/novo" || route === "/lancamentos/novo") page = <Lancamentos openNewOnMount={true} />;
   else if (route.startsWith("/realizacoes") || route.startsWith("/lancamentos")) page = <Lancamentos />;
@@ -46,5 +48,9 @@ function App() {
 loadState().finally(() => {
   initCloudSync();
   initInactivityGuard();
-  render(<App />, document.getElementById("app")!);
+  const container = document.getElementById("app");
+  if (container) {
+    const root = createRoot(container);
+    root.render(<App />);
+  }
 });

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Icon } from "../../components/Icon.tsx";
 import { toast } from "../../components/Toast.tsx";
 import { confirmarAcao } from "../../components/ModalConfirm.tsx";
+import { ModalReplicacao } from "../../components/ModalReplicacao.tsx";
 import { cloudSyncStatus, cloudUltimoBackup, cloudUser, desconectarConta, enviarBackupNuvem } from "../../data/cloudSync.ts";
 import { getInactivityTimeout, lockScreenNow, setInactivityTimeout } from "../../data/inactivityGuard.ts";
 import { dumpDatabase, restoreDatabase } from "../../data/backup.ts";
@@ -30,6 +31,7 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
   const [modalAnos, setModalAnos] = useState(false);
   const [modalNovoAno, setModalNovoAno] = useState(false);
   const [novoAnoNum, setNovoAnoNum] = useState(new Date().getFullYear() + 1);
+  const [modalReplicacaoAno, setModalReplicacaoAno] = useState(false);
 
   // Modais de Bancos
   const [modalBancos, setModalBancos] = useState(false);
@@ -741,8 +743,34 @@ export function MobileAjustes({ onOpenAuth }: { onOpenAuth: () => void }) {
                 <span style="font-size:0.75rem;font-weight:700;color:var(--primary);">Novo Ano</span>
               </button>
             </div>
+
+            <div style="padding:12px 16px 16px;border-top:1px solid var(--border-soft);">
+              <button
+                type="button"
+                class="btn btn--secondary"
+                style="width:100%;min-height:44px;border-radius:14px;font-weight:700;font-size:0.80rem;gap:6px;"
+                onClick={() => {
+                  setModalAnos(false);
+                  setModalReplicacaoAno(true);
+                }}
+              >
+                <Icon name="copy" style="width:16px;height:16px;" />
+                Replicar Ano com IPCA / Banco Central
+              </button>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Replicação de Ano com IPCA */}
+      {modalReplicacaoAno && empId && (
+        <ModalReplicacao
+          empresaId={empId}
+          anoAtual={anoNum}
+          saldoFinalRealAtual={0}
+          isOpen={modalReplicacaoAno}
+          onClose={() => setModalReplicacaoAno(false)}
+        />
       )}
 
       {/* Bottom Sheet: Novo Ano */}

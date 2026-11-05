@@ -3,6 +3,7 @@ import { Icon } from "../../components/Icon.tsx";
 import { confirmarAcao } from "../../components/ModalConfirm.tsx";
 import { toast } from "../../components/Toast.tsx";
 import { CardPendencias } from "../../components/lancamento/CardPendencias.tsx";
+import { ModalIgnorarProjecao } from "../../components/lancamento/ModalIgnorarProjecao.tsx";
 import { calcularPendencias, type ProjecaoPendente } from "../../data/calc.ts";
 import { anos, categorias, contas, contasBancarias, lancamentos, projecoes, reservaMovimentos, reservas } from "../../data/repo.ts";
 import { FORMAS_PAGAMENTO_PADRAO, type Conta, type Lancamento, type Natureza, type Reserva } from "../../data/types.ts";
@@ -32,9 +33,13 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
 
   const [busca, setBusca] = useState<string>("");
   const [filtroNat, setFiltroNat] = useState<"todas" | Natureza>("todas");
+  const [filtroBanco, setFiltroBanco] = useState<string>("todos");
+  const [filtroCategoria, setFiltroCategoria] = useState<string>("todas");
   const [mesAtivo, setMesAtivo] = useState<number | "todos">(new Date().getMonth());
+  const [modoVisao, setModoVisao] = useState<"extrato" | "tabela">("extrato");
   const [txSelecionada, setTxSelecionada] = useState<Lancamento | null>(null);
   const [modalQuitarPendencia, setModalQuitarPendencia] = useState<ProjecaoPendente | null>(null);
+  const [modalIgnorarItem, setModalIgnorarItem] = useState<ProjecaoPendente | null>(null);
   const [quitarBancoId, setQuitarBancoId] = useState<string>("");
 
   // Estados de Edição
@@ -168,20 +173,57 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
 
     if (mesAtivo !== "todos" && l.mes !== mesAtivo) return false;
     if (filtroNat !== "todas" && c.natureza !== filtroNat) return false;
+    if (filtroBanco !== "todos" && l.bancoId !== filtroBanco && l.bancoDestinoId !== filtroBanco) return false;
+    if (filtroCategoria !== "todas" && c.categoriaId !== filtroCategoria) return false;
 
     if (busca.trim()) {
       const q = busca.toLowerCase();
       const nomeConta = c.nome.toLowerCase();
       const desc = (l.descricao || "").toLowerCase();
       const cat = (catMap.get(c.categoriaId) || "").toLowerCase();
+      const bNome = (bancoMap.get(l.bancoId || "") || "").toLowerCase();
       const val = (l.valor / 100).toFixed(2);
-      if (!nomeConta.includes(q) && !desc.includes(q) && !cat.includes(q) && !val.includes(q)) {
+      if (!nomeConta.includes(q) && !desc.includes(q) && !cat.includes(q) && !val.includes(q) && !bNome.includes(q)) {
         return false;
       }
     }
 
     return true;
   });
+
+  const exportarCSV = () => {
+    if (filtrados.length === 0) {
+      toast.warn("Nenhum lançamento para exportar no filtro atual.");
+      return;
+    }
+    const headers = ["Data", "Natureza", "Categoria", "Conta", "Banco", "Descrição", "Valor", "Obs"];
+    const rows = filtrados.map((l) => {
+      const c = contaMap.get(l.contaId);
+      const cat = c ? catMap.get(c.categoriaId) || "" : "";
+      const b = bancoMap.get(l.bancoId || "") || "";
+      const nat = c ? NATURE_META[c.natureza]?.label || c.natureza : "";
+      const val = (l.valor / 100).toFixed(2).replace(".", ",");
+      return [
+        l.data.split("-").reverse().join("/"),
+        `"${nat}"`,
+        `"${cat}"`,
+        `"${c?.nome || ""}"`,
+        `"${b}"`,
+        `"${(l.descricao || "").replace(/"/g, '""')}"`,
+        `"${val}"`,
+        `"${(l.obs || "").replace(/"/g, '""')}"`,
+      ].join(";");
+    });
+    const csvContent = "\uFEFF" + [headers.join(";"), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `extrato-finansys-${anoNum}-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Extrato exportado em CSV!");
+  };
 
   // Agrupa por data em ordem decrescente
   const gruposPorData = new Map<string, Lancamento[]>();
@@ -209,6 +251,46 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
 
   return (
     <div style="display:flex;flex-direction:column;gap:12px;padding-bottom:70px;">
+      {/* 0. Top Bar de Controles: Visão e Ações Rápidas */}
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div class="mobile-segmented" style="flex:1;max-width:220px;margin-bottom:0;">
+          <button
+            type="button"
+            class={`mobile-segmented__btn ${modoVisao === "extrato" ? "is-active" : ""}`}
+            onClick={() => setModoVisao("extrato")}
+          >
+            <Icon name="list" style="width:14px;height:14px;" /> Extrato
+          </button>
+          <button
+            type="button"
+            class={`mobile-segmented__btn ${modoVisao === "tabela" ? "is-active" : ""}`}
+            onClick={() => setModoVisao("tabela")}
+          >
+            <Icon name="grid" style="width:14px;height:14px;" /> Tabela
+          </button>
+        </div>
+
+        <div style="display:flex;gap:6px;">
+          <button
+            type="button"
+            class="btn btn--secondary btn--sm"
+            onClick={exportarCSV}
+            title="Exportar CSV do Extrato"
+            style="border-radius:12px;gap:4px;font-size:0.75rem;padding:0 10px;min-height:36px;"
+          >
+            <Icon name="download" style="width:14px;height:14px;" /> CSV
+          </button>
+          <button
+            type="button"
+            class="btn btn--primary btn--sm"
+            onClick={onOpenNovo}
+            style="border-radius:12px;gap:4px;font-weight:700;font-size:0.75rem;padding:0 12px;min-height:36px;"
+          >
+            <Icon name="plus" style="width:14px;height:14px;" /> Novo
+          </button>
+        </div>
+      </div>
+
       {/* 1. Barra de Busca Nativa */}
       <div style="position:relative;">
         <input
@@ -247,47 +329,66 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
       </div>
 
       {/* 3. Filtros Rápidos de Natureza Oficial */}
-      <div class="hscroll" style="padding-bottom:4px;">
+      <div class="hscroll" style="padding-bottom:2px;">
         <button
           type="button"
-          class={`mobile-choice-chip ${filtroNat === "todas" ? "is-selected" : ""}`}
+          class={`chip ${filtroNat === "todas" ? "is-active" : ""}`}
           onClick={() => setFiltroNat("todas")}
         >
-          Todas
+          Todas as Naturezas
         </button>
         <button
           type="button"
-          class={`mobile-choice-chip ${filtroNat === "receber" ? "is-selected" : ""}`}
+          class={`chip ${filtroNat === "receber" ? "is-active" : ""}`}
           onClick={() => setFiltroNat("receber")}
         >
-          <i class="dot" style="background:var(--in);" />
-          A Receber
+          <Icon name="arrowDown" style="width:12px;height:12px;color:var(--in);" /> Receitas
         </button>
         <button
           type="button"
-          class={`mobile-choice-chip ${filtroNat === "pagar" ? "is-selected" : ""}`}
+          class={`chip ${filtroNat === "pagar" ? "is-active" : ""}`}
           onClick={() => setFiltroNat("pagar")}
         >
-          <i class="dot" style="background:var(--out);" />
-          A Pagar
+          <Icon name="arrowUp" style="width:12px;height:12px;color:var(--out);" /> Despesas
         </button>
         <button
           type="button"
-          class={`mobile-choice-chip ${filtroNat === "aporte" ? "is-selected" : ""}`}
+          class={`chip ${filtroNat === "aporte" ? "is-active" : ""}`}
           onClick={() => setFiltroNat("aporte")}
         >
-          <i class="dot" style="background:var(--aporte);" />
-          Aporte Livre
+          <Icon name="wallet" style="width:12px;height:12px;color:var(--primary);" /> Aportes Livres
         </button>
         <button
           type="button"
-          class={`mobile-choice-chip ${filtroNat === "saida" ? "is-selected" : ""}`}
+          class={`chip ${filtroNat === "saida" ? "is-active" : ""}`}
           onClick={() => setFiltroNat("saida")}
         >
-          <i class="dot" style="background:var(--saida);" />
-          Saída Livre
+          <Icon name="sparkle" style="width:12px;height:12px;color:var(--accent);" /> Saídas Livres
         </button>
       </div>
+
+      {/* 4. Filtro por Banco (se houver bancos cadastrados) */}
+      {bancos.length > 0 && (
+        <div class="hscroll" style="gap:4px;padding-bottom:2px;">
+          <button
+            type="button"
+            class={`chip ${filtroBanco === "todos" ? "is-active" : ""}`}
+            onClick={() => setFiltroBanco("todos")}
+          >
+            Todos os Bancos
+          </button>
+          {bancos.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              class={`chip ${filtroBanco === b.id ? "is-active" : ""}`}
+              onClick={() => setFiltroBanco(filtroBanco === b.id ? "todos" : b.id)}
+            >
+              <Icon name="bank" style="width:12px;height:12px;" /> {b.nome}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 3.5. Card de Pendências Financeiras (Contas Vencidas e a Vencer) */}
       {pendencias.length > 0 && (
@@ -306,8 +407,67 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
         />
       )}
 
-      {/* 4. Lista do Extrato Agrupado por Data */}
-      {datasOrdenadas.length === 0 ? (
+      {/* 4. Lista do Extrato (Modo Tabela ou Modo Agrupado por Data) */}
+      {modoVisao === "tabela" ? (
+        filtrados.length === 0 ? (
+          <div class="card" style="text-align:center;padding:36px 16px;border-radius:20px;color:var(--text-muted);">
+            <Icon name="list" style="width:32px;height:32px;margin:0 auto 8px;display:block;" />
+            <h3 style="font-size:0.95rem;margin:0 0 4px;color:var(--text);">Nenhuma transação</h3>
+            <p style="font-size:0.80rem;margin:0;">Nenhum lançamento corresponde aos filtros selecionados.</p>
+          </div>
+        ) : (
+          <div class="card" style="padding:0;overflow:hidden;border-radius:16px;">
+            <div style="overflow-x:auto;">
+              <table class="table" style="font-size:0.75rem;margin:0;width:100%;">
+                <thead>
+                  <tr style="background:var(--surface-sunken);">
+                    <th style="padding:8px 10px;">Data</th>
+                    <th style="padding:8px 10px;">Descrição / Conta</th>
+                    <th style="padding:8px 10px;">Banco</th>
+                    <th style="padding:8px 10px;text-align:right;">Valor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtrados.map((l) => {
+                    const c = contaMap.get(l.contaId);
+                    const isEntrada = c?.natureza === "receber" || c?.natureza === "aporte";
+                    const bNome = l.bancoId ? bancoMap.get(l.bancoId) : "-";
+                    return (
+                      <tr
+                        key={l.id}
+                        onClick={() => setTxSelecionada(l)}
+                        style="cursor:pointer;"
+                      >
+                        <td style="padding:8px 10px;white-space:nowrap;color:var(--text-muted);">
+                          {l.data.split("-").slice(1).reverse().join("/")}
+                        </td>
+                        <td style="padding:8px 10px;">
+                          <div style="font-weight:700;color:var(--text);">{l.descricao || c?.nome || "Lançamento"}</div>
+                          <div style="font-size:0.70rem;color:var(--text-muted);">{c?.nome} • {c ? catMap.get(c.categoriaId) : ""}</div>
+                        </td>
+                        <td style="padding:8px 10px;white-space:nowrap;color:var(--text-muted);">
+                          {bNome}
+                        </td>
+                        <td
+                          style={{
+                            padding: "8px 10px",
+                            textAlign: "right",
+                            whiteSpace: "nowrap",
+                            fontWeight: 800,
+                            color: isEntrada ? "var(--in)" : "var(--text)",
+                          }}
+                        >
+                          {signedPrivacidade(isEntrada ? l.valor : -l.valor)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      ) : datasOrdenadas.length === 0 ? (
         <div class="card" style="text-align:center;padding:36px 16px;border-radius:20px;color:var(--text-muted);">
           <Icon name="list" style="width:32px;height:32px;margin:0 auto 8px;display:block;" />
           <h3 style="font-size:0.95rem;margin:0 0 4px;color:var(--text);">Nenhuma transação</h3>
@@ -655,11 +815,11 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                 </div>
               </div>
 
-              <div class="modal__foot" style="display:flex;gap:10px;">
+              <div class="modal__foot" style="display:flex;gap:8px;">
                 <button
                   type="button"
                   class="btn btn--secondary"
-                  style="min-height:46px;border-radius:14px;color:var(--out);padding:0 16px;"
+                  style="min-height:46px;border-radius:14px;color:var(--out);padding:0 14px;"
                   onClick={() => excluirTx(txSelecionada)}
                   title="Excluir Lançamento"
                 >
@@ -667,11 +827,41 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                 </button>
                 <button
                   type="button"
+                  class="btn btn--secondary"
+                  style="min-height:46px;border-radius:14px;padding:0 14px;display:flex;align-items:center;gap:4px;font-size:0.80rem;font-weight:700;"
+                  onClick={async () => {
+                    if (!ano) return;
+                    const hoje = new Date();
+                    const dataHoje = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+                    const mesHoje = hoje.getMonth();
+                    await lancamentos.create({
+                      anoId: ano.id,
+                      contaId: txSelecionada.contaId,
+                      mes: mesHoje,
+                      data: dataHoje,
+                      valor: txSelecionada.valor,
+                      descricao: txSelecionada.descricao ? `${txSelecionada.descricao} (Cópia)` : "Lançamento (Cópia)",
+                      bancoId: txSelecionada.bancoId,
+                      bancoDestinoId: txSelecionada.bancoDestinoId,
+                      formaPagamento: txSelecionada.formaPagamento,
+                      reservaId: txSelecionada.reservaId,
+                      tipoReserva: txSelecionada.tipoReserva,
+                      obs: txSelecionada.obs,
+                    });
+                    toast.success("Lançamento duplicado para hoje!");
+                    setTxSelecionada(null);
+                  }}
+                  title="Duplicar para a data de hoje"
+                >
+                  <Icon name="copy" /> Duplicar
+                </button>
+                <button
+                  type="button"
                   class="btn btn--primary"
                   style="flex:1;min-height:46px;border-radius:14px;font-weight:800;"
                   onClick={() => iniciarEdicao(txSelecionada)}
                 >
-                  <Icon name="pencil" /> Editar Lançamento
+                  <Icon name="pencil" /> Editar
                 </button>
               </div>
             </div>
@@ -738,7 +928,7 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                 )}
               </div>
 
-              <div class="modal__foot">
+              <div class="modal__foot" style="display:flex;flex-direction:column;gap:8px;">
                 <button
                   type="button"
                   class="btn btn--primary"
@@ -761,9 +951,66 @@ export function MobileExtrato({ onOpenNovo }: { onOpenNovo: () => void }) {
                 >
                   <Icon name="check" /> Confirmar Pagamento
                 </button>
+
+                <button
+                  type="button"
+                  class="btn btn--ghost"
+                  style="width:100%;min-height:38px;border-radius:12px;font-size:0.80rem;color:var(--text-muted);"
+                  onClick={() => {
+                    const pendItem = modalQuitarPendencia;
+                    setModalQuitarPendencia(null);
+                    setModalIgnorarItem(pendItem);
+                  }}
+                >
+                  Não vou pagar esta projeção (Ignorar / Postergar)
+                </button>
               </div>
             </div>
           </div>
+        );
+      })()}
+
+      {/* Modal para Ignorar ou Postergar Projeção */}
+      {modalIgnorarItem && (() => {
+        const c = contaMap.get(modalIgnorarItem.contaId);
+        const mesIdx = modalIgnorarItem.mes;
+        const proxMesNome = mesIdx < 11 ? MONTHS[mesIdx + 1] : undefined;
+        return (
+          <ModalIgnorarProjecao
+            isOpen={true}
+            onClose={() => setModalIgnorarItem(null)}
+            contaNome={c?.nome || "Conta"}
+            mesNome={MONTHS[mesIdx]}
+            valorCentavos={modalIgnorarItem.valorPendente}
+            mesProximoNome={proxMesNome}
+            onConfirmar={async (modo) => {
+              if (!ano) return;
+              if (modo === "somar_proximo" && mesIdx < 11) {
+                const proxProj = ps.find((p) => p.contaId === modalIgnorarItem.contaId && p.mes === mesIdx + 1);
+                if (proxProj) {
+                  await projecoes.update(proxProj.id, {
+                    valor: proxProj.valor + modalIgnorarItem.valorPendente,
+                  });
+                } else {
+                  await projecoes.create({
+                    anoId: ano.id,
+                    contaId: modalIgnorarItem.contaId,
+                    mes: mesIdx + 1,
+                    valor: modalIgnorarItem.valorPendente,
+                  });
+                }
+              }
+              const atualProj = ps.find((p) => p.contaId === modalIgnorarItem.contaId && p.mes === mesIdx);
+              if (atualProj) {
+                const realizadosNesteMes = ls
+                  .filter((l) => l.contaId === modalIgnorarItem.contaId && l.mes === mesIdx)
+                  .reduce((s, l) => s + l.valor, 0);
+                await projecoes.update(atualProj.id, { valor: realizadosNesteMes });
+              }
+              toast.success("Decisão registrada sobre a projeção!");
+              setModalIgnorarItem(null);
+            }}
+          />
         );
       })()}
     </div>

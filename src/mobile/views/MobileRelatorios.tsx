@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { Icon } from "../../components/Icon.tsx";
+import { toast } from "../../components/Toast.tsx";
 import { calcularPosicaoBancos } from "../../data/calc.ts";
 import { db } from "../../data/db.ts";
 import { anos, categorias, contas, contasBancarias, empresas, reservas } from "../../data/repo.ts";
 import type { TipoContaBancaria } from "../../data/types.ts";
 import { useLive } from "../../data/useLive.ts";
 import { money, moneyPrivacidade, signedPrivacidade } from "../../lib/format.ts";
+import { NATURE_META } from "../../lib/natureza.ts";
 import { anoAtivo, empresaAtiva } from "../../state.ts";
 import { useSignal } from "../../lib/signal.ts";
 
@@ -23,7 +25,7 @@ export function MobileRelatorios() {
   const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
   const anoHoje = hoje.getFullYear();
 
-  const [abaAtiva, setAbaAtiva] = useState<"bancos" | "dre" | "razao">("bancos");
+  const [abaAtiva, setAbaAtiva] = useState<"bancos" | "dre" | "fluxo" | "razao">("bancos");
   const [presetAtivo, setPresetAtivo] = useState<string>(anoNum === anoHoje ? "ano_ate_hoje" : "ano");
   const [dataInicio, setDataInicio] = useState<string>(`${anoNum}-01-01`);
   const [dataFim, setDataFim] = useState<string>(anoNum === anoHoje ? hojeStr : `${anoNum}-12-31`);
@@ -251,6 +253,113 @@ export function MobileRelatorios() {
     return "bank";
   };
 
+  // Agrupamento para Fluxo de Caixa Diário
+  interface DiaFluxo {
+    data: string;
+    entradas: number;
+    saidas: number;
+    resultado: number;
+    saldoAcumulado: number;
+    itens: typeof lsNoPeriodo;
+  }
+
+  const mapaDiasFluxo = new Map<string, typeof lsNoPeriodo>();
+  for (const l of lsNoPeriodo) {
+    const list = mapaDiasFluxo.get(l.data) || [];
+    list.push(l);
+    mapaDiasFluxo.set(l.data, list);
+  }
+
+  const datasFluxoOrdenadas = Array.from(mapaDiasFluxo.keys()).sort((a, b) => a.localeCompare(b));
+  let acumuladorSaldo = 0;
+  const diasFluxo: DiaFluxo[] = datasFluxoOrdenadas.map((dt) => {
+    const itens = mapaDiasFluxo.get(dt) || [];
+    let ent = 0;
+    let sai = 0;
+    for (const it of itens) {
+      const c = contaMap.get(it.contaId);
+      if (c?.natureza === "receber" || c?.natureza === "aporte") ent += it.valor;
+      else sai += it.valor;
+    }
+    const resDia = ent - sai;
+    acumuladorSaldo += resDia;
+    return {
+      data: dt,
+      entradas: ent,
+      saidas: sai,
+      resultado: resDia,
+      saldoAcumulado: acumuladorSaldo,
+      itens,
+    };
+  });
+
+  const exportarCSV = () => {
+    let headers: string[] = [];
+    let rows: string[] = [];
+    const nomeArquivo = `relatorio-${abaAtiva}-${anoNum}.csv`;
+
+    if (abaAtiva === "bancos") {
+      headers = ["Instituição", "Tipo", "Saldo Inicial", "Entradas Período", "Saídas Período", "Saldo Atual"];
+      rows = posicaoBancosAteFim.bancos.map((b) => [
+        `"${b.nome}"`,
+        `"${b.tipo}"`,
+        `"${(b.saldoInicialCentavos / 100).toFixed(2).replace(".", ",")}"`,
+        `"${(b.entradasCentavos / 100).toFixed(2).replace(".", ",")}"`,
+        `"${(b.saidasCentavos / 100).toFixed(2).replace(".", ",")}"`,
+        `"${(b.saldoAtualCentavos / 100).toFixed(2).replace(".", ",")}"`,
+      ].join(";"));
+    } else if (abaAtiva === "dre") {
+      headers = ["Categoria", "Natureza", "Projetado", "Realizado", "Desvio"];
+      rows = Array.from(mapCatDRE.values()).map((c) => [
+        `"${c.nome}"`,
+        `"${c.natureza}"`,
+        `"${(c.proj / 100).toFixed(2).replace(".", ",")}"`,
+        `"${(c.real / 100).toFixed(2).replace(".", ",")}"`,
+        `"${((c.real - c.proj) / 100).toFixed(2).replace(".", ",")}"`,
+      ].join(";"));
+    } else if (abaAtiva === "fluxo") {
+      headers = ["Data", "Entradas", "Saídas", "Resultado do Dia", "Saldo Acumulado"];
+      rows = diasFluxo.map((d) => [
+        d.data.split("-").reverse().join("/"),
+        `"${(d.entradas / 100).toFixed(2).replace(".", ",")}"`,
+        `"${(d.saidas / 100).toFixed(2).replace(".", ",")}"`,
+        `"${(d.resultado / 100).toFixed(2).replace(".", ",")}"`,
+        `"${(d.saldoAcumulado / 100).toFixed(2).replace(".", ",")}"`,
+      ].join(";"));
+    } else {
+      headers = ["Data", "Natureza", "Categoria", "Conta", "Banco", "Descrição", "Valor"];
+      rows = razaoFiltrado.map((l) => {
+        const c = contaMap.get(l.contaId);
+        const cat = c ? catMap.get(c.categoriaId) : null;
+        const b = l.bancoId ? bancoMap.get(l.bancoId) : null;
+        return [
+          l.data.split("-").reverse().join("/"),
+          `"${c ? NATURE_META[c.natureza]?.label || c.natureza : ""}"`,
+          `"${cat?.nome || ""}"`,
+          `"${c?.nome || ""}"`,
+          `"${b?.nome || ""}"`,
+          `"${(l.descricao || "").replace(/"/g, '""')}"`,
+          `"${(l.valor / 100).toFixed(2).replace(".", ",")}"`,
+        ].join(";");
+      });
+    }
+
+    if (rows.length === 0) {
+      toast.warn("Nenhum dado disponível para exportar no relatório atual.");
+      return;
+    }
+
+    const csvContent = "\uFEFF" + [headers.join(";"), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nomeArquivo;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Relatório CSV baixado com sucesso!");
+  };
+
   return (
     <div style="display:flex;flex-direction:column;gap:12px;padding-bottom:70px;">
       {/* 1. Barra de Presets Rápidos de Data */}
@@ -285,7 +394,7 @@ export function MobileRelatorios() {
         </button>
       </div>
 
-      {/* Indicador do Intervalo & Ação de Imprimir */}
+      {/* Indicador do Intervalo & Ações de Download/Imprimir */}
       <div
         style={{
           display: "flex",
@@ -303,27 +412,39 @@ export function MobileRelatorios() {
           <Icon name="calendar" style="width:14px;height:14px;color:var(--primary);" />
           <span>Período: <strong>{formatarDataBR(dataInicio)}</strong> a <strong>{formatarDataBR(dataFim)}</strong></span>
         </div>
-        <button
-          type="button"
-          class="btn btn--ghost btn--sm"
-          style="padding:2px 6px;height:24px;font-size:0.68rem;gap:4px;"
-          onClick={() => window.print()}
-          title="Imprimir relatório"
-        >
-          <Icon name="download" style="width:12px;height:12px;" />
-          Imprimir
-        </button>
+        <div style="display:flex;gap:4px;">
+          <button
+            type="button"
+            class="btn btn--secondary btn--sm"
+            style="padding:2px 8px;height:24px;font-size:0.68rem;gap:4px;border-radius:8px;"
+            onClick={exportarCSV}
+            title="Baixar relatório em formato de planilha CSV"
+          >
+            <Icon name="download" style="width:12px;height:12px;" />
+            CSV
+          </button>
+          <button
+            type="button"
+            class="btn btn--ghost btn--sm"
+            style="padding:2px 8px;height:24px;font-size:0.68rem;gap:4px;border-radius:8px;"
+            onClick={() => window.print()}
+            title="Imprimir relatório"
+          >
+            <Icon name="fileText" style="width:12px;height:12px;" />
+            Imprimir
+          </button>
+        </div>
       </div>
 
-      {/* 2. Segmented Switcher de 3 Abas: Posição Bancária, DRE & Analítico, Razão Analítico */}
-      <div class="mobile-segmented" style="margin-bottom:2px;">
+      {/* 2. Segmented Switcher de 4 Abas: Posição Bancária, DRE, Fluxo de Caixa, Razão Analítico */}
+      <div class="mobile-segmented mobile-segmented--4" style="margin-bottom:2px;">
         <button
           type="button"
           class={`mobile-segmented__btn ${abaAtiva === "bancos" ? "is-active" : ""}`}
           onClick={() => setAbaAtiva("bancos")}
         >
-          <Icon name="bank" style="width:14px;height:14px;" />
-          Bancos ({bancoList.length})
+          <Icon name="bank" style="width:13px;height:13px;" />
+          Bancos
         </button>
 
         <button
@@ -331,8 +452,17 @@ export function MobileRelatorios() {
           class={`mobile-segmented__btn ${abaAtiva === "dre" ? "is-active" : ""}`}
           onClick={() => setAbaAtiva("dre")}
         >
-          <Icon name="chart" style="width:14px;height:14px;" />
-          DRE & Contas
+          <Icon name="chart" style="width:13px;height:13px;" />
+          DRE
+        </button>
+
+        <button
+          type="button"
+          class={`mobile-segmented__btn ${abaAtiva === "fluxo" ? "is-active" : ""}`}
+          onClick={() => setAbaAtiva("fluxo")}
+        >
+          <Icon name="trendingUp" style="width:13px;height:13px;" />
+          Fluxo
         </button>
 
         <button
@@ -340,8 +470,8 @@ export function MobileRelatorios() {
           class={`mobile-segmented__btn ${abaAtiva === "razao" ? "is-active" : ""}`}
           onClick={() => setAbaAtiva("razao")}
         >
-          <Icon name="list" style="width:14px;height:14px;" />
-          Razão ({lsNoPeriodo.length})
+          <Icon name="list" style="width:13px;height:13px;" />
+          Razão
         </button>
       </div>
 
@@ -811,6 +941,68 @@ export function MobileRelatorios() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ========================================================= */}
+      {/* 4. CONTEÚDO: ABA FLUXO DE CAIXA MENSAL E DIÁRIO           */}
+      {/* ========================================================= */}
+      {abaAtiva === "fluxo" && (
+        <>
+          <section class="bank-hero-card" aria-label="Resumo do Fluxo de Caixa">
+            <div class="bank-hero-card__header">
+              <div class="bank-hero-card__title">
+                <Icon name="trendingUp" />
+                <span>Fluxo de Caixa Operacional</span>
+              </div>
+              <span class="badge" style="background:var(--surface-sunken);color:var(--text);font-weight:700;">
+                {diasFluxo.length} dias c/ movimento
+              </span>
+            </div>
+
+            <div class="bank-hero-card__value" style={{ color: saldoLiquidoRazao >= 0 ? "var(--in)" : "var(--out)" }}>
+              {signedPrivacidade(saldoLiquidoRazao)}
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-top:10px;border-top:1px solid var(--border-soft);">
+              <div>
+                <span style="font-size:0.70rem;color:var(--text-muted);display:block;">Total de Entradas</span>
+                <strong style="font-size:0.95rem;color:var(--in);font-weight:800;">{moneyPrivacidade(totalEntradasRazao)}</strong>
+              </div>
+              <div>
+                <span style="font-size:0.70rem;color:var(--text-muted);display:block;">Total de Saídas</span>
+                <strong style="font-size:0.95rem;color:var(--out);font-weight:800;">{moneyPrivacidade(totalSaidasRazao)}</strong>
+              </div>
+            </div>
+          </section>
+
+          {/* Lista Diária do Fluxo de Caixa */}
+          {diasFluxo.length === 0 ? (
+            <div class="card" style="text-align:center;padding:32px 16px;border-radius:18px;color:var(--text-muted);">
+              <Icon name="trendingUp" style="width:32px;height:32px;margin:0 auto 8px;display:block;" />
+              <h3 style="font-size:0.95rem;margin:0 0 4px;color:var(--text);">Sem movimentações no período</h3>
+              <p style="font-size:0.80rem;margin:0;">Nenhum lançamento registrado no intervalo de datas selecionado.</p>
+            </div>
+          ) : (
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              {diasFluxo.map((df) => (
+                <div key={df.data} class="card" style="border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <strong style="font-size:0.82rem;color:var(--text);">{df.data.split("-").reverse().join("/")}</strong>
+                    <span style={{ fontSize: "0.85rem", fontWeight: 800, color: df.resultado >= 0 ? "var(--in)" : "var(--out)" }}>
+                      {signedPrivacidade(df.resultado)}
+                    </span>
+                  </div>
+
+                  <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);">
+                    <span>Entradas: <b style="color:var(--in);">{money(df.entradas)}</b></span>
+                    <span>Saídas: <b style="color:var(--out);">{money(df.saidas)}</b></span>
+                    <span>Acumulado: <b>{signedPrivacidade(df.saldoAcumulado)}</b></span>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </>

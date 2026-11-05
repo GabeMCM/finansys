@@ -220,6 +220,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         descricao: modalLanc.descricao?.trim() || "",
         obs: modalLanc.obs?.trim() || undefined,
         bancoId: modalLanc.bancoId || undefined,
+        bancoDestinoId: modalLanc.bancoDestinoId || undefined,
         formaPagamento: modalLanc.formaPagamento || undefined,
         reservaId: modalLanc.reservaId || undefined,
         tipoReserva: tipoRes,
@@ -273,6 +274,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
         descricao: modalLanc.descricao?.trim() || "",
         obs: modalLanc.obs?.trim() || undefined,
         bancoId: modalLanc.bancoId || undefined,
+        bancoDestinoId: modalLanc.bancoDestinoId || undefined,
         formaPagamento: modalLanc.formaPagamento || undefined,
         reservaId: modalLanc.reservaId || undefined,
         tipoReserva: tipoRes,
@@ -432,6 +434,7 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
           descricao: modalLanc.descricao?.trim() || "",
           obs: modalLanc.obs?.trim() || undefined,
           bancoId: modalLanc.bancoId || undefined,
+          bancoDestinoId: modalLanc.bancoDestinoId || undefined,
           formaPagamento: modalLanc.formaPagamento || undefined,
           recorrenciaId,
           parcela: i,
@@ -1908,9 +1911,36 @@ export function Lancamentos({ openNewOnMount = false }: { openNewOnMount?: boole
                       setModalLanc({
                         ...modalLanc,
                         bancoId: val || undefined,
+                        bancoDestinoId: val === modalLanc?.bancoDestinoId ? undefined : modalLanc?.bancoDestinoId,
                       });
                     }}
                   />
+
+                  {modalLanc?.bancoId && bancoList.length > 1 && (
+                    <div style="margin-top:8px;">
+                      <label class="form-label" style="font-size:var(--fs-xs);margin-bottom:4px;display:flex;align-items:center;gap:6px;color:var(--text-muted);">
+                        <Icon name="arrowLeftRight" style="width:13px;height:13px;color:var(--primary);" />
+                        <span>Banco de Destino (Opcional - Transferência entre contas)</span>
+                      </label>
+                      <CustomSelect
+                        id="lanc-banco-destino"
+                        value={modalLanc?.bancoDestinoId || ""}
+                        placeholder="Nenhum (Lançamento normal)"
+                        options={[
+                          { value: "", label: "Nenhum (Lançamento normal)" },
+                          ...bancoList
+                            .filter((b) => b.id !== modalLanc.bancoId)
+                            .map((b) => ({ value: b.id, label: b.nome })),
+                        ]}
+                        onChange={(val) => {
+                          setModalLanc({
+                            ...modalLanc,
+                            bancoDestinoId: val || undefined,
+                          });
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 

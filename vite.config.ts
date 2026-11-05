@@ -1,7 +1,24 @@
 import { defineConfig, type Plugin } from "vite";
-import preact from "@preact/preset-vite";
+import react from "@vitejs/plugin-react";
 import { handleApiRequest } from "./server/api.ts";
 import { Buffer } from "node:buffer";
+
+/**
+ * Plugin de compilação: garante suporte transparente a class="..." e className="..." em JSX do React,
+ * evitando avisos no console e permitindo escrita amigável e interoperável.
+ */
+function jsxClassTransformPlugin(): Plugin {
+  return {
+    name: "finansys-jsx-class-transform",
+    enforce: "pre",
+    transform(code, id) {
+      if (!id.endsWith(".tsx") && !id.endsWith(".jsx")) return null;
+      if (!code.includes("class=")) return null;
+      const transformed = code.replace(/\bclass=(["'{])/g, "className=$1");
+      return { code: transformed, map: null };
+    },
+  };
+}
 
 function apiMiddlewarePlugin(): Plugin {
   return {
@@ -46,6 +63,6 @@ function apiMiddlewarePlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [preact(), apiMiddlewarePlugin()],
+  plugins: [jsxClassTransformPlugin(), react(), apiMiddlewarePlugin()],
   server: { host: true, port: 5173 },
 });
